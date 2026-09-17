@@ -66,8 +66,8 @@ The public policy is defined in `security/gitleaks-portable.toml`. Its `[extend]
 
 ##### `portable-connection-string-password`
 
-- **Purpose:** Detects a `password=` or `pwd=` field in a semicolon-delimited or whitespace-delimited connection string.
-- **Exact Expression:** `(?i)(?:^|[;"'\s])(?:password|pwd)[ \t]*=[ \t]*["']?([^;"'\s\\]{8,})`
+- **Purpose:** Detects a `password=` or `pwd=` field at the start of a line or in a semicolon-delimited connection string, while avoiding ordinary program assignments and comparisons.
+- **Exact Expression:** `(?im)(?:^|;)[ \t]*(?:password|pwd)[ \t]*=[ \t]*["']?([^;"'\s\\]{8,})`
 - **Captured Secret:** The assigned value, with at least 8 characters.
 - **Entropy Threshold:** 2.5.
 - **Keywords:** `password`, `pwd`.
