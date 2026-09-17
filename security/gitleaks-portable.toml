@@ -11,7 +11,7 @@ useDefault = true
 [[rules]]
 id = "portable-connection-string-password"
 description = "Credential-bearing key/value connection string"
-regex = '''(?im)(?:^|;)[ \t]*(?:password|pwd)[ \t]*=[ \t]*["']?([^;"'\s\\]{8,})'''
+regex = '''(?im)(?:^|;[ \t]*)(?:password|pwd)[ \t]*=[ \t]*["']?([^;"'\s\\]{8,})'''
 secretGroup = 1
 entropy = 2.5
 keywords = ["password", "pwd"]

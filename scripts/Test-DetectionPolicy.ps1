@@ -37,6 +37,7 @@ try {
     Invoke-Case 'connection-positive' 'portable-connection-string-password' 'app.config' ('Server=db.example.invalid;Password=' + $canary) $true
     Invoke-Case 'connection-negative' 'portable-connection-string-password' 'docs/example.txt' 'Server=db.example.invalid;Password=<PASSWORD>' $false
     Invoke-Case 'connection-code-assignment-negative' 'portable-connection-string-password' 'app.py' '    password=input("New password: ")' $false
+    Invoke-Case 'connection-method-assignment-negative' 'portable-connection-string-password' 'admin.py' '    password=getpass.getpass("New administrator password: ")' $false
     Invoke-Case 'connection-sql-expression-negative' 'portable-connection-string-password' 'store.py' 'db.execute("UPDATE users SET password=excluded.password")' $false
     Invoke-Case 'connection-comparison-negative' 'portable-connection-string-password' 'test_auth.py' "return password=='fixture'" $false
     Invoke-Case 'uri-positive' 'portable-credentialed-uri' 'settings.txt' ('postgresql://service:' + $canary + '@db.example.invalid/app') $true
