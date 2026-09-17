@@ -36,7 +36,7 @@
       "description": "Python compilation and project test validation.",
       "source": "modules/python/payload",
       "detect": {
-        "fileNames": ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile"],
+        "fileNames": ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "requirements-dev.txt", "Pipfile"],
         "extensions": [".py"]
       },
       "overlapPatterns": ["pytest", "compileall", "ruff", "python -m"]

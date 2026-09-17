@@ -14,7 +14,7 @@ Every target repository receives the universal secret-scanning module. Additiona
 | PowerShell | A `.ps1`, `.psm1`, or `.psd1` file exists | PowerShell parser validation |
 | .NET | A `.sln`, `.slnx`, `.csproj`, `.fsproj`, or `.vbproj` file exists | Restore, Release build, and headless tests |
 | Node | `package.json` or a `.js`, `.mjs`, or `.cjs` file exists | JavaScript syntax; reproducible npm checks when packaged; dependency-free `tests/test.js` when present |
-| Python | A Python project marker or `.py` file exists | Dependency/project installation, bytecode compilation, and tests when a `tests` directory exists |
+| Python | A Python project marker or `.py` file exists | Runtime and development dependency installation, bytecode compilation, and tests when a `tests` directory exists |
 | PHP | `composer.json` or a `.php` file exists | PHP syntax, Composer validation/install, and optional Composer tests |
 | Shell | A `.sh` or `.bash` file exists | `bash -n` syntax validation |
 | PlatformIO | `platformio.ini` exists | Pinned PlatformIO firmware build |

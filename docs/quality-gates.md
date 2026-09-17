@@ -199,13 +199,14 @@ When `package.json` is absent and `tests/test.js` exists, the workflow runs `nod
 - `setup.py`
 - `setup.cfg`
 - `requirements.txt`
+- `requirements-dev.txt`
 - `Pipfile`
 
 **Workflow:** `Python Quality` on `ubuntu-latest`, timeout 20 minutes.
 
 The workflow:
 
-- installs `requirements.txt` when present;
+- installs `requirements.txt` and `requirements-dev.txt` when present;
 - installs the project in editable mode when `pyproject.toml` or `setup.py` exists;
 - runs `python -m compileall -q .`;
 - runs tests only when a `tests` directory exists;

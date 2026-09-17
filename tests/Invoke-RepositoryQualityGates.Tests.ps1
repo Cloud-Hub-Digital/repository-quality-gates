@@ -71,6 +71,8 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-node.yml')) 'The Node workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-powershell.yml')) 'The PowerShell workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-python.yml')) 'The Python workflow should be deployed.'
+    $pythonWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-python.yml'))
+    Assert-True ($pythonWorkflow.Contains('requirements-dev.txt')) 'The Python workflow should install development requirements before running tests.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-php.yml')) 'The PHP workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-shell.yml')) 'The shell workflow should be deployed.'
     $updatedIgnore = [IO.File]::ReadAllText((Join-Path $mixed '.gitignore'))

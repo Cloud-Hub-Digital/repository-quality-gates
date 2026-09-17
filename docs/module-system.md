@@ -12,7 +12,7 @@ For operator instructions, see [Deployment Guide](deployment-guide.md). For the 
 | `powershell` | `.ps1`, `.psm1`, or `.psd1` | Parser validation on Windows |
 | `dotnet` | `.sln`, `.slnx`, `.csproj`, `.fsproj`, or `.vbproj` | Restore, Release build, and headless tests on Windows |
 | `node` | `package.json`, `.js`, `.mjs`, or `.cjs` | JavaScript syntax; reproducible npm checks when packaged; dependency-free `tests/test.js` when present |
-| `python` | Python source, packaging, or dependency file | Installation when configured, bytecode compilation, and pytest or unittest discovery when a test directory exists |
+| `python` | Python source, packaging, or runtime/development dependency file | Installation when configured, bytecode compilation, and pytest or unittest discovery when a test directory exists |
 | `php` | PHP source or `composer.json` | PHP syntax validation plus Composer validation, installation, and tests when configured |
 | `shell` | `.sh` or `.bash` | Bash syntax validation on tracked shell scripts |
 | `platformio` | `platformio.ini` | Pinned PlatformIO firmware build |
