@@ -1,0 +1,29 @@
+name: Documentation Quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    name: Markdown Hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check Markdown Files
+        shell: pwsh
+        run: |
+          $bad = Get-ChildItem -Recurse -File | Where-Object {
+            $_.Extension.ToLowerInvariant() -in @('.md', '.markdown') -and
+            $_.FullName -notmatch '[\\/](\.git|node_modules|vendor)[\\/]'
+          } | Where-Object {
+            (Get-Content -LiteralPath $_.FullName -Raw) -match '[ \t]+(?=\r?$)'
+          }
+          if ($bad) { $bad.FullName | Write-Error; exit 1 }

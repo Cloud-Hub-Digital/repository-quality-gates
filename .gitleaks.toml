@@ -1,0 +1,9 @@
+title = "Repository Secret Checks"
+minVersion = "v8.30.0"
+
+[extend]
+path = "security/gitleaks-portable.toml"
+
+# Add only narrowly reviewed project exceptions below. Bind each exception to
+# one exact synthetic value and one exact file. Never allowlist real secrets or
+# private publication identifiers.

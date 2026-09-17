@@ -1,0 +1,86 @@
+title = "Portable Credential Detection"
+minVersion = "v8.30.0"
+
+[extend]
+useDefault = true
+
+# These rules cover portable credential shapes that Gitleaks 8.30.1 does not
+# detect reliably. They contain no organization, person, account, host, path,
+# or project-specific values and can be reused unchanged in other repositories.
+
+[[rules]]
+id = "portable-connection-string-password"
+description = "Credential-bearing key/value connection string"
+regex = '''(?i)(?:^|[;"'\s])(?:password|pwd)[ \t]*=[ \t]*["']?([^;"'\s\\]{8,})'''
+secretGroup = 1
+entropy = 2.5
+keywords = ["password", "pwd"]
+[[rules.allowlists]]
+description = "Explicit documentation placeholders"
+regexes = ['''^(?i:<[^>\r\n]{1,64}>|\$\{[A-Z][A-Z0-9_]{1,63}\}|\{\{[ .A-Z0-9_|-]{1,64}\}\}|YOUR[_-][A-Z0-9_-]{3,64}|REDACTED|EXAMPLE(?:[_-](?:ONLY|VALUE|TOKEN|SECRET|PASSWORD))?)$''']
+[[rules.allowlists]]
+description = "Reserved example-domain documentation value"
+regexes = ['''^[A-Za-z0-9._%+-]+@example\.invalid$''']
+[[rules.allowlists]]
+description = "Bracketed redaction marker"
+regexes = ['''^\[[A-Z][A-Z0-9_-]{1,63}\]$''']
+
+[[rules]]
+id = "portable-credentialed-uri"
+description = "Database or messaging URI containing a password"
+regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|amqp|amqps|mssql)://[^:/@\s]{1,64}:([^@/\s"']{8,})@'''
+secretGroup = 1
+entropy = 2.5
+keywords = ["postgres://", "postgresql://", "mysql://", "mariadb://", "mongodb://", "mongodb+srv://", "redis://", "rediss://", "amqp://", "amqps://", "mssql://"]
+[[rules.allowlists]]
+description = "Explicit documentation placeholders"
+regexes = ['''^(?i:<[^>\r\n]{1,64}>|\$\{[A-Z][A-Z0-9_]{1,63}\}|\{\{[ .A-Z0-9_|-]{1,64}\}\}|YOUR[_-][A-Z0-9_-]{3,64}|REDACTED|EXAMPLE(?:[_-](?:ONLY|VALUE|TOKEN|SECRET|PASSWORD))?)$''']
+
+[[rules]]
+id = "portable-authorization-header"
+description = "Authorization header containing a Basic, Bearer, or Token credential"
+regex = '''(?i)\bauthorization[ \t]*[:=][ \t]*["']?(?:basic|bearer|token)[ \t]+([A-Z0-9._~+/=-]{12,})'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["authorization"]
+[[rules.allowlists]]
+description = "Explicit documentation placeholders"
+regexes = ['''^(?i:<[^>\r\n]{1,64}>|\$\{[A-Z][A-Z0-9_]{1,63}\}|\{\{[ .A-Z0-9_|-]{1,64}\}\}|YOUR[_-][A-Z0-9_-]{3,64}|REDACTED|EXAMPLE(?:[_-](?:ONLY|VALUE|TOKEN|SECRET|PASSWORD))?)$''']
+
+[[rules]]
+id = "portable-client-secret"
+description = "Generic OAuth or application client secret"
+regex = '''(?i)\b(?:oauth[_-]?)?client[_-]?secret\b[ \t]*[:=][ \t]*["']?([A-Z0-9._~+/=-]{16,})'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["client_secret", "client-secret", "clientsecret"]
+[[rules.allowlists]]
+description = "Explicit documentation placeholders"
+regexes = ['''^(?i:<[^>\r\n]{1,64}>|\$\{[A-Z][A-Z0-9_]{1,63}\}|\{\{[ .A-Z0-9_|-]{1,64}\}\}|YOUR[_-][A-Z0-9_-]{3,64}|REDACTED|EXAMPLE(?:[_-](?:ONLY|VALUE|TOKEN|SECRET|PASSWORD))?)$''']
+
+[[rules]]
+id = "portable-refresh-token"
+description = "Generic OAuth refresh token"
+regex = '''(?i)\brefresh[_-]?token\b[ \t]*[:=][ \t]*["']?([A-Z0-9._~+/=-]{16,})'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["refresh_token", "refresh-token", "refreshtoken"]
+[[rules.allowlists]]
+description = "Explicit documentation placeholders"
+regexes = ['''^(?i:<[^>\r\n]{1,64}>|\$\{[A-Z][A-Z0-9_]{1,63}\}|\{\{[ .A-Z0-9_|-]{1,64}\}\}|YOUR[_-][A-Z0-9_-]{3,64}|REDACTED|EXAMPLE(?:[_-](?:ONLY|VALUE|TOKEN|SECRET|PASSWORD))?)$''']
+
+[[rules]]
+id = "portable-session-secret"
+description = "Generic session token, key, secret, ID, or cookie"
+regex = '''(?i)\b(?:session[_-]?(?:token|secret|key|id)|sessionid|connect\.sid)\b[ \t]*[:=][ \t]*["']?([A-Z0-9._~+/=-]{16,})'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["session", "sessionid", "connect.sid"]
+[[rules.allowlists]]
+description = "Explicit documentation placeholders"
+regexes = ['''^(?i:<[^>\r\n]{1,64}>|\$\{[A-Z][A-Z0-9_]{1,63}\}|\{\{[ .A-Z0-9_|-]{1,64}\}\}|YOUR[_-][A-Z0-9_-]{3,64}|REDACTED|EXAMPLE(?:[_-](?:ONLY|VALUE|TOKEN|SECRET|PASSWORD))?)$''']
+
+[[rules]]
+id = "portable-sensitive-key-file"
+description = "Java keystore or high-risk private-key filename not covered by built-in content rules"
+path = '''(?i)(?:^|/)(?:id_(?:rsa|dsa|ecdsa|ed25519)|(?:private|signing|tls|ssl|server|client)(?:[-_.](?:private|signing|auth))?\.(?:key|pem)|[^/]+\.(?:jks|keystore))$'''

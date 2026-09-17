@@ -1,0 +1,58 @@
+# Automation Costs And Release Strategy
+
+This note records the cost boundary and recommended rollout for automated builds and releases. Pricing is a point-in-time summary checked on 16 September 2026; GitHub's current billing pages remain authoritative.
+
+## Current Cost Boundary
+
+For public repositories, standard GitHub-hosted runners are free and unlimited. The template currently uses standard `ubuntu-latest` and `windows-2025` runners, so its existing checks do not consume paid Actions minutes when the repository is public.
+
+For private repositories on GitHub Free, GitHub currently includes 2,000 Actions minutes per month, 500 MB of shared Actions artifact storage, and 10 GB of cache storage per repository. Usage beyond the included allowance is billed only when a valid payment method and spending allowance permit it; otherwise further workflow use is blocked.
+
+Current baseline rates beyond an included allowance are USD $0.006 per minute for a standard two-core Linux runner and USD $0.010 per minute for a standard two-core Windows runner. macOS and larger runners cost more. Larger runners are always billable, including for public repositories.
+
+GitHub Releases permits up to 1,000 assets per release, each smaller than 2 GiB, with no documented limit on total release size or bandwidth. Release assets are separate from temporary Actions artifacts. The workflow time used to build and upload a release still follows Actions billing rules.
+
+Official references:
+
+- [GitHub Actions Billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
+- [Included GitHub Product Usage](https://docs.github.com/en/billing/reference/product-usage-included)
+- [GitHub-Hosted Runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+- [Larger Runners](https://docs.github.com/en/actions/concepts/runners/larger-runners)
+- [About GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)
+
+## Recommended Rollout
+
+Automated builds are a useful next module because they prove that a clean GitHub runner can reproduce the build. They should be enabled on pull requests and pushes using the applicable language module.
+
+Release publishing should be a separate, opt-in module with these controls:
+
+1. Trigger only from an explicitly approved semantic-version tag or a manual `workflow_dispatch` request containing the exact approved version.
+2. Re-run the complete quality, test, secret, and publication checks before packaging.
+3. Build in headless mode. Keep desktop UI tests in a separate isolated workflow so applications do not interrupt local work.
+4. Produce deterministic packages, checksums, and a software bill of materials where supported.
+5. Upload final packages directly to the GitHub Release. Use temporary Actions artifacts only when jobs must exchange files, and give them the shortest useful retention period.
+6. Grant the release job `contents: write` only; keep all other jobs at `contents: read`.
+7. Use GitHub Environments with a required approval before the publishing job when the repository and plan support that control.
+8. Prevent concurrent publication of the same version and reject an existing tag or release instead of overwriting it.
+9. Keep version creation, OpenProject version records, the Versions board, the Git tag, GitHub Release, and the packaged artifact on the same canonical version.
+
+The recommended sequence is therefore:
+
+1. Keep the current quality workflows on every pull request and push.
+2. Add build-and-package validation without publishing.
+3. Add a manually approved release workflow after each product's build outputs, version source, packaging method, and required platforms are documented.
+
+## Cost Controls
+
+- Use standard Linux runners where the product does not require Windows.
+- Use standard Windows runners only for Windows-specific builds and tests.
+- Do not use larger runners without an explicit cost decision.
+- Add `concurrency` cancellation for superseded branch and pull-request runs.
+- Keep timeouts finite and dependency caches narrowly keyed.
+- Avoid uploading intermediate artifacts unless another job needs them.
+- Set short retention periods for temporary artifacts.
+- Configure a GitHub Actions spending limit before enabling paid overage on private repositories.
+
+## Current Template Status
+
+The template deploys build and test gates for detected codebases, but it does not create releases, tags, versions, or deployment artifacts. Release automation requires a separate module because package formats, signing requirements, version sources, target platforms, and release approval steps vary by project.

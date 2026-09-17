@@ -1,0 +1,33 @@
+name: PowerShell Quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: PowerShell Syntax
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Parse PowerShell Files
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem -Recurse -File | Where-Object {
+            $_.Extension.ToLowerInvariant() -in @('.ps1', '.psm1', '.psd1') -and
+            $_.FullName -notmatch '[\\/](\.git|node_modules|vendor|bin|obj)[\\/]'
+          } | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors) { $errors += $parseErrors }
+          }
+          if ($errors) { $errors | Format-List | Out-String | Write-Error; exit 1 }

@@ -1,0 +1,34 @@
+name: Python Quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python Compile And Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Project
+        run: |
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ] || [ -f setup.py ]; then python -m pip install -e .; fi
+      - name: Compile
+        run: python -m compileall -q .
+      - name: Test
+        run: |
+          if [ -d tests ]; then
+            if python -c 'import pytest' >/dev/null 2>&1; then
+              python -m pytest
+            else
+              python -m unittest discover -s tests -p 'test_*.py' -v
+            fi
+          fi

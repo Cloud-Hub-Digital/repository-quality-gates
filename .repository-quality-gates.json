@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "templateVersion": "0.1.0-dev",
+  "modules": [
+    "secret-scanning",
+    "powershell",
+    "documentation"
+  ],
+  "preservedModules": [],
+  "files": [
+    {
+      "path": ".githooks/pre-commit",
+      "module": "secret-scanning",
+      "sha256": "92c9c24afeb1afe833384e8b2fe1f9fafac135193c97a0306a09983ec8e652a8"
+    },
+    {
+      "path": ".githooks/pre-push",
+      "module": "secret-scanning",
+      "sha256": "4a20602b0c9b890ca993997ccdba35c8b3a040916e46594ad59dc68047af37b2"
+    },
+    {
+      "path": ".github/workflows/quality-documentation.yml",
+      "module": "documentation",
+      "sha256": "f05a230adf71b3867b3607c983653274b5f8bc336e4555fbaf5cdcb6f0de45c3"
+    },
+    {
+      "path": ".github/workflows/quality-powershell.yml",
+      "module": "powershell",
+      "sha256": "a21235f8a464b09cfcbed5521d3662924ebc84748842a55df3ab2e808e49bb70"
+    },
+    {
+      "path": ".github/workflows/secret-scanning.yml",
+      "module": "secret-scanning",
+      "sha256": "bde3015d33707e3f1a529441f2e2a123b85baec9956aa2a21a361df3a6911ca5"
+    },
+    {
+      "path": ".gitleaks.toml",
+      "module": "secret-scanning",
+      "sha256": "d82d36b06c3b6db6f6af4ba3c9f4c337ce1bcf494ba9c28797741a77fa402842"
+    },
+    {
+      "path": "scripts/Configure-SecretScanning.ps1",
+      "module": "secret-scanning",
+      "sha256": "274992c067e0ba3e9b8967a81d9dbc032700cbca5aba6e05d2641d3de14e77f9"
+    },
+    {
+      "path": "scripts/gitleaks-lock.json",
+      "module": "secret-scanning",
+      "sha256": "57f5407c9d150918315d4ea30df027021bcf2602fb5d31088916fbf0afa52c97"
+    },
+    {
+      "path": "scripts/Install-GitHooks.ps1",
+      "module": "secret-scanning",
+      "sha256": "d31b4927808d40b1b66c69c9144ee7835d7658c22784aca9b4451b61c31f3a0a"
+    },
+    {
+      "path": "scripts/Install-Gitleaks.ps1",
+      "module": "secret-scanning",
+      "sha256": "b5a766f5f3b4722c3376d0fb1aa7c4d1772f863020cd4f52452e57431653b67e"
+    },
+    {
+      "path": "scripts/Test-DetectionPolicy.ps1",
+      "module": "secret-scanning",
+      "sha256": "73e362355108e572b2bb602b2155ba850f0664abd6764a0122e47ab85032ed73"
+    },
+    {
+      "path": "scripts/Test-Secrets.ps1",
+      "module": "secret-scanning",
+      "sha256": "86e23ae268a8a030a9e8f489f35bd3edc5d40cfca615436cba02bc1299ac2843"
+    },
+    {
+      "path": "security/gitleaks-portable.toml",
+      "module": "secret-scanning",
+      "sha256": "c16bb3254e48a09d1d35ad20b9f8afd31e902619bf4807bef4caaadbfac44a53"
+    }
+  ],
+  "gitIgnoreLines": [
+    "/.tools/"
+  ]
+}

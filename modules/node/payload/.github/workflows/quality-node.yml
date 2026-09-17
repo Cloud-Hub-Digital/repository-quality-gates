@@ -1,0 +1,49 @@
+name: Node Quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: JavaScript Syntax, Test, And Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check JavaScript Syntax
+        shell: pwsh
+        run: |
+          $files = @(git -c core.quotepath=false ls-files | Where-Object {
+            [IO.Path]::GetExtension($_).ToLowerInvariant() -in @('.js', '.mjs', '.cjs')
+          })
+          if (-not $files.Count) { throw 'No tracked JavaScript files were found.' }
+          foreach ($file in $files) {
+            & node --check $file
+            if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax check failed: $file" }
+          }
+      - name: Require NPM Lockfile
+        if: ${{ hashFiles('package.json') != '' && hashFiles('package-lock.json', 'npm-shrinkwrap.json') == '' }}
+        shell: pwsh
+        run: throw 'package.json requires package-lock.json or npm-shrinkwrap.json for reproducible npm ci installation.'
+      - name: Install Dependencies
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm ci
+      - name: Lint
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm run lint --if-present
+      - name: Test
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm test --if-present
+      - name: Build
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm run build --if-present
+      - name: Run Dependency-Free Test Suite
+        if: ${{ hashFiles('package.json') == '' && hashFiles('tests/test.js') != '' }}
+        run: node tests/test.js

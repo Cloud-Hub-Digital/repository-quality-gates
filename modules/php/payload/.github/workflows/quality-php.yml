@@ -1,0 +1,29 @@
+name: PHP Quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: PHP Syntax And Project Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Syntax
+        run: git ls-files -z '*.php' | xargs -0 -r -n 1 php -l
+      - name: Composer Validate And Install
+        run: |
+          if [ -f composer.json ]; then
+            composer validate --strict
+            composer install --no-interaction --prefer-dist
+          fi
+      - name: Composer Test
+        run: if [ -f composer.json ]; then composer test --if-present; fi
