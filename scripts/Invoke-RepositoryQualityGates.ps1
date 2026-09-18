@@ -20,7 +20,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$productVersion = '0.1.0'
+$productVersion = '0.2.0-dev'
 $productRepository = 'https://github.com/terryrogers/repository-quality-gates'
 
 if ($Version) {

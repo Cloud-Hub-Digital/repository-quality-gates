@@ -2,7 +2,7 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The current template version written to managed state is `0.1.0`.
+The current template version written to managed state is `0.2.0-dev`.
 
 ## What It Provides
 
@@ -79,6 +79,27 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 The universal module deploys only public, portable rules. Personal identifiers, private domains, internal paths, hostnames, and other private publication rules must remain in a protected file outside every repository.
 
 Never add a private identifier source file or generated private policy to repository files, Git history, GitHub Actions secrets, variables, artifacts, caches, or logs. Local scripts obtain the policy path from the `publicationSafety.privateConfig` repository-local Git setting.
+
+## Approved Markdown Attribution Exceptions
+
+The reusable baseline supports a narrowly scoped product-attribution exception
+for an exact approved name in the root `README.md` only. The name is permitted
+only while the current Markdown section heading matches `licence`, `license`,
+or `attribution`, including plural and combined headings such as `Licenses and
+attribution`; matching is case-insensitive and accepts any Markdown heading
+level. The section ends at the next heading. The year, copyright punctuation,
+licence wording, and referenced licence filename are deliberately not matched.
+
+Validate a protected approved name with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\Test-MarkdownAttribution.ps1" -RepositoryPath "C:\Path\To\Repository" -ApprovedName "<APPROVED_NAME>"
+```
+
+The approved name and the corresponding exact `README.md` allowlist remain in
+the protected publication policy and the target project's public `.gitleaks.toml`.
+The public RQG repository contains only this reusable structural validator and
+never contains project-specific private identifier collections.
 
 ## Validation
 

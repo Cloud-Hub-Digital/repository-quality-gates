@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "templateVersion": "0.1.0",
+  "templateVersion": "0.2.0-dev",
   "modules": [
     "secret-scanning",
     "powershell",
@@ -62,6 +62,11 @@
       "path": "scripts/Test-DetectionPolicy.ps1",
       "module": "secret-scanning",
       "sha256": "73e362355108e572b2bb602b2155ba850f0664abd6764a0122e47ab85032ed73"
+    },
+    {
+      "path": "scripts/Test-MarkdownAttribution.ps1",
+      "module": "secret-scanning",
+      "sha256": "b02a71bdc61c847c6c9649a0c5d8f62e206ace3098401ed828caacb2e97df081"
     },
     {
       "path": "scripts/Test-Secrets.ps1",
