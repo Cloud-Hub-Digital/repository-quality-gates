@@ -240,6 +240,21 @@ The workflow runs `bash -n` against every tracked `.sh` and `.bash` file. This i
 
 The workflow installs `platformio==6.1.18` and runs `pio run`. It validates configured firmware environments but does not perform hardware-in-the-loop or physical-device testing.
 
+### Go
+
+**Selection rule:** A file named `go.mod` or `go.work` exists.
+
+**Workflow:** `Go Quality` on `ubuntu-latest`, timeout 20 minutes.
+
+The workflow selects `go.work` when present and otherwise uses `go.mod` to install the declared Go toolchain. It then:
+
+1. verifies every tracked `.go` file is formatted with `gofmt`;
+2. runs `go vet ./...`;
+3. runs `go test ./...`;
+4. runs `go build ./...`.
+
+Repository-specific workflows remain responsible for cross-compilation, platform packaging, code generation, signing, native-library integration, and physical-device tests.
+
 ### Documentation
 
 **Selection rule:** At least one `.md` or `.markdown` file exists.
@@ -260,10 +275,11 @@ The workflow fails when Markdown files contain trailing spaces or tabs. It exclu
 | `pyproject.toml`, Python source, and Markdown | Secret Scanning, Python, Documentation |
 | `composer.json`, PHP source, shell helpers, and Markdown | Secret Scanning, PHP, Shell, Documentation |
 | `platformio.ini`, Python helper scripts, and Markdown | Secret Scanning, PlatformIO, Python, Documentation |
+| `go.mod`, Go source, and Markdown | Secret Scanning, Go, Documentation |
 
 ## Existing Workflow Detection
 
-The catalog defines text markers for each module, such as `dotnet test`, `npm ci`, `pytest`, or `pio run`. The deployment script inspects existing workflow files outside the planned managed paths. A matching marker is reported as a potential overlap.
+The catalog defines text markers for each module, such as `dotnet test`, `npm ci`, `pytest`, `pio run`, or `go test`. The deployment script inspects existing workflow files outside the planned managed paths. A matching marker is reported as a potential overlap.
 
 An overlap is evidence for review, not proof that two workflows are equivalent. Apply stops until one of these decisions is made:
 

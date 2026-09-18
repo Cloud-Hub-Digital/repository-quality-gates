@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "templateVersion": "0.1.0-dev",
+  "templateVersion": "0.1.0",
   "modules": [
     "secret-scanning",
     "powershell",

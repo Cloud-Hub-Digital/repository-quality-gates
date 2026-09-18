@@ -119,6 +119,24 @@ try {
     Assert-True ($standaloneWorkflow.Contains('node --check')) 'The Node workflow should check JavaScript syntax.'
     Assert-True ($standaloneWorkflow.Contains('node tests/test.js')) 'The Node workflow should run the conventional dependency-free test suite.'
 
+    $goModule = New-Fixture 'go-module'
+    "module example.invalid/fixture`n`ngo 1.24`n" | Set-Content -LiteralPath (Join-Path $goModule 'go.mod') -Encoding ascii
+    "package fixture`n`nfunc Value() int { return 42 }`n" | Set-Content -LiteralPath (Join-Path $goModule 'fixture.go') -Encoding ascii
+    Commit-Fixture $goModule
+    $goPreview = Invoke-Tool $goModule @('-OutputFormat', 'Json')
+    Assert-True ($goPreview.ExitCode -eq 0) 'A Go module preview should succeed.'
+    $goJson = $goPreview.Output | ConvertFrom-Json
+    Assert-True ($goJson.selectedModules -contains 'go') 'go.mod should select the Go module.'
+    $goApply = Invoke-Tool $goModule @('-Apply', '-OutputFormat', 'Json')
+    Assert-True ($goApply.ExitCode -eq 0) 'A Go module repository should accept deployment.'
+    $goWorkflowPath = Join-Path $goModule '.github\workflows\quality-go.yml'
+    Assert-True (Test-Path -LiteralPath $goWorkflowPath) 'The Go workflow should be deployed.'
+    $goWorkflow = Get-Content -LiteralPath $goWorkflowPath -Raw
+    Assert-True ($goWorkflow.Contains('gofmt')) 'The Go workflow should enforce formatting.'
+    Assert-True ($goWorkflow.Contains('go vet ./...')) 'The Go workflow should run go vet.'
+    Assert-True ($goWorkflow.Contains('go test ./...')) 'The Go workflow should run tests.'
+    Assert-True ($goWorkflow.Contains('go build ./...')) 'The Go workflow should build packages.'
+
     $invalid = New-Fixture 'invalid-powershell'
     'param(; Write-Output "broken"' | Set-Content -LiteralPath (Join-Path $invalid 'broken.ps1') -Encoding ascii
     Commit-Fixture $invalid
@@ -191,6 +209,10 @@ try {
     Assert-True ($deployerText.Contains("Get-Command powershell.exe -ErrorAction Stop")) 'The deployer should resolve an execution-policy-safe helper host.'
     $directHelperPattern = '& \(Join-Path \$script:RepositoryRoot ''scripts\\(?:Configure-SecretScanning|Install-Gitleaks|Test-Secrets)\.ps1''\)'
     Assert-True (-not ($deployerText -match $directHelperPattern)) 'Managed helper scripts should not be invoked directly from a network-backed checkout.'
+
+    $versionOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version 2>&1
+    Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 0.1.0')) 'The version interface should report the canonical version.'
 
     Write-Host "$passed assertions passed."
 } finally {

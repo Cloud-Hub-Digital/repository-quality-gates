@@ -63,6 +63,13 @@
       "overlapPatterns": ["platformio", "pio run"]
     },
     {
+      "id": "go",
+      "description": "Go formatting, vetting, testing, and build validation.",
+      "source": "modules/go/payload",
+      "detect": { "fileNames": ["go.mod", "go.work"] },
+      "overlapPatterns": ["setup-go", "go vet", "go test", "go build"]
+    },
+    {
       "id": "documentation",
       "description": "Basic Markdown hygiene checks.",
       "source": "modules/documentation/payload",

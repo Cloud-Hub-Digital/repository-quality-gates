@@ -2,7 +2,7 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The current template version written to managed state is `0.1.0-dev`. It is development source and has not yet been published as a formal release.
+The current template version written to managed state is `0.1.0`.
 
 ## What It Provides
 
@@ -18,6 +18,7 @@ Every target repository receives the universal secret-scanning module. Additiona
 | PHP | `composer.json` or a `.php` file exists | PHP syntax, Composer validation/install, and optional Composer tests |
 | Shell | A `.sh` or `.bash` file exists | `bash -n` syntax validation |
 | PlatformIO | `platformio.ini` exists | Pinned PlatformIO firmware build |
+| Go | `go.mod` or `go.work` exists | Formatting, vetting, tests, and package builds |
 | Documentation | A `.md` or `.markdown` file exists | Markdown trailing-whitespace check |
 
 See [Quality Gates](docs/quality-gates.md) for the exact selection rules, commands, runners, triggers, permissions, exclusions, and limitations for every module.
@@ -87,4 +88,4 @@ Run the template regression suite from this repository:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGates.Tests.ps1"
 ```
 
-The current suite contains 58 assertions and uses generated synthetic repositories only. It does not use real credentials or private identifier values.
+The current suite contains 69 assertions and uses generated synthetic repositories only. It does not use real credentials or private identifier values.

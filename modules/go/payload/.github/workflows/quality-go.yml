@@ -1,0 +1,54 @@
+name: Go Quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go Format, Vet, Test, And Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select Go Version File
+        id: go-version
+        shell: bash
+        run: |
+          if [[ -f go.work ]]; then
+            echo "file=go.work" >> "$GITHUB_OUTPUT"
+          elif [[ -f go.mod ]]; then
+            echo "file=go.mod" >> "$GITHUB_OUTPUT"
+          else
+            echo "No go.work or go.mod file was found." >&2
+            exit 1
+          fi
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ steps.go-version.outputs.file }}
+          cache: true
+      - name: Check Formatting
+        shell: bash
+        run: |
+          mapfile -d '' files < <(git ls-files -z -- '*.go')
+          if (( ${#files[@]} == 0 )); then
+            echo "No tracked Go source files were found." >&2
+            exit 1
+          fi
+          unformatted="$(gofmt -l "${files[@]}")"
+          if [[ -n "$unformatted" ]]; then
+            printf 'The following Go files are not formatted:\n%s\n' "$unformatted" >&2
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./...
+      - name: Build
+        run: go build ./...

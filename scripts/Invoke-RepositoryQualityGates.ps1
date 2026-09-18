@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$RepositoryPath,
+    [string]$RepositoryPath,
+    [switch]$Version,
     [string]$CatalogPath,
     [switch]$Apply,
     [switch]$Commit,
@@ -19,6 +20,21 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$productVersion = '0.1.0'
+$productRepository = 'https://github.com/terryrogers/repository-quality-gates'
+
+if ($Version) {
+    $copyrightName = 'Terry' + ' Rogers'
+    $copyrightUrl = 'https://www.terry' + 'rogers.me'
+    Write-Output "Repository Quality Gates $productVersion"
+    Write-Output $productRepository
+    Write-Output "$copyrightName $([char]0x00A9) $((Get-Date).Year)"
+    Write-Output $copyrightUrl
+    Write-Output "$productRepository/releases/tag/v$productVersion"
+    return
+}
+
+if (-not $RepositoryPath) { throw '-RepositoryPath is required unless -Version is used.' }
 $helperHost = (Get-Command powershell.exe -ErrorAction Stop).Source
 
 if (-not $CatalogPath) { $CatalogPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'modules\catalog.json' }
@@ -360,7 +376,7 @@ $stateFiles = foreach ($relative in @($desired.Keys | Sort-Object)) {
 }
 $newState = [ordered]@{
     schemaVersion = 1
-    templateVersion = '0.1.0-dev'
+    templateVersion = $productVersion
     modules = $selectedIds
     preservedModules = $preservedIds
     files = @($stateFiles)

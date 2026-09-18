@@ -16,6 +16,7 @@ For operator instructions, see [Deployment Guide](deployment-guide.md). For the 
 | `php` | PHP source or `composer.json` | PHP syntax validation plus Composer validation, installation, and tests when configured |
 | `shell` | `.sh` or `.bash` | Bash syntax validation on tracked shell scripts |
 | `platformio` | `platformio.ini` | Pinned PlatformIO firmware build |
+| `go` | `go.mod` or `go.work` | Formatting, `go vet`, tests, and package builds |
 | `documentation` | Markdown files | Trailing-whitespace hygiene check |
 
 The table is a summary. `modules/catalog.json` is authoritative for detection and overlap markers, while each module payload is authoritative for its deployed workflow.
