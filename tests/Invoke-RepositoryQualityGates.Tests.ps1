@@ -111,6 +111,7 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-module-drift.yml')) 'The automatic module-drift workflow should be deployed universally.'
     $moduleDriftWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-module-drift.yml'))
     Assert-True ($moduleDriftWorkflow.Contains("if: github.ref_type == 'branch'")) 'Automatic reconciliation should be restricted to branch references and must not mutate tag checkouts.'
+    Assert-True ($moduleDriftWorkflow.Contains("BaseName -ne 'quality-module-drift'")) 'Post-reconciliation validation must not redispatch the module-drift workflow into a redundant self-run.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Test-QualityGateModuleDrift.ps1')) 'The module-drift checker should be deployed universally.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\RepositoryQualityGates.Detection.ps1')) 'The shared detection library should be deployed universally.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\rqg-module-catalog.json')) 'The module catalog snapshot should be deployed universally.'
