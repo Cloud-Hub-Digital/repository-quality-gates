@@ -8,6 +8,7 @@
 - Tag pushes no longer start a reconciliation job that could attempt to commit and push against an immutable release tag.
 - A second branch-reference condition protects manually evaluated reconciliation jobs from mutating tag checkouts.
 - Post-reconciliation validation no longer redispatches the Module Drift workflow itself.
+- Validation workflows are dispatched only when a non-empty reconciliation change set was committed and pushed.
 
 ## 1.0.0 - 2026-09-19
 
