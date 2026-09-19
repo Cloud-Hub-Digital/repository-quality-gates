@@ -20,7 +20,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$productVersion = '1.0.0'
+$productVersion = '1.0.1'
 $productRepository = 'https://github.com/terryrogers/repository-quality-gates'
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $detectionLibraryPath = Join-Path $toolRoot 'modules\module-drift\payload\scripts\RepositoryQualityGates.Detection.ps1'

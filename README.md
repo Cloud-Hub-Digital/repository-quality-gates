@@ -2,7 +2,7 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The current stable template version written to managed state is `1.0.0`.
+The current stable template version written to managed state is `1.0.1`.
 
 ## What It Provides
 
