@@ -27,7 +27,7 @@
     {
       "path": ".github/workflows/quality-module-drift.yml",
       "module": "module-drift",
-      "sha256": "0da06bd629472dfe8bc6635748640a7506e370084b5df429978492262bb40fa3"
+      "sha256": "25ecb625b1659ad67bebdb34070b9612a72388ad984ee7a47199a950e9f0ffd4"
     },
     {
       "path": ".github/workflows/quality-powershell.yml",
@@ -67,7 +67,7 @@
     {
       "path": ".rqg/template/modules/module-drift/payload/.github/workflows/quality-module-drift.yml",
       "module": "module-drift",
-      "sha256": "0da06bd629472dfe8bc6635748640a7506e370084b5df429978492262bb40fa3"
+      "sha256": "25ecb625b1659ad67bebdb34070b9612a72388ad984ee7a47199a950e9f0ffd4"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/scripts/Invoke-AutomaticQualityGateReconciliation.ps1",

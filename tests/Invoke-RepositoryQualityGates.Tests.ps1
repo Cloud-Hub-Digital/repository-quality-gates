@@ -112,8 +112,8 @@ try {
     $moduleDriftWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-module-drift.yml'))
     Assert-True ($moduleDriftWorkflow.Contains("if: github.ref_type == 'branch'")) 'Automatic reconciliation should be restricted to branch references and must not mutate tag checkouts.'
     Assert-True ($moduleDriftWorkflow.Contains("BaseName -ne 'quality-module-drift'")) 'Post-reconciliation validation must not redispatch the module-drift workflow into a redundant self-run.'
-    Assert-True ($moduleDriftWorkflow.Contains("steps.commit-reconciliation.outputs.reconciled == 'true'")) 'Validation dispatch must require an explicit successful reconciliation output.'
-    Assert-True ($moduleDriftWorkflow.Contains('IsNullOrWhiteSpace')) 'The reconciliation change list must ignore empty native-command output.'
+    Assert-True ($moduleDriftWorkflow.Contains("steps.commit_reconciliation.outputs.reconciled == 'true'")) 'Validation dispatch must require an explicit successful reconciliation output.'
+    Assert-True ($moduleDriftWorkflow.Contains('git diff --cached --name-only')) 'The reconciliation decision must use the staged Git index instead of runner-specific status output.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Test-QualityGateModuleDrift.ps1')) 'The module-drift checker should be deployed universally.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\RepositoryQualityGates.Detection.ps1')) 'The shared detection library should be deployed universally.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\rqg-module-catalog.json')) 'The module catalog snapshot should be deployed universally.'
