@@ -48,7 +48,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath 
 Preview is read-only. Review:
 
 - selected modules;
-- each `Add`, `Unchanged`, `Update`, `Merge`, `Conflict`, or `Remove` action;
+- each `Add`, `Unchanged`, `Update`, `Merge`, `Conflict`, `Retain`, or `Remove` action;
 - target paths and reasons;
 - existing-workflow overlap warnings;
 - proposed `.gitignore` additions.
@@ -193,6 +193,8 @@ The script requires a named remote and an attached branch, fetches and prunes th
 
 After push, confirm that every selected workflow completes successfully. The expected workflow names are listed in [Quality Gates](quality-gates.md).
 
+Confirm that `Quality Gate Module Drift` reports the repository as current. Pull requests report detected differences without failing. A push or manual run automatically adds missing modules, removes unchanged obsolete modules, validates the result, creates a managed reconciliation commit when needed, pushes it, and dispatches the managed workflows against the reconciled branch.
+
 Where repository rules are available, require the applicable checks before changes can enter the default branch. Use the job/check names shown by the first successful workflow runs.
 
 ## Updating A Managed Repository
@@ -208,7 +210,15 @@ The state file records managed modules, paths, and SHA-256 hashes:
 - unchanged managed files can be updated safely;
 - locally modified managed files become conflicts;
 - unmanaged files are never silently replaced;
-- modules no longer detected remain in place unless pruning is explicitly requested.
+- local preview and apply retain obsolete modules unless pruning is explicitly requested;
+- the GitHub reconciliation workflow automatically uses pruning on trusted writable branches;
+- missing applicable modules are installed automatically by the GitHub reconciliation workflow.
+
+Run the deployed checker locally at any time:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Repo\scripts\Test-QualityGateModuleDrift.ps1" -RepositoryPath "$Repo"
+```
 
 Apply reviewed updates with the same apply, validate, review, commit, and push sequence used for initial deployment.
 
@@ -226,7 +236,13 @@ Apply only after reviewing every `Remove` action:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -Apply -PruneManaged
 ```
 
-Only unchanged files recorded in the previous managed state can be removed. A modified obsolete file becomes a conflict and is retained. Every removal is backed up beneath the private Git directory.
+Only unchanged files recorded in the previous managed state can be removed. A modified obsolete file becomes a conflict and is retained. Every local removal is backed up beneath the private Git directory. The GitHub reconciliation workflow supplies `-PruneManaged` automatically from a clean checkout.
+
+## Automatic Reconciliation Requirements
+
+The deployed workflow requests `contents: write` only for its reconciliation job and `actions: write` only to dispatch validation workflows after a generated commit. Pull-request reporting retains read-only contents access.
+
+The repository must permit GitHub Actions to write repository contents, and branch protection must allow the generated commit. Fork and Dependabot pull requests normally receive read-only tokens; they remain report-only until the change is pushed or merged onto a writable branch. If a managed file was edited outside the template, reconciliation stops rather than overwriting it.
 
 ## Parameter Reference
 
@@ -257,6 +273,7 @@ Only unchanged files recorded in the previous managed state can be removed. A mo
 | `Update` | State proves the managed file is locally unchanged and a newer payload is available |
 | `Merge` | Required `.gitignore` entries or exact unignore entries are missing |
 | `Conflict` | An unmanaged target exists, a managed file was locally changed, or an obsolete managed file was changed |
+| `Retain` | A previously managed module is no longer detected and remains tracked until reviewed pruning |
 | `Remove` | `-PruneManaged` selected an unchanged obsolete managed file |
 
 ## Troubleshooting

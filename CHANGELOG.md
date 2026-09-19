@@ -1,0 +1,24 @@
+# Changelog
+
+## 1.0.0 - 2026-09-19
+
+### Added
+
+- Automatic repository-content detection on pushes and manual workflow runs.
+- Self-contained deployment engine and module catalogue in every managed repository.
+- Automatic installation of newly required language modules.
+- Automatic removal of unchanged obsolete modules.
+- Pull-request reporting that shows module changes without mutating contributor branches.
+- Regression coverage for Python-to-PHP transitions and repository reparse-point containment.
+
+### Changed
+
+- Module detection is shared by central deployment, local drift reporting, and automatic reconciliation.
+- Reconciled commits dispatch the repository's validation workflows for the generated revision.
+- PowerShell helper discovery prefers PowerShell 7 and falls back to Windows PowerShell.
+- Documentation now separates read-only validation permissions from the privileged reconciliation job.
+
+### Security
+
+- Managed paths now reject symbolic links, junctions, and other reparse points before reading, writing, backing up, or pruning files.
+- Automatic reconciliation still stops when a managed file was modified locally or another conflict requires review.

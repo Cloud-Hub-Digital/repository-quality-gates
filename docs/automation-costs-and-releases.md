@@ -45,6 +45,7 @@ The recommended sequence is therefore:
 ## Cost Controls
 
 - Use standard Linux runners where the product does not require Windows.
+- Automatic reconciliation uses a standard Windows runner because it executes the verified Windows Gitleaks package before committing. It consumes included Actions minutes for private repositories and is free on standard runners for public repositories.
 - Use standard Windows runners only for Windows-specific builds and tests.
 - Do not use larger runners without an explicit cost decision.
 - Add `concurrency` cancellation for superseded branch and pull-request runs.

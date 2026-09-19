@@ -21,6 +21,27 @@ function Invoke-Tool([string]$Repository, [string[]]$Arguments) {
     } finally { $ErrorActionPreference = $previousPreference }
 }
 
+function Invoke-DriftCheck([string]$Repository, [string[]]$Arguments = @()) {
+    $driftScript = Join-Path $Repository 'scripts\Test-QualityGateModuleDrift.ps1'
+    $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $driftScript, '-RepositoryPath', $Repository, '-OutputFormat', 'Json') + $Arguments
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & powershell.exe @all 2>&1
+        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join [Environment]::NewLine) }
+    } finally { $ErrorActionPreference = $previousPreference }
+}
+
+function Invoke-AutomaticReconciliation([string]$Repository) {
+    $script = Join-Path $Repository 'scripts\Invoke-AutomaticQualityGateReconciliation.ps1'
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -RepositoryPath $Repository -OutputFormat Json 2>&1
+        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join [Environment]::NewLine) }
+    } finally { $ErrorActionPreference = $previousPreference }
+}
+
 function New-Fixture([string]$Name) {
     $path = Join-Path $testRoot $Name
     New-Item -ItemType Directory -Path $path -Force | Out-Null
@@ -38,6 +59,18 @@ function Commit-Fixture([string]$Path, [string]$Message = 'fixture') {
 
 try {
     New-Item -ItemType Directory -Path $testRoot | Out-Null
+
+    $reparseTarget = Join-Path $testRoot 'outside-repository'
+    New-Item -ItemType Directory -Path $reparseTarget | Out-Null
+    $sentinelPath = Join-Path $reparseTarget 'sentinel.txt'
+    'unchanged' | Set-Content -LiteralPath $sentinelPath -Encoding ascii
+    $reparseFixture = New-Fixture 'reparse-point'
+    '# Reparse-point fixture' | Set-Content -LiteralPath (Join-Path $reparseFixture 'README.md') -Encoding ascii
+    Commit-Fixture $reparseFixture
+    New-Item -ItemType Junction -Path (Join-Path $reparseFixture '.github') -Target $reparseTarget | Out-Null
+    $reparsePreview = Invoke-Tool $reparseFixture @('-OutputFormat', 'Json')
+    Assert-True ($reparsePreview.ExitCode -ne 0) 'A module path that traverses a junction should be rejected before deployment.'
+    Assert-True ((Get-Content -LiteralPath $sentinelPath -Raw).Trim() -eq 'unchanged') 'Rejecting a reparse point must leave the external target unchanged.'
 
     $mixed = New-Fixture 'mixed'
     '{"name":"fixture","version":"1.0.0","scripts":{"test":"node -e \"process.exit(0)\""}}' | Set-Content -LiteralPath (Join-Path $mixed 'package.json') -Encoding utf8
@@ -75,6 +108,17 @@ try {
     Assert-True ($pythonWorkflow.Contains('requirements-dev.txt')) 'The Python workflow should install development requirements before running tests.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-php.yml')) 'The PHP workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-shell.yml')) 'The shell workflow should be deployed.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-module-drift.yml')) 'The automatic module-drift workflow should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Test-QualityGateModuleDrift.ps1')) 'The module-drift checker should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\RepositoryQualityGates.Detection.ps1')) 'The shared detection library should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\rqg-module-catalog.json')) 'The module catalog snapshot should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Invoke-AutomaticQualityGateReconciliation.ps1')) 'The automatic reconciliation entry point should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.rqg\template\scripts\Invoke-RepositoryQualityGates.ps1')) 'A self-contained deployment engine should be embedded in every managed repository.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.rqg\template\modules\catalog.json')) 'The embedded deployment engine should include its authoritative module catalog.'
+    $initialDrift = Invoke-DriftCheck $mixed
+    Assert-True ($initialDrift.ExitCode -eq 0) "A newly deployed mixed repository should have no module drift. $($initialDrift.Output)"
+    $initialDriftJson = $initialDrift.Output | ConvertFrom-Json
+    Assert-True ($initialDriftJson.status -eq 'Current') 'A newly deployed mixed repository should report current modules.'
     $updatedIgnore = [IO.File]::ReadAllText((Join-Path $mixed '.gitignore'))
     Assert-True (-not $updatedIgnore.Contains("`r")) 'Merging .gitignore entries should preserve existing LF line endings.'
     Assert-True ($updatedIgnore -eq "existing-entry`n`n/.tools/`n") 'The merged .gitignore entry should have one separating blank line and a final newline.'
@@ -202,17 +246,46 @@ try {
     Assert-True (-not ($docsSecondJson.selectedModules -contains 'powershell')) 'Managed secret-scanning helpers must not trigger the PowerShell module.'
     Assert-True (@($docsSecondJson.plan | Where-Object action -notin @('Unchanged')).Count -eq 0) 'A repeated documentation-only preview should remain idempotent.'
 
+    $languageTransition = New-Fixture 'language-transition'
+    'print("fixture")' | Set-Content -LiteralPath (Join-Path $languageTransition 'tool.py') -Encoding ascii
+    '# Language transition fixture' | Set-Content -LiteralPath (Join-Path $languageTransition 'README.md') -Encoding ascii
+    Commit-Fixture $languageTransition
+    $transitionApply = Invoke-Tool $languageTransition @('-Apply', '-OutputFormat', 'Json')
+    Assert-True ($transitionApply.ExitCode -eq 0) 'The initial Python repository should accept deployment.'
+    $transitionCurrent = Invoke-DriftCheck $languageTransition
+    Assert-True ($transitionCurrent.ExitCode -eq 0) 'The initial Python repository should have no module drift.'
+
+    & git -C $languageTransition rm -- tool.py | Out-Null
+    '<?php echo "fixture";' | Set-Content -LiteralPath (Join-Path $languageTransition 'tool.php') -Encoding ascii
+    $transitionDrift = Invoke-DriftCheck $languageTransition
+    Assert-True ($transitionDrift.ExitCode -eq 2) 'A Python-to-PHP conversion should fail until the PHP module is deployed.'
+    $transitionDriftJson = $transitionDrift.Output | ConvertFrom-Json
+    Assert-True ($transitionDriftJson.missingModules -contains 'php') 'A Python-to-PHP conversion should report the missing PHP module.'
+    Assert-True ($transitionDriftJson.staleModules -contains 'python') 'A Python-to-PHP conversion should report the stale Python module.'
+
+    $transitionReport = Invoke-DriftCheck $languageTransition @('-ReportOnly')
+    Assert-True ($transitionReport.ExitCode -eq 0) 'Pull-request reporting should describe drift without failing.'
+    $transitionReconcile = Invoke-AutomaticReconciliation $languageTransition
+    Assert-True ($transitionReconcile.ExitCode -eq 0) "Automatic reconciliation should add PHP and prune Python. $($transitionReconcile.Output)"
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $languageTransition '.github\workflows\quality-python.yml'))) 'Automatic reconciliation should remove the obsolete unchanged Python workflow.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $languageTransition '.github\workflows\quality-php.yml')) 'Automatic reconciliation should add the newly required PHP workflow.'
+    $transitionFinal = Invoke-DriftCheck $languageTransition
+    Assert-True ($transitionFinal.ExitCode -eq 0) 'The pruned PHP repository should pass module-drift validation.'
+    $transitionFinalJson = $transitionFinal.Output | ConvertFrom-Json
+    Assert-True ($transitionFinalJson.status -eq 'Current') 'The pruned PHP repository should report current modules.'
+
     $guard = Invoke-Tool $conflict @('-Push')
     Assert-True ($guard.ExitCode -ne 0) '-Push without -Apply and -Commit should be rejected.'
 
     $deployerText = Get-Content -LiteralPath $scriptPath -Raw
-    Assert-True ($deployerText.Contains("Get-Command powershell.exe -ErrorAction Stop")) 'The deployer should resolve an execution-policy-safe helper host.'
+    Assert-True ($deployerText.Contains('Get-Command pwsh -ErrorAction SilentlyContinue')) 'The deployer should prefer the cross-platform PowerShell host.'
+    Assert-True ($deployerText.Contains('Get-Command powershell.exe -ErrorAction Stop')) 'The deployer should retain a Windows PowerShell fallback.'
     $directHelperPattern = '& \(Join-Path \$script:RepositoryRoot ''scripts\\(?:Configure-SecretScanning|Install-Gitleaks|Test-Secrets)\.ps1''\)'
     Assert-True (-not ($deployerText -match $directHelperPattern)) 'Managed helper scripts should not be invoked directly from a network-backed checkout.'
 
     $versionOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 0.2.0-dev')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.0.0')) 'The version interface should report the canonical version.'
 
     Write-Host "$passed assertions passed."
 } finally {

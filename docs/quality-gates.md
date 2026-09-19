@@ -21,7 +21,7 @@ Filename and extension matching is case-insensitive. A match anywhere in the rep
 
 ## Workflow Defaults
 
-All deployed workflows:
+All deployed validation workflows except the privileged automatic-reconciliation job:
 
 - grant `contents: read` only;
 - use a commit-pinned `actions/checkout` reference;
@@ -30,6 +30,8 @@ All deployed workflows:
 - use finite job timeouts.
 
 Secret Scanning also runs every Monday at `07:23` UTC. The workflow uses `fetch-depth: 0` because a full-history scan requires complete history.
+
+The automatic-reconciliation job deliberately retains its checkout credential and receives job-scoped `contents: write` and `actions: write` permissions so it can commit a corrected module set and dispatch validation. Its separate controls are documented below.
 
 ## Module Selection And Checks
 
@@ -150,6 +152,22 @@ Personal names, postal addresses, email addresses, telephone numbers, dates of b
 
 **Workflow:** `Secret Scanning` on `windows-2025`, timeout 10 minutes. It installs the verified scanner, scans complete history, and runs the synthetic detection-policy suite.
 
+### Automatic Module Reconciliation
+
+**Selection rule:** Always selected for every Git repository.
+
+**Workflow:** `Quality Gate Module Drift` on `windows-2025`. Pull-request reporting has a 5-minute timeout and `contents: read`. Push and manual reconciliation has a 20-minute timeout with job-scoped `contents: write` and `actions: write`.
+
+The workflow reads `.repository-quality-gates.json`, `scripts/rqg-module-catalog.json`, and the deployed shared detector. It re-evaluates the repository's tracked and unignored files using the same rules as the deployment tool.
+
+- Pull requests report missing and obsolete modules without failing solely because of drift.
+- Push and manual runs use the embedded deployment engine to add missing modules and prune unchanged obsolete modules.
+- The reconciled working tree and staged content pass the portable secret policy and synthetic detection suite before commit.
+- A generated commit is authored by `github-actions[bot]`, pushed to the same branch, and followed by workflow dispatches for the reconciled commit.
+- A modified managed file or another deployment conflict stops reconciliation without overwriting the file.
+
+Fork and Dependabot pull requests normally have read-only tokens and remain report-only. Reconciliation occurs when the same change reaches a trusted writable branch. Repository Actions permissions and branch protection must permit the generated commit.
+
 ### PowerShell
 
 **Selection rule:** At least one `.ps1`, `.psm1`, or `.psd1` file exists.
@@ -267,15 +285,15 @@ The workflow fails when Markdown files contain trailing spaces or tabs. It exclu
 
 | Repository Contents | Selected Modules |
 |---|---|
-| `README.md` only | Secret Scanning, Documentation |
-| `tool.ps1` and `README.md` | Secret Scanning, PowerShell, Documentation |
-| `Product.slnx`, C# projects, and Markdown | Secret Scanning, .NET, Documentation |
-| `package.json` and JavaScript source | Secret Scanning, Node |
-| Dependency-free `.js` source and `tests/test.js` | Secret Scanning, Node |
-| `pyproject.toml`, Python source, and Markdown | Secret Scanning, Python, Documentation |
-| `composer.json`, PHP source, shell helpers, and Markdown | Secret Scanning, PHP, Shell, Documentation |
-| `platformio.ini`, Python helper scripts, and Markdown | Secret Scanning, PlatformIO, Python, Documentation |
-| `go.mod`, Go source, and Markdown | Secret Scanning, Go, Documentation |
+| `README.md` only | Secret Scanning, Module Drift, Documentation |
+| `tool.ps1` and `README.md` | Secret Scanning, Module Drift, PowerShell, Documentation |
+| `Product.slnx`, C# projects, and Markdown | Secret Scanning, Module Drift, .NET, Documentation |
+| `package.json` and JavaScript source | Secret Scanning, Module Drift, Node |
+| Dependency-free `.js` source and `tests/test.js` | Secret Scanning, Module Drift, Node |
+| `pyproject.toml`, Python source, and Markdown | Secret Scanning, Module Drift, Python, Documentation |
+| `composer.json`, PHP source, shell helpers, and Markdown | Secret Scanning, Module Drift, PHP, Shell, Documentation |
+| `platformio.ini`, Python helper scripts, and Markdown | Secret Scanning, Module Drift, PlatformIO, Python, Documentation |
+| `go.mod`, Go source, and Markdown | Secret Scanning, Module Drift, Go, Documentation |
 
 ## Existing Workflow Detection
 
@@ -291,6 +309,6 @@ Preservation is accepted only when the module is applicable and matching workflo
 
 ## Current Boundaries
 
-The template chooses modules using repository contents. It does not infer framework-specific lint commands, test projects, databases, browsers, hardware targets, or deployment environments beyond the explicit rules above. Product-specific checks remain the responsibility of the target repository and should coexist with these baseline gates after overlap review.
+The template and module-drift workflow choose modules using repository contents. They do not infer framework-specific lint commands, test projects, databases, browsers, hardware targets, or deployment environments beyond the explicit rules above. Product-specific checks remain the responsibility of the target repository and should coexist with these baseline gates after overlap review.
 
 Build and release automation is assessed separately in [Automation Costs And Release Strategy](automation-costs-and-releases.md). No release publishing workflow is deployed by the current template.

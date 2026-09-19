@@ -1,0 +1,81 @@
+name: Quality Gate Module Drift
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-reconciliation-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: Report Required Quality Gates
+    if: github.event_name == 'pull_request'
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare Detected And Installed Modules
+        shell: pwsh
+        run: ./scripts/Test-QualityGateModuleDrift.ps1 -ReportOnly
+
+  reconcile:
+    name: Reconcile Required Quality Gates
+    if: github.event_name != 'pull_request'
+    permissions:
+      actions: write
+      contents: write
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Add And Remove Required Modules
+        shell: pwsh
+        run: ./scripts/Invoke-AutomaticQualityGateReconciliation.ps1
+      - name: Validate Public Secret Policy
+        shell: pwsh
+        run: |
+          ./scripts/Install-Gitleaks.ps1
+          ./scripts/Test-Secrets.ps1 -Mode WorkingTree
+          ./scripts/Test-DetectionPolicy.ps1
+      - name: Commit Reconciled Modules
+        shell: pwsh
+        run: |
+          $changes = @(git status --porcelain=v1 --untracked-files=all)
+          if (-not $changes.Count) {
+            Write-Host 'Repository quality-gate modules are current.'
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          ./scripts/Test-Secrets.ps1 -Mode Staged
+          git commit -m "chore: reconcile repository quality gates"
+          git push origin "HEAD:$env:GITHUB_REF_NAME"
+          'RQG_RECONCILED=true' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Validate The Reconciled Commit
+        if: env.RQG_RECONCILED == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Get-ChildItem -LiteralPath .github/workflows -File | Where-Object {
+            $_.Extension -in @('.yml', '.yaml')
+          } | ForEach-Object {
+            $workflowPath = '.github/workflows/' + $_.Name
+            gh workflow run $workflowPath --ref $env:GITHUB_REF_NAME
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Workflow dispatch was unavailable for $workflowPath on $env:GITHUB_REF_NAME. Its normal trigger will validate the next eligible event."
+            }
+          }
+          exit 0

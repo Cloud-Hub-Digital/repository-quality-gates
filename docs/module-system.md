@@ -9,6 +9,7 @@ For operator instructions, see [Deployment Guide](deployment-guide.md). For the 
 | Module | Detection | Deployed Check |
 |---|---|---|
 | `secret-scanning` | Every Git repository | Local hooks, verified Gitleaks scripts, portable policy, and GitHub Actions history scan |
+| `module-drift` | Every Git repository | Automatic addition of missing modules and removal of unchanged obsolete modules on trusted writable branches |
 | `powershell` | `.ps1`, `.psm1`, or `.psd1` | Parser validation on Windows |
 | `dotnet` | `.sln`, `.slnx`, `.csproj`, `.fsproj`, or `.vbproj` | Restore, Release build, and headless tests on Windows |
 | `node` | `package.json`, `.js`, `.mjs`, or `.cjs` | JavaScript syntax; reproducible npm checks when packaged; dependency-free `tests/test.js` when present |
@@ -60,6 +61,7 @@ The script classifies every target path before applying changes:
 - `Update`: the state file proves the existing managed file has not been changed locally.
 - `Merge`: required ignore entries are missing and will be appended without replacing the file.
 - `Conflict`: an unmanaged file exists at the target path or a managed file was modified locally.
+- `Retain`: a previously managed file belongs to a module that is no longer detected and remains tracked until reviewed pruning.
 - `Remove`: an unchanged, previously managed file is obsolete and `-PruneManaged` was explicitly supplied.
 
 Conflicts stop deployment by default. After reviewing the JSON plan, `-ConflictAction BackupAndReplace` stores recovery copies beneath the target repository's private Git directory before replacement. These copies are local Git metadata and are not staged.
@@ -78,6 +80,19 @@ If an existing `.gitignore` pattern matches a required managed file, the preview
 
 `.repository-quality-gates.json` records only module identifiers, managed paths, and content hashes. It contains no personal policy data.
 
+## Automatic Module Reconciliation
+
+Every managed repository receives `Quality Gate Module Drift`, a self-contained copy of the deployment engine, and every module payload. It does not need access to the private central template repository. On each push, pull request, or manual run, it uses the same shared detector and catalog as the deployment tool to compare:
+
+- modules required by the repository's current tracked and unignored files; and
+- modules recorded as managed or deliberately preserved in `.repository-quality-gates.json`.
+
+A pull request performs a report-only comparison and does not fail merely because modules differ. The corresponding branch push performs reconciliation when GitHub supplies a trusted writable token.
+
+Reconciliation adds every newly required module and removes every unchanged managed file belonging to an obsolete module. It runs the public working-tree, staged, and synthetic secret-policy checks, creates a `chore: reconcile repository quality gates` commit as `github-actions[bot]`, and pushes it to the same branch. It then dispatches the managed workflows against that reconciled branch. For example, a Python-to-PHP conversion adds the PHP workflow and removes the unchanged Python workflow automatically.
+
+The workflow never overwrites a locally modified managed file and never removes unmanaged files. Such a conflict stops reconciliation for review. Explicitly preserved external module implementations remain unmanaged and unchanged. Pull requests from forks and Dependabot normally receive a read-only token; they report drift, and reconciliation occurs after the change reaches a writable branch. Repository branch protection must permit the GitHub Actions token to push the generated reconciliation commit.
+
 ## Dirty Working Trees
 
 Preview works with any working tree. Apply requires a clean tree unless `-AllowDirtyWorkingTree` is supplied. Commit and push always require that the repository was clean before deployment, preventing unrelated work from entering the generated commit.
@@ -94,7 +109,7 @@ Hook configuration stops if another hooks path or active unmanaged Git hook alre
 
 ## Managed Pruning
 
-`-PruneManaged` considers only files listed in the previous state file. An unchanged obsolete managed file is backed up and removed. A locally modified obsolete file becomes a conflict and is retained. Unmanaged files are never pruned.
+Without `-PruneManaged`, obsolete managed files and their state entries are retained and reported as stale. With `-PruneManaged`, an unchanged obsolete managed file is backed up and removed. A locally modified obsolete file becomes a conflict and is retained. Unmanaged files are never pruned.
 
 ## Push Safeguards
 
