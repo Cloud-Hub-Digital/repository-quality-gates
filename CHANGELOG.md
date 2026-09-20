@@ -10,6 +10,7 @@
 - Added an explicit `-Enroll` mode to the single-repository updater while preserving the default skip for unmanaged repositories.
 - Prevented unattended initial enrolment from silently accepting undeclared workflow overlaps.
 - Enabled the daily fleet workflow to discover and enrol new repositories automatically unless they explicitly opt out.
+- Updated the authoritative product-repository link after ownership transferred to the Cloud Hub organization.
 
 ## 1.1.0 - 2026-09-20
 

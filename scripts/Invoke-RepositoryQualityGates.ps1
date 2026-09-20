@@ -22,7 +22,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $productVersion = '1.2.0-dev.1'
-$productRepository = 'https://github.com/terryrogers/repository-quality-gates'
+$productRepository = 'https://github.com/Cloud-Hub-Digital/repository-quality-gates'
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $detectionLibraryPath = Join-Path $toolRoot 'modules\module-drift\payload\scripts\RepositoryQualityGates.Detection.ps1'
 if (-not (Test-Path -LiteralPath $detectionLibraryPath -PathType Leaf)) { throw 'The shared module-detection library is missing.' }
