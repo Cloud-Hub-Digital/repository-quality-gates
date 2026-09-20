@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The current stable template version written to managed state is `1.0.1`.
+The current stable template version written to managed state is `1.1.0`.
 
-Development version `1.1.0-dev.3` adds fully automatic downstream template updates with repository-owned adjustment files, open-pull-request deferral, and required-check-gated auto-merge. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.1.0` adds fully automatic downstream template updates with repository-owned adjustment files, open-pull-request deferral, temporary update branches, and required-check-gated auto-merge. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## What It Provides
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0 - 2026-09-20
+
+### Added
+
+- A scoped GitHub App can distribute each stable RQG release to its selected managed repositories.
+- Committed downstream rules preserve repository-owned module substitutions, forced modules, and repository-specific Gitleaks policy layers outside RQG management.
+- Validated downstream updates can use required-check-gated auto-merge from temporary versioned branches.
+
+### Changed
+
+- Repositories with any open pull request are deferred until the next daily or manual fleet run.
+- Temporary RQG branches are deleted after merge or setup failure and expire after 24 hours when unresolved.
+
+### Security
+
+- Cross-repository access uses a short-lived, narrowly scoped GitHub App installation token.
+- The updater checks pull-request eligibility before preparation and immediately before its first push.
+- Modified managed files, invalid downstream rules, conflicts, failed checks, and missing merge safeguards stop automatic completion.
+
 ## 1.1.0-dev.3 - 2026-09-20
 
 ### Changed
