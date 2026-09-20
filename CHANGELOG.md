@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0-dev.3 - 2026-09-20
+
+### Added
+
+- Added the MIT license and a root security policy with private reporting guidance, threat boundaries, security invariants, reportable findings, exclusions, and safe-testing expectations.
+- Added an always-selected licensing module that installs `LICENSES/Repository-Quality-Gates-MIT.txt` in downstream repositories without changing the downstream project's own licence.
+- Added SPDX MIT identifiers to Repository Quality Gates PowerShell source and test files.
+
+### Security
+
+- Documented installation-token isolation, credential and private-policy handling, repository opt-out, open-pull-request deferral, path containment, fail-closed conflicts, required checks, and temporary-branch cleanup as security invariants.
+
 ## 1.2.0-dev.2 - 2026-09-20
 
 ### Added

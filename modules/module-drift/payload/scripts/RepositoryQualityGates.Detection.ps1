@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 Set-StrictMode -Version Latest
 
 function Get-RqgRelativePath {

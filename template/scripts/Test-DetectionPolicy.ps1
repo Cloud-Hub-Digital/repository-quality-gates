@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $scanner = Join-Path $root '.tools\gitleaks\gitleaks.exe'

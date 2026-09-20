@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 [CmdletBinding()]
 param(
     [string]$RepositoryPath,
@@ -21,7 +22,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$productVersion = '1.2.0-dev.2'
+$productVersion = '1.2.0-dev.3'
 $productRepository = 'https://github.com/Cloud-Hub-Digital/repository-quality-gates'
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $detectionLibraryPath = Join-Path $toolRoot 'modules\module-drift\payload\scripts\RepositoryQualityGates.Detection.ps1'
@@ -169,7 +170,7 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
     foreach ($moduleId in @($include + $repositoryOwned | Sort-Object -Unique)) {
         if ($moduleId -notin $catalogIds) { throw "Repository rules reference an unknown module: $moduleId" }
     }
-    $universalRepositoryOwned = @($repositoryOwned | Where-Object { $_ -in @('secret-scanning', 'module-drift') })
+    $universalRepositoryOwned = @($repositoryOwned | Where-Object { $_ -in @('licensing', 'secret-scanning', 'module-drift') })
     if ($universalRepositoryOwned.Count) {
         throw "Universal modules cannot be repository-owned: $($universalRepositoryOwned -join ', ')"
     }
@@ -249,7 +250,7 @@ foreach ($includedId in $includedIds) {
 $applicableIds = @($detectedIds + $includedIds | Sort-Object -Unique)
 $applicableModules = @($catalog.modules | Where-Object { [string]$_.id -in $applicableIds })
 $preservedIds = @(@($PreserveExistingModule) + @($repositoryRules.repositoryOwnedModules) | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique)
-$universalPreservedIds = @($preservedIds | Where-Object { $_ -in @('secret-scanning', 'module-drift') })
+$universalPreservedIds = @($preservedIds | Where-Object { $_ -in @('licensing', 'secret-scanning', 'module-drift') })
 if ($universalPreservedIds.Count) {
     throw "Universal modules cannot be preserved outside RQG management: $($universalPreservedIds -join ', ')"
 }

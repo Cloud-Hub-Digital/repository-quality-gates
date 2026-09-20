@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The current development template version written to managed state is `1.2.0-dev.2`. The latest stable release remains `1.1.0`.
+The current development template version written to managed state is `1.2.0-dev.3`. The latest stable release remains `1.1.0`.
 
-Version `1.2.0-dev.2` extends automatic enrolment and updates across every installation of the GitHub App. It creates a separate short-lived token for each installation and masks discovered owner and repository names in the public workflow log. Version `1.2.0-dev.1` added opt-out automatic enrolment, while version `1.1.0` added fully automatic downstream template updates. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.2.0-dev.3` adds the MIT license, a public security policy, SPDX notices, and managed downstream attribution. Version `1.2.0-dev.2` extended automatic enrolment and updates across every installation of the GitHub App. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## What It Provides
 
@@ -12,6 +12,7 @@ Every target repository receives the universal secret-scanning and module-drift 
 
 | Module | Selected When | Main GitHub Actions Gate |
 |---|---|---|
+| RQG Licensing | Always | Installs the RQG MIT attribution file alongside managed RQG components |
 | Secret Scanning | Always | Full-history Gitleaks scan and synthetic policy tests |
 | Automatic Reconciliation | Always | Re-detect required modules, add missing modules, remove unchanged obsolete modules, validate, commit, and push the managed result |
 | PowerShell | A `.ps1`, `.psm1`, or `.psd1` file exists | PowerShell parser validation |
@@ -87,6 +88,10 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `docs/deployment-guide.md` | End-to-end operator instructions |
 | `docs/module-system.md` | Architecture and managed-file lifecycle reference |
 | `docs/automation-costs-and-releases.md` | GitHub Actions cost boundary and recommended build/release automation controls |
+| `LICENSE` | MIT license for this repository |
+| `SECURITY.md` | Supported versions, reporting route, scope, invariants, and safe-testing policy |
+
+Managed downstream repositories receive `LICENSES/Repository-Quality-Gates-MIT.txt` for the RQG components copied into them. This attribution file does not replace or change the downstream project's own licence.
 
 ## Private Policy Boundary
 
@@ -114,6 +119,12 @@ The approved name and the corresponding exact `README.md` allowlist remain in
 the protected publication policy and the target project's public `.gitleaks.toml`.
 The public RQG repository contains only this reusable structural validator and
 never contains project-specific private identifier collections.
+
+## License And Security
+
+Repository Quality Gates is available under the [MIT License](LICENSE). Managed downstream repositories receive a separate RQG attribution notice for the files copied into them; their own project licence remains unchanged.
+
+See the [Security Policy](SECURITY.md) for supported versions, security boundaries, safe-testing expectations, and the private vulnerability-reporting route.
 
 ## Validation
 

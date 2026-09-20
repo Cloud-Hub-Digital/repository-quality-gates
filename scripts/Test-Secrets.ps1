@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 param(
     [ValidateSet('Staged', 'Push', 'History', 'WorkingTree')][string]$Mode = 'History',
     [string]$Repository = (Split-Path -Parent $PSScriptRoot),

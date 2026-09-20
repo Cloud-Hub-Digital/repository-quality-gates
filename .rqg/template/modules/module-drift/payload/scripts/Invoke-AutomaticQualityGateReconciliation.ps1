@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 [CmdletBinding()]
 param(
     [string]$RepositoryPath = (Get-Location).Path,

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -17,7 +18,7 @@ function Invoke-Fleet([string[]]$Repositories, [switch]$AutoEnroll) {
         Owner = 'owner'
         Repository = $Repositories
         TemplateRoot = $root
-        TargetVersion = '1.2.0-dev.2'
+        TargetVersion = '1.2.0-dev.3'
         OutputFormat = 'Json'
     }
     if ($AutoEnroll) { $arguments.AutoEnroll = $true }

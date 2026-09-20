@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 [CmdletBinding()]
 param(
     [string]$AppId = $env:RQG_APP_ID,

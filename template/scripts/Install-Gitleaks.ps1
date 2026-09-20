@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $lock = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'gitleaks-lock.json') -Raw | ConvertFrom-Json

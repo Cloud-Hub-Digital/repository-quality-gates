@@ -35,6 +35,12 @@ The automatic-reconciliation job deliberately retains its checkout credential an
 
 ## Module Selection And Checks
 
+### RQG Licensing
+
+**Selection rule:** Always selected for every Git repository.
+
+**Deployed control:** `LICENSES/Repository-Quality-Gates-MIT.txt` preserves the MIT notice for RQG-managed components. It does not replace or change the downstream project's own licence.
+
 ### Secret Scanning
 
 **Selection rule:** Always selected for every Git repository.

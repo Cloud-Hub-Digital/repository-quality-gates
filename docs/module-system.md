@@ -8,6 +8,7 @@ For operator instructions, see [Deployment Guide](deployment-guide.md). For the 
 
 | Module | Detection | Deployed Check |
 |---|---|---|
+| `licensing` | Every Git repository | Installs the MIT notice for the RQG-managed components without changing the repository's own licence |
 | `secret-scanning` | Every Git repository | Local hooks, verified Gitleaks scripts, portable policy, and GitHub Actions history scan |
 | `module-drift` | Every Git repository | Automatic addition of missing modules and removal of unchanged obsolete modules on trusted writable branches |
 | `powershell` | `.ps1`, `.psm1`, or `.psd1` | Parser validation on Windows |
@@ -83,7 +84,9 @@ If a repository already has a reviewed implementation of a detected module, pres
 }
 ```
 
-Preservation is allowed only for non-universal modules when an existing workflow contains a catalog overlap marker for that module. The universal `secret-scanning` and `module-drift` modules always remain RQG-managed. Other existing module files remain unmanaged and unchanged, and the matching evidence appears in the JSON preview. `.repository-quality-gates.local.json` remains owned by the downstream repository and is never copied or replaced by RQG. The managed `.repository-quality-gates.json` file records the resolved snapshot for drift checking.
+Preservation is allowed only for non-universal modules when an existing workflow contains a catalog overlap marker for that module. The universal `licensing`, `secret-scanning`, and `module-drift` modules always remain RQG-managed. Other existing module files remain unmanaged and unchanged, and the matching evidence appears in the JSON preview. `.repository-quality-gates.local.json` remains owned by the downstream repository and is never copied or replaced by RQG. The managed `.repository-quality-gates.json` file records the resolved snapshot for drift checking.
+
+The `licensing` module writes `LICENSES/Repository-Quality-Gates-MIT.txt`. It attributes only the RQG files copied into the repository and does not select, replace, or modify the downstream project's own licence.
 
 If an existing `.gitignore` pattern matches a required managed file, the preview reports an exact negation such as `!/scripts/Test-Secrets.ps1`. Apply merges only those exact exceptions and then verifies every managed file is visible to Git. Deployment stops if a parent-directory rule still prevents a required file from being tracked.
 

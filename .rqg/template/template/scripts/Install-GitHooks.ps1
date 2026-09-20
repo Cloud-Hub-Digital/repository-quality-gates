@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $current = & git -C $root config --get core.hooksPath

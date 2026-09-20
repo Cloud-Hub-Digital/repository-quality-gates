@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -91,6 +92,7 @@ try {
     Assert-True ($preview.ExitCode -eq 0) 'Preview should succeed.'
     $previewJson = $preview.Output | ConvertFrom-Json
     Assert-True ($previewJson.selectedModules -contains 'secret-scanning') 'Universal secret scanning should be selected.'
+    Assert-True ($previewJson.selectedModules -contains 'licensing') 'Universal RQG licensing attribution should be selected.'
     Assert-True ($previewJson.selectedModules -contains 'node') 'Node should be detected.'
     Assert-True ($previewJson.selectedModules -contains 'powershell') 'PowerShell should be detected.'
     Assert-True ($previewJson.selectedModules -contains 'python') 'Script-only Python should be detected.'
@@ -101,6 +103,8 @@ try {
     $apply = Invoke-Tool $mixed @('-Apply', '-OutputFormat', 'Json')
     Assert-True ($apply.ExitCode -eq 0) "Apply should succeed on a clean fixture. $($apply.Output)"
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.repository-quality-gates.json')) 'Managed state should be created.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'LICENSES\Repository-Quality-Gates-MIT.txt')) 'The RQG MIT attribution file should be deployed universally.'
+    Assert-True ((Get-Content -LiteralPath (Join-Path $mixed 'LICENSES\Repository-Quality-Gates-MIT.txt') -Raw).Contains('MIT License')) 'The deployed RQG attribution file should contain the MIT license.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-node.yml')) 'The Node workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-powershell.yml')) 'The PowerShell workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-python.yml')) 'The Python workflow should be deployed.'
@@ -273,6 +277,13 @@ try {
     Assert-True ($universalOwnedPreview.ExitCode -ne 0) 'Repository rules must not replace a universal quality-gate module.'
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $universalOwned '.repository-quality-gates.json'))) 'Rejected universal-module ownership must not create managed state.'
 
+    $licensingOwned = New-Fixture 'licensing-repository-owned'
+    $licensingOwnedRulesText = '{"schemaVersion":1,"modules":{"repositoryOwned":["licensing"]}}'
+    [IO.File]::WriteAllText((Join-Path $licensingOwned '.repository-quality-gates.local.json'), $licensingOwnedRulesText + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $licensingOwned
+    $licensingOwnedPreview = Invoke-Tool $licensingOwned @('-OutputFormat', 'Json')
+    Assert-True ($licensingOwnedPreview.ExitCode -ne 0) 'Repository rules must not suppress universal RQG licensing attribution.'
+
     $invalidEnrollmentRule = New-Fixture 'invalid-enrollment-rule'
     $invalidEnrollmentRulesText = @'
 {
@@ -365,7 +376,7 @@ try {
 
     $versionOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.2.0-dev.2')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.2.0-dev.3')) 'The version interface should report the canonical version.'
     Assert-True (($versionOutput -join "`n").Contains('https://github.com/Cloud-Hub-Digital/repository-quality-gates')) 'The version interface should report the authoritative organization-owned repository.'
 
     Write-Host "$passed assertions passed."

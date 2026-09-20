@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 [CmdletBinding()]
 param(
     [string]$RepositoryPath = (Get-Location).Path,
@@ -48,6 +49,8 @@ if (Test-Path -LiteralPath $rulesPath -PathType Leaf) {
     foreach ($moduleId in @($includedIds + $repositoryOwnedIds | Sort-Object -Unique)) {
         if ($moduleId -notin $catalogIds) { throw "Repository rules reference an unknown module: $moduleId" }
     }
+    $universalRepositoryOwned = @($repositoryOwnedIds | Where-Object { $_ -in @('licensing', 'secret-scanning', 'module-drift') })
+    if ($universalRepositoryOwned.Count) { throw "Universal modules cannot be repository-owned: $($universalRepositoryOwned -join ', ')" }
 } elseif ($state.PSObject.Properties['preservedModules']) {
     $repositoryOwnedIds = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique)
 }
