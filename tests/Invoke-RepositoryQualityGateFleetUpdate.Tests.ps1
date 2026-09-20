@@ -17,7 +17,7 @@ function Invoke-Fleet([string[]]$Repositories, [switch]$AutoEnroll) {
         Owner = 'owner'
         Repository = $Repositories
         TemplateRoot = $root
-        TargetVersion = '1.2.0-dev.1'
+        TargetVersion = '1.2.0-dev.2'
         OutputFormat = 'Json'
     }
     if ($AutoEnroll) { $arguments.AutoEnroll = $true }
@@ -92,6 +92,7 @@ try {
 
         $workflowText = Get-Content -LiteralPath $workflowPath -Raw
         Assert-True ($workflowText.Contains('-AutoEnroll -Apply -AutoMerge')) 'The fleet workflow should explicitly enable automatic enrolment.'
+        Assert-True ($workflowText.Contains('Invoke-RepositoryQualityGateAppFleetUpdate.ps1')) 'The fleet workflow should process every installation of the GitHub App.'
         $fleetText = Get-Content -LiteralPath $fleetTool -Raw
         Assert-True ($fleetText.Contains('repository-quality-gates-fleet-update')) 'RQG pull requests should contain a dedicated provenance marker.'
         Assert-True ($fleetText.Contains('baseRefName,isCrossRepository,body')) 'Expired pull-request cleanup should obtain base, repository-origin, and provenance evidence.'

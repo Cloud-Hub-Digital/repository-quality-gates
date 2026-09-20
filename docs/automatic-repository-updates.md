@@ -1,26 +1,29 @@
 # Automatic Repository Updates
 
-Repository Quality Gates can enrol unmanaged repositories and update its managed template across selected repositories without storing a personal access token. The central workflow runs when a stable release is published, once each day, or when started manually. Every unmanaged repository visible to the scoped GitHub App is eligible unless its repository-owned rules file explicitly opts out. A downstream repository is changed only when it has no open pull requests. Each enrolment or update uses its own pull request so the downstream repository's required checks remain the merge gate, then GitHub merges the pull request automatically when those requirements pass.
+Repository Quality Gates can enrol unmanaged repositories and update its managed template across every account or organization where its GitHub App is installed, without storing a personal access token or publishing an owner inventory. The central workflow runs when a stable release is published, once each day, or when started manually. Every unmanaged repository visible to any installation is eligible unless its repository-owned rules file explicitly opts out. A downstream repository is changed only when it has no open pull requests. Each enrolment or update uses its own pull request so the downstream repository's required checks remain the merge gate, then GitHub merges the pull request automatically when those requirements pass.
 
 ## What The Automation Does
 
 1. Resolves the latest published Repository Quality Gates release.
-2. Creates a short-lived GitHub App installation token.
-3. Enumerates only repositories selected for that GitHub App installation.
-4. Skips the central template repository.
-5. Treats a repository containing `.repository-quality-gates.json` as managed.
-6. Treats an unmanaged repository as eligible for initial enrolment unless `.repository-quality-gates.local.json` sets `automaticEnrollment` to `false`.
-7. Skips managed repositories already on the target version and refuses to downgrade a newer version.
-8. Removes an RQG-marked pull request and branch that have remained open for 24 hours only when the exact temporary-branch pattern, expected base branch, same-repository head, and RQG provenance marker all match, then checks eligibility again.
-9. Defers an eligible repository when any pull request is open and reports every blocking pull request.
-10. Clones the repository's default branch into a temporary runner folder.
-11. Reads the downstream repository's optional `.repository-quality-gates.local.json` rules.
-12. Detects repository contents and selects only applicable modules during initial enrolment, or applies the released template with managed pruning during an update.
-13. Stops if an initial enrolment finds an undeclared overlapping workflow, a managed file was changed, or another deployment conflict is found.
-14. Runs the public working-tree, detection-policy, module-drift, and staged secret checks.
-15. Checks for open pull requests and the repository-owned enrolment opt-out again immediately before publishing the temporary branch.
-16. Pushes `rqg/update-v<VERSION>` and opens an RQG-marked pull request.
-17. Enables squash auto-merge and branch deletion for that pull request.
+2. Creates a short-lived GitHub App JSON Web Token used only to list the App's installations and request installation tokens.
+3. Enumerates every account or organization where the App is installed.
+4. Creates a separate short-lived token for one installation at a time.
+5. Enumerates only the repositories selected for that installation and masks each owner and full repository name before downstream processing writes to the public workflow log.
+6. Revokes that installation token after its repositories have been processed, then repeats the process for the next installation.
+7. Skips the central template repository.
+8. Treats a repository containing `.repository-quality-gates.json` as managed.
+9. Treats an unmanaged repository as eligible for initial enrolment unless `.repository-quality-gates.local.json` sets `automaticEnrollment` to `false`.
+10. Skips managed repositories already on the target version and refuses to downgrade a newer version.
+11. Removes an RQG-marked pull request and branch that have remained open for 24 hours only when the exact temporary-branch pattern, expected base branch, same-repository head, and RQG provenance marker all match, then checks eligibility again.
+12. Defers an eligible repository when any pull request is open and reports every blocking pull request.
+13. Clones the repository's default branch into a temporary runner folder.
+14. Reads the downstream repository's optional `.repository-quality-gates.local.json` rules.
+15. Detects repository contents and selects only applicable modules during initial enrolment, or applies the released template with managed pruning during an update.
+16. Stops if an initial enrolment finds an undeclared overlapping workflow, a managed file was changed, or another deployment conflict is found.
+17. Runs the public working-tree, detection-policy, module-drift, and staged secret checks.
+18. Checks for open pull requests and the repository-owned enrolment opt-out again immediately before publishing the temporary branch.
+19. Pushes `rqg/update-v<VERSION>` and opens an RQG-marked pull request.
+20. Enables squash auto-merge and branch deletion for that pull request.
 
 GitHub completes the merge only after the downstream repository's branch rules and required checks allow it. A failed check, conflict, missing prerequisite, or unavailable auto-merge leaves the pull request open and reports the repository as failed. While that RQG pull request remains open, later fleet runs defer the repository like any other repository with an open pull request.
 
@@ -28,7 +31,7 @@ The `rqg/update-v<VERSION>` namespace is reserved for temporary branches created
 
 ## Automatic Enrolment
 
-Automatic enrolment is the default for every unmanaged repository visible to the scoped RQG GitHub App. The App installation therefore defines the fleet. The next daily, release-triggered, or manual run detects a repository without managed state and prepares its first RQG deployment.
+Automatic enrolment is the default for every unmanaged repository visible to any installation of the scoped RQG GitHub App. The combined App installations therefore define the fleet. The next daily, release-triggered, or manual run detects a repository without managed state and prepares its first RQG deployment.
 
 The enrolment process detects repository contents, selects the universal modules and applicable language or application modules, reads any committed `.repository-quality-gates.local.json` adjustments, validates the complete result, and uses the same temporary pull-request lifecycle as a normal update. After the pull request merges, `.repository-quality-gates.json` marks the repository as managed and future releases update it normally.
 
@@ -74,7 +77,7 @@ Older managed state that records preserved modules is migrated into this file du
 
 ## One-Time GitHub App Setup
 
-Create a private GitHub App owned by the same account as the repositories.
+Create a private GitHub App and install that same App on every account or organization whose selected repositories RQG may manage. The App owner does not need to be the owner of every downstream repository.
 
 Use these repository permissions:
 
@@ -87,7 +90,7 @@ Use these repository permissions:
 
 The app does not need issue, administration, secrets, Actions administration, deployment, package, or organization permissions.
 
-Install the app only on repositories that Repository Quality Gates may manage. The App installation is the outer fleet allow-list. Within that scope, an existing managed-state file authorizes updates and an unmanaged repository is automatically eligible unless its committed repository rules opt out.
+Install the App only on repositories that Repository Quality Gates may manage. The combined installations form the outer fleet allow-list. Within that scope, an existing managed-state file authorizes updates and an unmanaged repository is automatically eligible unless its committed repository rules opt out. The workflow discovers installations at runtime, so no owner names or repository inventory need to be stored in source, variables, or secrets.
 
 If the App is installed for **All Repositories**, every newly created repository becomes eligible automatically. Commit the opt-out file before the next fleet run when a repository must remain unmanaged. If the App is installed for **Only Select Repositories**, adding a repository to the App installation makes it eligible unless it already contains the opt-out file.
 
@@ -100,7 +103,7 @@ In the central `repository-quality-gates` repository:
 3. Under **Secrets**, create `RQG_APP_PRIVATE_KEY` containing the complete private key generated for the app.
 4. Keep the private key out of files, commits, workflow logs, and pull-request content.
 
-The workflow exchanges these values for a short-lived installation token at runtime. It does not copy the private key or installation token into a managed repository.
+The workflow exchanges these values for a short-lived App JWT, then creates a separate short-lived installation token for each installation. It never reuses one installation's token for another installation, copies no token or private key into a managed repository, masks discovered owner and full repository names before downstream log output, and requests revocation of each installation token when processing finishes.
 
 ## Workflow Triggers
 

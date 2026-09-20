@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The current development template version written to managed state is `1.2.0-dev.1`. The latest stable release remains `1.1.0`.
+The current development template version written to managed state is `1.2.0-dev.2`. The latest stable release remains `1.1.0`.
 
-Version `1.2.0-dev.1` adds automatic enrolment for every unmanaged repository visible to the scoped GitHub App unless its repository-owned rules file explicitly sets `automaticEnrollment` to `false`. Version `1.1.0` added fully automatic downstream template updates with repository-owned adjustment files, open-pull-request deferral, temporary update branches, and required-check-gated auto-merge. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.2.0-dev.2` extends automatic enrolment and updates across every installation of the GitHub App. It creates a separate short-lived token for each installation and masks discovered owner and repository names in the public workflow log. Version `1.2.0-dev.1` added opt-out automatic enrolment, while version `1.1.0` added fully automatic downstream template updates. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## What It Provides
 
@@ -64,6 +64,7 @@ The deployment guide includes complete commands for preview, JSON review, apply-
 - Commit stages only the deployment plan and managed-state file, then runs the staged secret scan.
 - Push fetches the remote, rejects a branch that is behind, scans the exact outgoing commit range, and never force-pushes.
 - Private identifier policies stay outside every repository and are referenced only through local Git configuration.
+- Each GitHub App installation is enumerated independently and receives its own short-lived token; owner and full repository names are masked before downstream processing writes to the public workflow log.
 
 See [Module System](docs/module-system.md) for state tracking, file classification, conflict behavior, recovery copies, preservation, pruning, and push safeguards.
 
@@ -78,8 +79,10 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `tests/Invoke-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for selection, deployment, conflict, recovery, preservation, and idempotence behavior |
 | `tests/Update-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for version comparison, safe updates, skips, and managed-file conflicts |
 | `tests/Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1` | Synthetic fleet-discovery suite for automatic enrolment, repository opt-out, open-pull-request deferral, and workflow activation |
+| `tests/Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1` | Synthetic authentication suite for multi-installation discovery, token isolation, and cross-owner fleet dispatch |
 | `scripts/Update-RepositoryQualityGates.ps1` | Preview or apply a newer template to one managed repository |
 | `scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1` | Discover GitHub App repositories, open update pull requests, and enable required-check-gated auto-merge |
+| `scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1` | Enumerate every GitHub App installation, issue an isolated token for each, mask discovered identities, and run the fleet updater |
 | `docs/quality-gates.md` | Detailed gate and module-selection reference |
 | `docs/deployment-guide.md` | End-to-end operator instructions |
 | `docs/module-system.md` | Architecture and managed-file lifecycle reference |
@@ -120,6 +123,7 @@ Run the template regression suite from this repository:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGates.Tests.ps1"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Update-RepositoryQualityGates.Tests.ps1"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1"
+pwsh -NoProfile -File ".\tests\Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1"
 ```
 
 The regression suite uses generated synthetic repositories only and includes automatic Python-to-PHP reconciliation. It does not use real credentials or private identifier values.

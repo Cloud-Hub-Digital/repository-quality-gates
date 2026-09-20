@@ -2,7 +2,7 @@
 
 This guide applies Repository Quality Gates to a new or existing local Git repository using the prepared PowerShell deployment script.
 
-For GitHub-hosted repositories, version `1.2.0-dev.1` also supports unattended initial enrolment. Every unmanaged repository visible to the scoped RQG GitHub App is eligible by default. To exclude one, commit `.repository-quality-gates.local.json` with `automaticEnrollment` set to `false`. The central daily workflow detects eligible repository contents, selects applicable modules, and enrols them through checked temporary pull requests. See [Automatic Repository Updates](automatic-repository-updates.md).
+For GitHub-hosted repositories, version `1.2.0-dev.2` supports unattended initial enrolment across every account or organization where the RQG GitHub App is installed. Every unmanaged repository visible to any installation is eligible by default. To exclude one, commit `.repository-quality-gates.local.json` with `automaticEnrollment` set to `false`. The central daily workflow detects eligible repository contents, selects applicable modules, and enrols them through checked temporary pull requests. See [Automatic Repository Updates](automatic-repository-updates.md).
 
 ## Prerequisites
 

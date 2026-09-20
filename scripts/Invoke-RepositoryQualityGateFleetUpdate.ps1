@@ -57,12 +57,11 @@ if (-not $TargetVersion) {
     $versionOutput = @(& $deploymentTool -Version)
     $TargetVersion = ([string]$versionOutput[0] -replace '^Repository Quality Gates\s+', '').Trim()
 }
-if (-not $Owner) { $Owner = (& gh api user --jq .login).Trim() }
-
 if (-not $Repository.Count) {
     $Repository = @(& gh api --paginate /installation/repositories --jq '.repositories[].full_name' | Where-Object { $_ })
     if ($LASTEXITCODE -ne 0) { throw 'Unable to enumerate repositories installed for the GitHub App.' }
 }
+if (-not $Owner -and -not $Repository.Count) { throw 'No repositories are available to update.' }
 $sourceRemote = (& git -C $templateRootFull config --get remote.origin.url 2>$null)
 $sourceName = if ($sourceRemote -match 'github\.com[:/](?<name>[^/]+/[^/.]+)(?:\.git)?$') { $Matches.name } else { $null }
 $branchName = "rqg/update-v$TargetVersion"

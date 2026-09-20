@@ -18,5 +18,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Run Fleet Discovery And Enrolment Tests
-        shell: powershell
-        run: ./tests/Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1
+        shell: pwsh
+        run: |
+          ./tests/Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1
+          ./tests/Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1

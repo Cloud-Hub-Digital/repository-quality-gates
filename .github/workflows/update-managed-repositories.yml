@@ -35,16 +35,9 @@ jobs:
           ref: ${{ steps.release.outputs.tag }}
           persist-credentials: false
 
-      - name: Create Scoped Fleet Token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ vars.RQG_APP_ID }}
-          private-key: ${{ secrets.RQG_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
-      - name: Update Managed Repositories
+      - name: Update Installed Repository Fleets
         shell: pwsh
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: ./scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1 -Owner $env:GITHUB_REPOSITORY_OWNER -AutoEnroll -Apply -AutoMerge
+          RQG_APP_ID: ${{ vars.RQG_APP_ID }}
+          RQG_APP_PRIVATE_KEY: ${{ secrets.RQG_APP_PRIVATE_KEY }}
+        run: ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply -AutoMerge

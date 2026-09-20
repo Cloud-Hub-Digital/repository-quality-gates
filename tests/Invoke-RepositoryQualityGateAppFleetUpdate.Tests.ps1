@@ -1,0 +1,110 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$root = Split-Path -Parent $PSScriptRoot
+$appFleetTool = Join-Path $root 'scripts\Invoke-RepositoryQualityGateAppFleetUpdate.ps1'
+$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('rqg-app-fleet-tests-' + [guid]::NewGuid().ToString('N'))
+$passed = 0
+
+function Assert-True([bool]$Condition, [string]$Message) {
+    if (-not $Condition) { throw $Message }
+    $script:passed++
+}
+
+function ConvertFrom-Base64Url([string]$Value) {
+    $base64 = $Value.Replace('-', '+').Replace('_', '/')
+    while ($base64.Length % 4) { $base64 += '=' }
+    return [Convert]::FromBase64String($base64)
+}
+
+try {
+    . $appFleetTool
+
+    $rsa = [Security.Cryptography.RSA]::Create(2048)
+    try {
+        $privateKey = $rsa.ExportPkcs8PrivateKeyPem()
+        $jwt = New-GitHubAppJwt '12345' $privateKey
+        $parts = $jwt.Split('.')
+        Assert-True ($parts.Count -eq 3) 'The GitHub App JWT should contain three segments.'
+        $verified = $rsa.VerifyData(
+            [Text.Encoding]::UTF8.GetBytes("$($parts[0]).$($parts[1])"),
+            (ConvertFrom-Base64Url $parts[2]),
+            [Security.Cryptography.HashAlgorithmName]::SHA256,
+            [Security.Cryptography.RSASignaturePadding]::Pkcs1
+        )
+        Assert-True $verified 'The GitHub App JWT should have a valid RSA-SHA256 signature.'
+        $payload = [Text.Encoding]::UTF8.GetString((ConvertFrom-Base64Url $parts[1])) | ConvertFrom-Json
+        Assert-True ([string]$payload.iss -eq '12345') 'The GitHub App JWT should identify the configured App.'
+        Assert-True (([long]$payload.exp - [long]$payload.iat) -eq 600) 'The GitHub App JWT should use a ten-minute validity window.'
+    }
+    finally { $rsa.Dispose() }
+
+    New-Item -ItemType Directory -Path (Join-Path $testRoot 'scripts') -Force | Out-Null
+    $recordPath = Join-Path $testRoot 'fleet-records.jsonl'
+    $fakeFleet = @'
+param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch]$Apply, [switch]$AutoMerge, [int]$TemporaryBranchLifetimeHours)
+[pscustomobject]@{
+    repositories = @($Repository)
+    token = $env:GH_TOKEN
+    autoEnroll = [bool]$AutoEnroll
+    apply = [bool]$Apply
+    autoMerge = [bool]$AutoMerge
+    lifetime = $TemporaryBranchLifetimeHours
+} | ConvertTo-Json -Compress | Add-Content -LiteralPath $env:RQG_TEST_RECORD_PATH -Encoding utf8
+'@
+    [IO.File]::WriteAllText((Join-Path $testRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'), $fakeFleet, [Text.UTF8Encoding]::new($false))
+
+    function global:Invoke-RestMethod {
+        param([string]$Method, [string]$Uri, [hashtable]$Headers, [string]$ContentType)
+        if ($Method -eq 'Get' -and $Uri -match '/app/installations\?') {
+            return @([pscustomobject]@{ id = 101 }, [pscustomobject]@{ id = 202 })
+        }
+        if ($Method -eq 'Post' -and $Uri -match '/app/installations/(?<id>\d+)/access_tokens$') {
+            return [pscustomobject]@{ token = "installation-token-$($Matches.id)" }
+        }
+        throw "Unexpected Invoke-RestMethod request: $Method $Uri"
+    }
+    function global:gh {
+        $joined = $args -join ' '
+        if ($joined -match '^api --paginate /installation/repositories') {
+            if ($env:GH_TOKEN -eq 'installation-token-101') { 'first-owner/one' }
+            elseif ($env:GH_TOKEN -eq 'installation-token-202') { 'second-owner/two' }
+            else { throw 'The installation token was not selected before repository discovery.' }
+            $global:LASTEXITCODE = 0
+            return
+        }
+        if ($joined -eq 'api --method DELETE /installation/token') {
+            $global:LASTEXITCODE = 0
+            return
+        }
+        throw "Unexpected gh invocation: $joined"
+    }
+
+    $testRsa = [Security.Cryptography.RSA]::Create(2048)
+    $oldToken = $env:GH_TOKEN
+    $env:RQG_TEST_RECORD_PATH = $recordPath
+    try {
+        Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -EnableAutoEnroll -EnableApply -EnableAutoMerge -BranchLifetimeHours 24
+        $records = @(Get-Content -LiteralPath $recordPath | ForEach-Object { $_ | ConvertFrom-Json })
+        Assert-True ($records.Count -eq 2) 'Every GitHub App installation should run the fleet updater once.'
+        Assert-True ($records[0].repositories[0] -eq 'first-owner/one') 'The first installation should receive only its repository list.'
+        Assert-True ($records[1].repositories[0] -eq 'second-owner/two') 'The second installation should receive only its repository list.'
+        Assert-True ($records[0].token -eq 'installation-token-101' -and $records[1].token -eq 'installation-token-202') 'Each installation should use its own short-lived token.'
+        Assert-True ($records[0].autoEnroll -and $records[0].apply -and $records[0].autoMerge) 'The wrapper should forward the requested automation switches.'
+        Assert-True ($records[0].lifetime -eq 24) 'The wrapper should forward the temporary branch lifetime.'
+    }
+    finally {
+        $testRsa.Dispose()
+        Remove-Item Function:\global:Invoke-RestMethod -ErrorAction SilentlyContinue
+        Remove-Item Function:\global:gh -ErrorAction SilentlyContinue
+        Remove-Item Env:\RQG_TEST_RECORD_PATH -ErrorAction SilentlyContinue
+        if ($null -eq $oldToken) { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue } else { $env:GH_TOKEN = $oldToken }
+    }
+
+    Write-Host "$passed assertions passed."
+}
+finally {
+    if (Test-Path -LiteralPath $testRoot) { Remove-Item -LiteralPath $testRoot -Recurse -Force }
+}
+
+exit 0

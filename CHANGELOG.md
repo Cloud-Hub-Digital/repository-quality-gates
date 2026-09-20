@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.0-dev.2 - 2026-09-20
+
+### Added
+
+- Added a privacy-preserving cross-owner wrapper that discovers every installation of the RQG GitHub App and dispatches the existing fleet updater for each installation.
+- Added synthetic RS256 JWT, installation-token isolation, repository-scope, and argument-forwarding coverage.
+
+### Changed
+
+- The central fleet workflow now manages all App installations rather than limiting discovery to the central repository owner.
+- Explicit repository lists can be processed without resolving a user identity from the GitHub API.
+
+### Security
+
+- Each App installation receives a separate short-lived token that is revoked after use and cannot access another installation's repositories.
+- Discovered owner and full repository names are masked before repository processing emits workflow log output.
+- No personal owner identifier or cross-account repository inventory is stored in public source, Actions variables, or secrets.
+
 ## 1.2.0-dev.1 - 2026-09-20
 
 - Added automatic enrolment for unmanaged repositories visible to the scoped GitHub App.
