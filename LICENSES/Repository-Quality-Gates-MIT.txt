@@ -1,3 +1,15 @@
+Repository Quality Gates Component Licence
+===========================================
+
+The MIT License below applies only to `.repository-quality-gates.json` and
+the files identified as Repository Quality Gates-managed files in its `files`
+array. It does not apply to any other source code, documentation,
+configuration, assets, data, or other material in the downstream repository.
+Those materials remain subject to the downstream project's own licensing
+terms.
+
+---
+
 MIT License
 
 Copyright (c) 2026 Cloud Hub Digital

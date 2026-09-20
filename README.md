@@ -2,13 +2,13 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The current development template version written to managed state is `1.2.0-dev.3`. The latest stable release remains `1.1.0`.
+The prepared stable template version written to managed state is `1.2.0`. The latest published stable release remains `1.1.0` until the prepared commit, tag, and GitHub Release complete their separate approval gates.
 
-Version `1.2.0-dev.3` adds the MIT license, a public security policy, SPDX notices, and managed downstream attribution. Version `1.2.0-dev.2` extended automatic enrolment and updates across every installation of the GitHub App. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.2.0` adds opt-out automatic enrolment across GitHub App installations, clarifies the exact scope of the downstream RQG licence notice, records the established GitHub repository settings, and adds weekly grouped Dependabot updates for GitHub Actions. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## What It Provides
 
-Every target repository receives the universal secret-scanning and module-drift modules. Additional modules are selected from the repository's tracked and unignored source files:
+Every target repository receives the universal licensing, secret-scanning, and module-drift modules. Additional modules are selected from the repository's tracked and unignored source files:
 
 | Module | Selected When | Main GitHub Actions Gate |
 |---|---|---|
@@ -88,10 +88,21 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `docs/deployment-guide.md` | End-to-end operator instructions |
 | `docs/module-system.md` | Architecture and managed-file lifecycle reference |
 | `docs/automation-costs-and-releases.md` | GitHub Actions cost boundary and recommended build/release automation controls |
+| `docs/repository-administration.md` | Recommended GitHub repository settings and their compatibility with RQG automation |
+| `.github/dependabot.yml` | Weekly grouped dependency updates for GitHub Actions |
 | `LICENSE` | MIT license for this repository |
+| `LICENSES/Repository-Quality-Gates-MIT.txt` | Managed downstream notice that scopes the RQG licence to RQG-managed files |
 | `SECURITY.md` | Supported versions, reporting route, scope, invariants, and safe-testing policy |
 
-Managed downstream repositories receive `LICENSES/Repository-Quality-Gates-MIT.txt` for the RQG components copied into them. This attribution file does not replace or change the downstream project's own licence.
+Managed downstream repositories receive `LICENSES/Repository-Quality-Gates-MIT.txt`. Its MIT terms apply only to `.repository-quality-gates.json` and the files identified in that file's `files` array. It does not license any other downstream source, documentation, configuration, assets, or data, and it does not replace or change the downstream project's own licence.
+
+## Recommended Repository Settings
+
+RQG's workflows provide repository-level checks, and the central repository now also uses GitHub's native secret scanning and push protection, dependency alerts and security updates, SHA-pinned Actions, read-only default workflow permissions, 30-day workflow retention, automatic deletion of merged branches, immutable releases, and active rulesets protecting `main` and release tags. Weekly grouped Dependabot updates keep GitHub Actions references current for review.
+
+Apply the controls in stages. RQG's current self-reconciliation workflow can commit a normalized managed state directly to its branch. A rule requiring every `main` change to arrive through a pull request would block that behavior until self-reconciliation is changed to use a temporary pull request or a narrowly scoped GitHub App bypass is approved.
+
+See [Repository Administration](docs/repository-administration.md) for the verified settings, current compatibility constraints, and safe implementation order.
 
 ## Private Policy Boundary
 
@@ -122,7 +133,7 @@ never contains project-specific private identifier collections.
 
 ## License And Security
 
-Repository Quality Gates is available under the [MIT License](LICENSE). Managed downstream repositories receive a separate RQG attribution notice for the files copied into them; their own project licence remains unchanged.
+Repository Quality Gates is available under the [MIT License](LICENSE). Managed downstream repositories receive a separate notice whose MIT terms cover only the RQG managed-state file and the RQG-managed files it identifies; all other downstream content remains subject to the downstream project's own licensing terms.
 
 See the [Security Policy](SECURITY.md) for supported versions, security boundaries, safe-testing expectations, and the private vulnerability-reporting route.
 

@@ -104,7 +104,11 @@ try {
     Assert-True ($apply.ExitCode -eq 0) "Apply should succeed on a clean fixture. $($apply.Output)"
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.repository-quality-gates.json')) 'Managed state should be created.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'LICENSES\Repository-Quality-Gates-MIT.txt')) 'The RQG MIT attribution file should be deployed universally.'
-    Assert-True ((Get-Content -LiteralPath (Join-Path $mixed 'LICENSES\Repository-Quality-Gates-MIT.txt') -Raw).Contains('MIT License')) 'The deployed RQG attribution file should contain the MIT license.'
+    $deployedLicence = Get-Content -LiteralPath (Join-Path $mixed 'LICENSES\Repository-Quality-Gates-MIT.txt') -Raw
+    Assert-True ($deployedLicence.Contains('MIT License')) 'The deployed RQG attribution file should contain the MIT license.'
+    Assert-True ($deployedLicence.Contains('applies only to `.repository-quality-gates.json`')) 'The deployed RQG attribution file should scope the MIT license to the managed-state file.'
+    Assert-True ($deployedLicence.Contains("files identified as Repository Quality Gates-managed files in its ``files``")) 'The deployed RQG attribution file should scope the MIT license to files recorded as RQG-managed.'
+    Assert-True ($deployedLicence.Contains("remain subject to the downstream project's own licensing")) 'The deployed RQG attribution file should preserve the downstream project licence boundary.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-node.yml')) 'The Node workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-powershell.yml')) 'The PowerShell workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-python.yml')) 'The Python workflow should be deployed.'
@@ -376,7 +380,7 @@ try {
 
     $versionOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.2.0-dev.3')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.2.0')) 'The version interface should report the canonical version.'
     Assert-True (($versionOutput -join "`n").Contains('https://github.com/Cloud-Hub-Digital/repository-quality-gates')) 'The version interface should report the authoritative organization-owned repository.'
 
     Write-Host "$passed assertions passed."

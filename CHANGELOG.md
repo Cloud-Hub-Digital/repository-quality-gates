@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.2.0 - 2026-09-20
+
+### Added
+
+- Added a repository-administration guide covering GitHub secret protection, dependency security, Actions restrictions, branch and tag rulesets, community files, and automation compatibility.
+- Added weekly grouped Dependabot updates for GitHub Actions, limited to two open pull requests.
+
+### Changed
+
+- Clarified that the downstream MIT notice applies only to `.repository-quality-gates.json` and the RQG-managed files recorded in its `files` array.
+- Clarified that licensing, secret scanning, and module drift are the three universal modules installed in every managed repository.
+- Recorded the GitHub settings established for the central repository, including Actions restrictions, 30-day retention, merged-branch cleanup, immutable releases, and active branch and release-tag rulesets.
+
+### Security
+
+- Documented a staged settings baseline that improves repository protection without blocking the current direct-push self-reconciliation workflow.
+
 ## 1.2.0-dev.3 - 2026-09-20
 
 ### Added
