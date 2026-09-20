@@ -72,7 +72,17 @@ function Test-GitIgnored([string]$RelativePath) {
 
 function Get-FileHashValue([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    try {
+        $strictUtf8 = [Text.UTF8Encoding]::new($false, $true)
+        $text = $strictUtf8.GetString($bytes)
+        $normalized = $text.Replace("`r`n", "`n").Replace("`r", "`n")
+        $bytes = [Text.UTF8Encoding]::new($false).GetBytes($normalized)
+    }
+    catch [Text.DecoderFallbackException] { }
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($algorithm.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() }
+    finally { $algorithm.Dispose() }
 }
 
 function Get-RelativePath([string]$Base, [string]$Path) {

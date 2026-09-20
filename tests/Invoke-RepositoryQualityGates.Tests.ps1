@@ -283,6 +283,13 @@ try {
     $docsSecondJson = $docsSecondPreview.Output | ConvertFrom-Json
     Assert-True (-not ($docsSecondJson.selectedModules -contains 'powershell')) 'Managed secret-scanning helpers must not trigger the PowerShell module.'
     Assert-True (@($docsSecondJson.plan | Where-Object action -notin @('Unchanged')).Count -eq 0) 'A repeated documentation-only preview should remain idempotent.'
+    $managedDocumentationPath = Join-Path $docsOnly '.github\workflows\quality-documentation.yml'
+    $managedDocumentationText = [IO.File]::ReadAllText($managedDocumentationPath).Replace("`r`n", "`n").Replace("`n", "`r`n")
+    [IO.File]::WriteAllText($managedDocumentationPath, $managedDocumentationText, [Text.UTF8Encoding]::new($false))
+    $docsCrlfPreview = Invoke-Tool $docsOnly @('-OutputFormat', 'Json')
+    Assert-True ($docsCrlfPreview.ExitCode -eq 0) 'A managed text file checked out with CRLF line endings should remain valid.'
+    $docsCrlfJson = $docsCrlfPreview.Output | ConvertFrom-Json
+    Assert-True (@($docsCrlfJson.plan | Where-Object action -notin @('Unchanged')).Count -eq 0) 'Line-ending conversion alone must not create managed-file drift.'
 
     $languageTransition = New-Fixture 'language-transition'
     'print("fixture")' | Set-Content -LiteralPath (Join-Path $languageTransition 'tool.py') -Encoding ascii
