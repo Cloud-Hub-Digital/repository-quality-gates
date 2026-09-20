@@ -191,3 +191,5 @@ keywords = ["RQG_REPO_ONLY_"]
 finally {
     if (Test-Path -LiteralPath $testRoot) { Remove-Item -LiteralPath $testRoot -Recurse -Force }
 }
+
+exit 0
