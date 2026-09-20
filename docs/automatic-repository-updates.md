@@ -82,9 +82,10 @@ Use these repository permissions:
 |---|---:|---|
 | Contents | Read And Write | Read managed state and push the update branch |
 | Pull Requests | Read And Write | Find or create the update pull request |
+| Workflows | Read And Write | Add and update the GitHub Actions workflow files deployed by RQG |
 | Metadata | Read | Required GitHub App repository metadata |
 
-The app does not need issue, administration, secrets, Actions, deployment, package, or organization permissions.
+The app does not need issue, administration, secrets, Actions administration, deployment, package, or organization permissions.
 
 Install the app only on repositories that Repository Quality Gates may manage. The App installation is the outer fleet allow-list. Within that scope, an existing managed-state file authorizes updates and an unmanaged repository is automatically eligible unless its committed repository rules opt out.
 
