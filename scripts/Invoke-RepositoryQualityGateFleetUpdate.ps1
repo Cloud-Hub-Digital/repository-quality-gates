@@ -5,6 +5,7 @@ param(
     [string]$TemplateRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$TargetVersion,
     [switch]$Apply,
+    [switch]$AutoMerge,
     [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text'
 )
 
@@ -37,7 +38,7 @@ New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 try {
     foreach ($fullName in @($Repository | Sort-Object -Unique)) {
-        $entry = [ordered]@{ repository = $fullName; status = 'Skipped'; pullRequest = $null; detail = $null }
+        $entry = [ordered]@{ repository = $fullName; status = 'Skipped'; pullRequest = $null; autoMerge = $false; detail = $null }
         try {
             if ($sourceName -and $fullName -ieq $sourceName) { $entry.detail = 'Central template repository.'; $results.Add([pscustomobject]$entry); continue }
             if ($fullName -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Invalid repository name: $fullName" }
@@ -92,7 +93,14 @@ try {
                 $entry.pullRequest = (& gh pr create --repo $fullName --base $defaultBranch --head $branchName --title "chore: update Repository Quality Gates to $TargetVersion" --body-file $bodyPath).Trim()
                 if ($LASTEXITCODE -ne 0) { throw 'Unable to create the update pull request.' }
             }
-            $entry.status = 'PullRequest'
+            if ($AutoMerge) {
+                $mergeOutput = @(& gh pr merge $entry.pullRequest --repo $fullName --auto --squash --delete-branch 2>&1)
+                if ($LASTEXITCODE -ne 0) { throw "Unable to enable automatic merge for the update pull request: $($mergeOutput -join [Environment]::NewLine)" }
+                $entry.autoMerge = $true
+                $entry.status = 'AutoMergeEnabled'
+            } else {
+                $entry.status = 'PullRequest'
+            }
             $entry.detail = "$($stagedPaths.Count) managed path(s) changed."
         }
         catch {
@@ -113,5 +121,5 @@ $summary = [ordered]@{
     failed = @($results | Where-Object status -eq 'Failed').Count
 }
 if ($OutputFormat -eq 'Json') { $summary | ConvertTo-Json -Depth 6 }
-else { $results | Format-Table repository, status, pullRequest, detail -AutoSize }
+else { $results | Format-Table repository, status, autoMerge, pullRequest, detail -AutoSize }
 if ($summary.failed -gt 0) { throw "$($summary.failed) managed repository update(s) failed." }

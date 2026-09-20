@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   update:
-    name: Open Quality Gate Update Pull Requests
+    name: Update Downstream Repository Quality Gates
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
@@ -47,4 +47,4 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: ./scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1 -Owner $env:GITHUB_REPOSITORY_OWNER -Apply
+        run: ./scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1 -Owner $env:GITHUB_REPOSITORY_OWNER -Apply -AutoMerge

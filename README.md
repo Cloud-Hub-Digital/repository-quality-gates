@@ -4,7 +4,7 @@ Repository Quality Gates is a preview-first PowerShell deployment tool for addin
 
 The current stable template version written to managed state is `1.0.1`.
 
-Development version `1.1.0-dev.1` adds automatic template-update pull requests across managed repositories. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Development version `1.1.0-dev.2` adds fully automatic downstream template updates with repository-owned adjustment files and required-check-gated auto-merge. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## What It Provides
 
@@ -59,6 +59,7 @@ The deployment guide includes complete commands for preview, JSON review, apply-
 - Pull requests report module drift without failing. Push and manual runs use the embedded deployment engine to add missing modules and remove unchanged obsolete modules automatically.
 - Automatic reconciliation validates the public secret policy, commits only from a clean GitHub checkout, pushes with the repository token, then dispatches the managed workflows against the reconciled commit.
 - Locally modified managed files still stop reconciliation instead of being overwritten. Preserved external implementations remain recorded and unchanged.
+- Downstream-only module choices and additional public secret policies live in the committed `.repository-quality-gates.local.json` file, which RQG reads but never manages or overwrites.
 - Commit and push require a clean repository before deployment, preventing unrelated work from entering the generated commit.
 - Commit stages only the deployment plan and managed-state file, then runs the staged secret scan.
 - Push fetches the remote, rejects a branch that is behind, scans the exact outgoing commit range, and never force-pushes.
@@ -77,7 +78,7 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `tests/Invoke-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for selection, deployment, conflict, recovery, preservation, and idempotence behavior |
 | `tests/Update-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for version comparison, safe updates, skips, and managed-file conflicts |
 | `scripts/Update-RepositoryQualityGates.ps1` | Preview or apply a newer template to one managed repository |
-| `scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1` | Discover GitHub App repositories and open update pull requests for outdated managed repositories |
+| `scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1` | Discover GitHub App repositories, open update pull requests, and enable required-check-gated auto-merge |
 | `docs/quality-gates.md` | Detailed gate and module-selection reference |
 | `docs/deployment-guide.md` | End-to-end operator instructions |
 | `docs/module-system.md` | Architecture and managed-file lifecycle reference |

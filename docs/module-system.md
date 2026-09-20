@@ -68,24 +68,33 @@ Conflicts stop deployment by default. After reviewing the JSON plan, `-ConflictA
 
 The script also reports workflows at other paths whose content appears to duplicate a selected module. Deployment stops until the overlap is resolved or `-AcknowledgeOverlap` is supplied. Existing files are never removed merely because an overlap was detected.
 
-If a repository already has a reviewed implementation of a detected module, preserve it explicitly instead of replacing it:
+If a repository already has a reviewed implementation of a detected module, preserve it in the downstream repository's committed rules file instead of changing an RQG-managed file:
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository" -PreserveExistingModule secret-scanning -Apply
+```json
+{
+  "schemaVersion": 1,
+  "modules": {
+    "include": [],
+    "repositoryOwned": ["secret-scanning"]
+  },
+  "secretScanning": {
+    "additionalConfigFiles": []
+  }
+}
 ```
 
-Preservation is allowed only when an existing workflow contains a catalog overlap marker for that module. The existing files remain unmanaged and unchanged, the matching evidence appears in the JSON preview, and the decision is recorded in `.repository-quality-gates.json`. Reuse `-PreserveExistingModule` on later template runs.
+Preservation is allowed only when an existing workflow contains a catalog overlap marker for that module. The existing files remain unmanaged and unchanged, and the matching evidence appears in the JSON preview. `.repository-quality-gates.local.json` remains owned by the downstream repository and is never copied or replaced by RQG. The managed `.repository-quality-gates.json` file records the resolved snapshot for drift checking.
 
 If an existing `.gitignore` pattern matches a required managed file, the preview reports an exact negation such as `!/scripts/Test-Secrets.ps1`. Apply merges only those exact exceptions and then verifies every managed file is visible to Git. Deployment stops if a parent-directory rule still prevents a required file from being tracked.
 
-`.repository-quality-gates.json` records only module identifiers, managed paths, and content hashes. It contains no personal policy data.
+`.repository-quality-gates.json` records only module identifiers, managed paths, and content hashes. It contains no personal policy data. Repository-specific public secret patterns belong in a separate committed TOML file named by `secretScanning.additionalConfigFiles`; private identifier policies remain outside the repository.
 
 ## Automatic Module Reconciliation
 
 Every managed repository receives `Quality Gate Module Drift`, a self-contained copy of the deployment engine, and every module payload. It does not need access to the private central template repository. On each push, pull request, or manual run, it uses the same shared detector and catalog as the deployment tool to compare:
 
 - modules required by the repository's current tracked and unignored files; and
-- modules recorded as managed or deliberately preserved in `.repository-quality-gates.json`.
+- modules recorded as managed in `.repository-quality-gates.json` or declared repository-owned in `.repository-quality-gates.local.json`.
 
 A pull request performs a report-only comparison and does not fail merely because modules differ. The corresponding branch push performs reconciliation when GitHub supplies a trusted writable token.
 

@@ -24,6 +24,28 @@ if ((Get-Sha256 $scanner) -ne $lock.executableSha256) {
 if (-not (Test-Path -LiteralPath $publicConfig -PathType Leaf)) { throw 'Public Gitleaks configuration is missing.' }
 
 $repositoryRoot = [IO.Path]::GetFullPath($Repository).TrimEnd('\', '/')
+
+function Resolve-RepositoryPolicyPath([string]$RelativePath) {
+    if ([IO.Path]::IsPathRooted($RelativePath)) { throw "A repository secret configuration path must be relative: $RelativePath" }
+    $normalized = ($RelativePath -replace '\\', '/').TrimStart('/')
+    if (-not $normalized.EndsWith('.toml', [StringComparison]::OrdinalIgnoreCase)) { throw "A repository secret configuration must be a TOML file: $RelativePath" }
+    $candidate = [IO.Path]::GetFullPath((Join-Path $repositoryRoot ($normalized -replace '/', [IO.Path]::DirectorySeparatorChar)))
+    if (-not $candidate.StartsWith($repositoryRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "A repository secret configuration escapes the repository: $RelativePath"
+    }
+    $current = $repositoryRoot
+    foreach ($segment in @(($candidate.Substring($repositoryRoot.Length).TrimStart('\', '/')) -split '[\\/]')) {
+        if (-not $segment) { continue }
+        $current = Join-Path $current $segment
+        if (-not (Test-Path -LiteralPath $current)) { break }
+        if (((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "A repository secret configuration traverses a symbolic link, junction, or other reparse point: $RelativePath"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { throw "A repository secret configuration is missing: $RelativePath" }
+    return $candidate
+}
+
 if (-not $PrivateConfigPath) {
     $configuredPath = (& git -C $repositoryRoot config --local --get publicationSafety.privateConfig 2>$null)
     if ($LASTEXITCODE -eq 0 -and $configuredPath) { $PrivateConfigPath = $configuredPath.Trim() }
@@ -32,6 +54,24 @@ if (-not $PrivateConfigPath) {
 $policyConfigs = @(
     [pscustomobject]@{ Name = 'portable and project'; Path = [IO.Path]::GetFullPath($publicConfig) }
 )
+$repositoryRulesPath = Join-Path $repositoryRoot '.repository-quality-gates.local.json'
+if (Test-Path -LiteralPath $repositoryRulesPath -PathType Leaf) {
+    try { $repositoryRules = Get-Content -LiteralPath $repositoryRulesPath -Raw | ConvertFrom-Json }
+    catch { throw 'The .repository-quality-gates.local.json file is invalid.' }
+    if ($repositoryRules.schemaVersion -ne 1) { throw 'The repository-rules schema is unsupported.' }
+    $secretRules = if ($repositoryRules.PSObject.Properties['secretScanning']) { $repositoryRules.secretScanning } else { $null }
+    if ($secretRules -and $secretRules.PSObject.Properties['additionalConfigFiles']) {
+        $additionalConfigs = $secretRules.additionalConfigFiles
+        if ($additionalConfigs -is [string] -or $additionalConfigs -isnot [Collections.IEnumerable]) {
+            throw 'secretScanning.additionalConfigFiles must be an array of strings.'
+        }
+        foreach ($relative in @($additionalConfigs)) {
+            if ($relative -isnot [string] -or -not $relative.Trim()) { throw 'secretScanning.additionalConfigFiles must contain only non-empty strings.' }
+            $repositoryPolicyPath = Resolve-RepositoryPolicyPath $relative.Trim()
+            $policyConfigs += [pscustomobject]@{ Name = "repository policy $($relative.Trim())"; Path = $repositoryPolicyPath }
+        }
+    }
+}
 if ($PrivateConfigPath) {
     $privateFullPath = [IO.Path]::GetFullPath($PrivateConfigPath)
     $repositoryPrefix = $repositoryRoot + [IO.Path]::DirectorySeparatorChar

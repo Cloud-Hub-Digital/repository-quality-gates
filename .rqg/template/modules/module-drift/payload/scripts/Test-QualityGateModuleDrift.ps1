@@ -34,14 +34,34 @@ $managedPaths = @($state.files | ForEach-Object { ([string]$_.path -replace '\\'
 $repositoryFiles = @(Get-RqgRepositoryFiles -RepositoryRoot $repositoryRoot -ExcludedRelativePaths $managedPaths)
 $detectedModules = @(Get-RqgDetectedModules -Catalog $catalog -Files $repositoryFiles)
 $detectedIds = @($detectedModules | ForEach-Object { [string]$_.id } | Sort-Object -Unique)
-$installedIds = @(@($state.modules) + @($state.preservedModules) | ForEach-Object { [string]$_ } | Sort-Object -Unique)
-$missingIds = @($detectedIds | Where-Object { $_ -notin $installedIds })
-$staleIds = @($installedIds | Where-Object { $_ -notin $detectedIds })
+$rulesPath = Join-Path $repositoryRoot '.repository-quality-gates.local.json'
+$includedIds = @()
+$repositoryOwnedIds = @()
+if (Test-Path -LiteralPath $rulesPath -PathType Leaf) {
+    try { $rules = Get-Content -LiteralPath $rulesPath -Raw | ConvertFrom-Json }
+    catch { throw 'The .repository-quality-gates.local.json file is invalid.' }
+    if ($rules.schemaVersion -ne 1) { throw 'The repository-rules schema is unsupported.' }
+    $moduleRules = if ($rules.PSObject.Properties['modules']) { $rules.modules } else { $null }
+    if ($moduleRules -and $moduleRules.PSObject.Properties['include']) { $includedIds = @($moduleRules.include | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique) }
+    if ($moduleRules -and $moduleRules.PSObject.Properties['repositoryOwned']) { $repositoryOwnedIds = @($moduleRules.repositoryOwned | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique) }
+    $catalogIds = @($catalog.modules | ForEach-Object { [string]$_.id })
+    foreach ($moduleId in @($includedIds + $repositoryOwnedIds | Sort-Object -Unique)) {
+        if ($moduleId -notin $catalogIds) { throw "Repository rules reference an unknown module: $moduleId" }
+    }
+} elseif ($state.PSObject.Properties['preservedModules']) {
+    $repositoryOwnedIds = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique)
+}
+$applicableIds = @($detectedIds + $includedIds | Sort-Object -Unique)
+$installedIds = @(@($state.modules) + $repositoryOwnedIds | ForEach-Object { [string]$_ } | Sort-Object -Unique)
+$missingIds = @($applicableIds | Where-Object { $_ -notin $installedIds })
+$staleIds = @($installedIds | Where-Object { $_ -notin $applicableIds })
 
 $result = [ordered]@{
     repository = $repositoryRoot
     status = if (@($missingIds).Count) { 'MissingModules' } elseif (@($staleIds).Count) { 'StaleModules' } else { 'Current' }
     detectedModules = $detectedIds
+    includedModules = $includedIds
+    repositoryOwnedModules = $repositoryOwnedIds
     installedModules = $installedIds
     missingModules = $missingIds
     staleModules = $staleIds

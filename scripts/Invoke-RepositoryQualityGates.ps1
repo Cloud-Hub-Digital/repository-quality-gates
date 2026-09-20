@@ -7,6 +7,7 @@ param(
     [switch]$Commit,
     [switch]$Push,
     [switch]$PruneManaged,
+    [string[]]$IncludeModule = @(),
     [string[]]$PreserveExistingModule = @(),
     [switch]$AllowDirtyWorkingTree,
     [switch]$AcknowledgeOverlap,
@@ -20,7 +21,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$productVersion = '1.1.0-dev.1'
+$productVersion = '1.1.0-dev.2'
 $productRepository = 'https://github.com/terryrogers/repository-quality-gates'
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $detectionLibraryPath = Join-Path $toolRoot 'modules\module-drift\payload\scripts\RepositoryQualityGates.Detection.ps1'
@@ -112,6 +113,65 @@ function Read-ManagedState([string]$Path) {
     return $state
 }
 
+function Get-RuleStringArray($Object, [string]$Name, [string]$Context) {
+    if (-not $Object -or -not $Object.PSObject.Properties[$Name]) { return @() }
+    $value = $Object.$Name
+    if ($null -eq $value) { return @() }
+    if ($value -is [string] -or $value -isnot [Collections.IEnumerable]) {
+        throw "$Context.$Name must be an array of strings."
+    }
+    $items = @($value | ForEach-Object {
+        if ($_ -isnot [string] -or -not $_.Trim()) { throw "$Context.$Name must contain only non-empty strings." }
+        $_.Trim()
+    })
+    if (@($items | Sort-Object -Unique).Count -ne $items.Count) { throw "$Context.$Name contains duplicate values." }
+    return @($items)
+}
+
+function Read-RepositoryRules([string]$Path, $Catalog) {
+    $empty = [pscustomobject]@{ includeModules = @(); repositoryOwnedModules = @(); additionalSecretConfigs = @() }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $empty }
+    try { $rules = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
+    catch { throw 'The .repository-quality-gates.local.json file is invalid.' }
+    foreach ($property in @($rules.PSObject.Properties.Name)) {
+        if ($property -notin @('schemaVersion', 'modules', 'secretScanning')) { throw "Unsupported repository-rules property: $property" }
+    }
+    if ($rules.schemaVersion -ne 1) { throw 'The repository-rules schema is unsupported.' }
+    $moduleRules = if ($rules.PSObject.Properties['modules']) { $rules.modules } else { $null }
+    $secretRules = if ($rules.PSObject.Properties['secretScanning']) { $rules.secretScanning } else { $null }
+    if ($moduleRules) {
+        foreach ($property in @($moduleRules.PSObject.Properties.Name)) {
+            if ($property -notin @('include', 'repositoryOwned')) { throw "Unsupported repository-rules modules property: $property" }
+        }
+    }
+    if ($secretRules) {
+        foreach ($property in @($secretRules.PSObject.Properties.Name)) {
+            if ($property -ne 'additionalConfigFiles') { throw "Unsupported repository-rules secretScanning property: $property" }
+        }
+    }
+    $include = @(Get-RuleStringArray $moduleRules 'include' 'modules')
+    $repositoryOwned = @(Get-RuleStringArray $moduleRules 'repositoryOwned' 'modules')
+    $additionalConfigs = @(Get-RuleStringArray $secretRules 'additionalConfigFiles' 'secretScanning')
+    $catalogIds = @($Catalog.modules | ForEach-Object { [string]$_.id })
+    foreach ($moduleId in @($include + $repositoryOwned | Sort-Object -Unique)) {
+        if ($moduleId -notin $catalogIds) { throw "Repository rules reference an unknown module: $moduleId" }
+    }
+    $overlap = @($include | Where-Object { $_ -in $repositoryOwned })
+    if ($overlap.Count) { throw "Repository rules cannot both include and mark a module repository-owned: $($overlap -join ', ')" }
+    foreach ($relative in $additionalConfigs) {
+        if ([IO.Path]::IsPathRooted($relative)) { throw "A repository secret configuration path must be relative: $relative" }
+        $normalized = ($relative -replace '\\', '/').TrimStart('/')
+        if (-not $normalized.EndsWith('.toml', [StringComparison]::OrdinalIgnoreCase)) { throw "A repository secret configuration must be a TOML file: $relative" }
+        $configPath = Resolve-FullChildPath $script:RepositoryRoot $normalized
+        if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { throw "A repository secret configuration is missing: $relative" }
+    }
+    return [pscustomobject]@{
+        includeModules = @($include)
+        repositoryOwnedModules = @($repositoryOwned)
+        additionalSecretConfigs = @($additionalConfigs)
+    }
+}
+
 function Add-Backup([string]$SourcePath, [string]$RelativePath) {
     if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) { return }
     $destination = Resolve-FullChildPath $script:BackupRoot $RelativePath
@@ -129,6 +189,8 @@ $catalogFullPath = [IO.Path]::GetFullPath($CatalogPath)
 if (-not (Test-Path -LiteralPath $catalogFullPath -PathType Leaf)) { throw 'The module catalog does not exist.' }
 $catalog = Get-Content -LiteralPath $catalogFullPath -Raw | ConvertFrom-Json
 if ($catalog.schemaVersion -ne 1) { throw 'The module catalog schema is unsupported.' }
+$repositoryRulesPath = Join-Path $script:RepositoryRoot '.repository-quality-gates.local.json'
+$repositoryRules = Read-RepositoryRules $repositoryRulesPath $catalog
 
 $statusBefore = @(& git -C $script:RepositoryRoot status --porcelain=v1 --untracked-files=all)
 if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the repository working tree.' }
@@ -148,6 +210,12 @@ foreach ($entry in @($state.files)) {
     $managedByPath[$relative] = $entry
     [void]$managedDetectionPaths.Add($relative)
 }
+foreach ($relative in @($repositoryRules.additionalSecretConfigs)) {
+    $normalized = ($relative -replace '\\', '/').TrimStart('/')
+    if ($managedByPath.ContainsKey($normalized)) {
+        throw "A repository-specific secret configuration cannot be an RQG-managed file: $relative"
+    }
+}
 
 # Previously deployed template payloads must not alter later module detection.
 # For example, the secret-scanning module contains PowerShell helper scripts;
@@ -156,11 +224,18 @@ foreach ($entry in @($state.files)) {
 $repositoryFiles = @(Get-RqgRepositoryFiles -RepositoryRoot $script:RepositoryRoot -ExcludedRelativePaths @($managedDetectionPaths))
 $detectedModules = @(Get-RqgDetectedModules -Catalog $catalog -Files $repositoryFiles)
 $detectedIds = @($detectedModules | ForEach-Object { [string]$_.id })
-$preservedIds = @($PreserveExistingModule | ForEach-Object { [string]$_ } | Sort-Object -Unique)
-foreach ($preservedId in $preservedIds) {
-    if ($preservedId -notin $detectedIds) { throw "Cannot preserve module '$preservedId' because it is not applicable to this repository." }
+$includedIds = @(@($IncludeModule) + @($repositoryRules.includeModules) | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique)
+$catalogIds = @($catalog.modules | ForEach-Object { [string]$_.id })
+foreach ($includedId in $includedIds) {
+    if ($includedId -notin $catalogIds) { throw "Cannot include unknown module '$includedId'." }
 }
-$selectedModules = @($detectedModules | Where-Object { [string]$_.id -notin $preservedIds })
+$applicableIds = @($detectedIds + $includedIds | Sort-Object -Unique)
+$applicableModules = @($catalog.modules | Where-Object { [string]$_.id -in $applicableIds })
+$preservedIds = @(@($PreserveExistingModule) + @($repositoryRules.repositoryOwnedModules) | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique)
+foreach ($preservedId in $preservedIds) {
+    if ($preservedId -notin $applicableIds) { throw "Cannot preserve module '$preservedId' because it is not applicable to this repository." }
+}
+$selectedModules = @($applicableModules | Where-Object { [string]$_.id -notin $preservedIds })
 $selectedIds = @($selectedModules | ForEach-Object { [string]$_.id })
 $desired = @{}
 foreach ($module in $selectedModules) {
@@ -274,7 +349,7 @@ if (Test-Path -LiteralPath $workflowRoot) {
         $relative = Get-RelativePath $script:RepositoryRoot $workflow.FullName
         if ($plannedWorkflowPaths -contains $relative) { continue }
         $content = Get-Content -LiteralPath $workflow.FullName -Raw
-        foreach ($module in $detectedModules) {
+        foreach ($module in $applicableModules) {
             foreach ($pattern in @($module.overlapPatterns)) {
                 if ($content -match [regex]::Escape([string]$pattern)) {
                     $overlaps.Add([pscustomobject]@{ module = [string]$module.id; path = $relative; pattern = [string]$pattern })
@@ -292,9 +367,11 @@ $blockingOverlaps = @($overlaps | Where-Object { $_.module -notin $preservedIds 
 $result = [ordered]@{
     repository = $script:RepositoryRoot
     mode = if ($Apply) { if ($Push) { 'ApplyCommitPush' } elseif ($Commit) { 'ApplyCommit' } else { 'Apply' } } else { 'Preview' }
-    selectedModules = $detectedIds
+    selectedModules = $applicableIds
     managedModules = $selectedIds
     preservedModules = $preservedIds
+    repositoryRulesFile = if (Test-Path -LiteralPath $repositoryRulesPath -PathType Leaf) { '.repository-quality-gates.local.json' } else { $null }
+    additionalSecretConfigs = @($repositoryRules.additionalSecretConfigs)
     preservationEvidence = $preservationEvidence
     managedUnignoreLines = @($managedUnignoreLines)
     plan = @($plan)
@@ -307,7 +384,7 @@ $result = [ordered]@{
 if (-not $Apply) {
     if ($OutputFormat -eq 'Json') { $result | ConvertTo-Json -Depth 8 }
     else {
-        Write-Host "Selected modules: $($detectedIds -join ', ')"
+        Write-Host "Selected modules: $($applicableIds -join ', ')"
         if (@($preservedIds).Count) { Write-Host "Preserving existing modules: $($preservedIds -join ', ')" }
         $plan | Format-Table module, action, path, reason -AutoSize
         if (@($overlaps).Count) { Write-Warning "Potentially overlapping existing workflows were found. Review the JSON output for details." }

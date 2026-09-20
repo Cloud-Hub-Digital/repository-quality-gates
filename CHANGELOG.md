@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0-dev.2 - 2026-09-20
+
+### Added
+
+- A committed downstream `.repository-quality-gates.local.json` file can force applicable modules, preserve verified repository-owned module implementations, and add repository-specific Gitleaks policy layers.
+- Legacy preserved-module settings migrate into the downstream-owned rules file on the first successful template update.
+- Fleet update pull requests enable squash auto-merge and delete their version branch after downstream merge requirements pass.
+
+### Changed
+
+- Repository-owned adjustments are separated from RQG-managed files so later template versions can update without overwriting downstream rules.
+- The central fleet workflow now requests automatic completion after every successful update preparation.
+
+### Security
+
+- Repository rules remain declarative and cannot execute commands or change GitHub permissions.
+- Automatic merge remains governed by each downstream repository's required checks and branch rules.
+- The GitHub App retains narrowly scoped Contents, Pull Requests, and Metadata permissions; Administration access is not required.
+
 ## 1.1.0-dev.1 - 2026-09-20
 
 ### Added

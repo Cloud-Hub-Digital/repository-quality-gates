@@ -46,6 +46,7 @@ $rootOutput = @(& git -C $inputPath rev-parse --show-toplevel 2>&1)
 if ($LASTEXITCODE -ne 0) { throw 'The target is not inside a Git repository.' }
 $repositoryRoot = [IO.Path]::GetFullPath(($rootOutput | Select-Object -First 1).Trim())
 $statePath = Join-Path $repositoryRoot '.repository-quality-gates.json'
+$rulesPath = Join-Path $repositoryRoot '.repository-quality-gates.local.json'
 $deploymentTool = Join-Path ([IO.Path]::GetFullPath($TemplateRoot)) 'scripts\Invoke-RepositoryQualityGates.ps1'
 if (-not (Test-Path -LiteralPath $deploymentTool -PathType Leaf)) { throw 'The Repository Quality Gates deployment tool is missing.' }
 
@@ -89,8 +90,10 @@ if ($comparison -gt 0) {
 }
 
 $preservedModules = @()
-if ($state.PSObject.Properties['preservedModules']) {
+$migrateRepositoryRules = $false
+if (-not (Test-Path -LiteralPath $rulesPath -PathType Leaf) -and $state.PSObject.Properties['preservedModules']) {
     $preservedModules = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ })
+    $migrateRepositoryRules = $preservedModules.Count -gt 0
 }
 $arguments = @{
     RepositoryPath = $repositoryRoot
@@ -103,6 +106,7 @@ if ($preservedModules.Count) { $arguments.PreserveExistingModule = $preservedMod
 $previewText = @(& $deploymentTool @arguments) -join [Environment]::NewLine
 $preview = $previewText | ConvertFrom-Json
 $result.selectedModules = @($preview.selectedModules)
+$managedModules = @($preview.managedModules | ForEach-Object { [string]$_ })
 $result.status = 'Available'
 if (-not $Apply) {
     Write-Result $result
@@ -113,15 +117,26 @@ $arguments.Apply = $true
 $applyText = @(& $deploymentTool @arguments) -join [Environment]::NewLine
 $null = $applyText | ConvertFrom-Json
 
+if ($migrateRepositoryRules) {
+    $rules = [ordered]@{
+        schemaVersion = 1
+        modules = [ordered]@{ include = @(); repositoryOwned = @($preservedModules) }
+        secretScanning = [ordered]@{ additionalConfigFiles = @() }
+    }
+    $rulesJson = ($rules | ConvertTo-Json -Depth 6).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"
+    [IO.File]::WriteAllText($rulesPath, $rulesJson, [Text.UTF8Encoding]::new($false))
+}
+
 $powerShellHost = Get-Command pwsh -ErrorAction SilentlyContinue
 if (-not $powerShellHost) { $powerShellHost = Get-Command powershell.exe -ErrorAction Stop }
 $validation = @(
-    @{ Path = 'scripts\Install-Gitleaks.ps1'; Arguments = @() },
-    @{ Path = 'scripts\Test-Secrets.ps1'; Arguments = @('-Mode', 'WorkingTree', '-Repository', $repositoryRoot) },
-    @{ Path = 'scripts\Test-DetectionPolicy.ps1'; Arguments = @() },
-    @{ Path = 'scripts\Test-QualityGateModuleDrift.ps1'; Arguments = @('-RepositoryPath', $repositoryRoot, '-OutputFormat', 'Text') }
+    @{ Module = 'secret-scanning'; Path = 'scripts\Install-Gitleaks.ps1'; Arguments = @() },
+    @{ Module = 'secret-scanning'; Path = 'scripts\Test-Secrets.ps1'; Arguments = @('-Mode', 'WorkingTree', '-Repository', $repositoryRoot) },
+    @{ Module = 'secret-scanning'; Path = 'scripts\Test-DetectionPolicy.ps1'; Arguments = @() },
+    @{ Module = 'module-drift'; Path = 'scripts\Test-QualityGateModuleDrift.ps1'; Arguments = @('-RepositoryPath', $repositoryRoot, '-OutputFormat', 'Text') }
 )
 foreach ($check in $validation) {
+    if ($managedModules -notcontains $check.Module) { continue }
     $checkPath = Join-Path $repositoryRoot $check.Path
     if (-not (Test-Path -LiteralPath $checkPath -PathType Leaf)) { throw "Required validation script is missing: $($check.Path)" }
     $previousPreference = $ErrorActionPreference

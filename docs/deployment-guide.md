@@ -77,19 +77,22 @@ The replaced file is copied beneath the target repository's private Git director
 
 ### Existing Equivalent Module
 
-If an existing workflow already provides a reviewed implementation, preserve it:
+If an existing workflow already provides a reviewed implementation, record that decision in the downstream repository's committed `.repository-quality-gates.local.json` file:
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -PreserveExistingModule secret-scanning -Apply
+```json
+{
+  "schemaVersion": 1,
+  "modules": {
+    "include": [],
+    "repositoryOwned": ["secret-scanning"]
+  },
+  "secretScanning": {
+    "additionalConfigFiles": []
+  }
+}
 ```
 
-Replace `secret-scanning` with the applicable module ID. The command succeeds only when the module is detected and an existing workflow contains matching catalog evidence. Repeat `-PreserveExistingModule` on later updates.
-
-To preserve more than one module, invoke the script from the current PowerShell session and pass a PowerShell array:
-
-```powershell
-& $Tool -RepositoryPath $Repo -PreserveExistingModule @('secret-scanning', 'powershell') -Apply
-```
+Replace `secret-scanning` with the applicable module ID and commit the file to that downstream repository. The command succeeds only when the module is detected or included and an existing workflow contains matching catalog evidence. The deployment tool still accepts `-PreserveExistingModule` for one-off and compatibility use, but automatic updates use the committed repository-owned file.
 
 ### Intentional Duplicate Workflows
 
@@ -254,7 +257,8 @@ The repository must permit GitHub Actions to write repository contents, and bran
 | `-Commit` | Stage only deployment paths, scan staged content, and commit; requires `-Apply` |
 | `-Push` | Scan and push the resulting commit; requires `-Commit` and `-Apply` |
 | `-PruneManaged` | Plan removal of obsolete unchanged managed files |
-| `-PreserveExistingModule` | Keep a detected module's verified existing workflow instead of deploying its payload |
+| `-IncludeModule` | One-off inclusion of a catalogue module; use `.repository-quality-gates.local.json` for persistent automatic updates |
+| `-PreserveExistingModule` | One-off preservation of a detected module's verified existing workflow; use `.repository-quality-gates.local.json` for persistent automatic updates |
 | `-AllowDirtyWorkingTree` | Permit apply-only changes over a pre-existing dirty tree; never permits commit or push |
 | `-AcknowledgeOverlap` | Permit reviewed existing and managed workflows to coexist |
 | `-ConfigureLocalHooks` | Install/verify Gitleaks, record the private policy path, and enable repository hooks; requires `-Apply` and `-PrivateConfigPath` |

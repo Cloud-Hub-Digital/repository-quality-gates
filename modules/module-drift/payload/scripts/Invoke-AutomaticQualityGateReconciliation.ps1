@@ -28,8 +28,11 @@ $arguments = @{
     AcknowledgeOverlap = $true
     OutputFormat = $OutputFormat
 }
-$preservedModules = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ })
-if ($preservedModules.Count) { $arguments.PreserveExistingModule = $preservedModules }
+$rulesPath = Join-Path $repositoryRoot '.repository-quality-gates.local.json'
+if (-not (Test-Path -LiteralPath $rulesPath -PathType Leaf) -and $state.PSObject.Properties['preservedModules']) {
+    $preservedModules = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ })
+    if ($preservedModules.Count) { $arguments.PreserveExistingModule = $preservedModules }
+}
 
 & $toolPath @arguments
 

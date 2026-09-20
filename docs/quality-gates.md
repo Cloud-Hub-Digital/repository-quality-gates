@@ -301,7 +301,8 @@ The catalog defines text markers for each module, such as `dotnet test`, `npm ci
 
 An overlap is evidence for review, not proof that two workflows are equivalent. Apply stops until one of these decisions is made:
 
-- preserve the existing reviewed implementation with `-PreserveExistingModule <module>`;
+- record the existing reviewed implementation in `.repository-quality-gates.local.json` under `modules.repositoryOwned` so future automatic updates preserve it;
+- use `-PreserveExistingModule <module>` only for a one-off or compatibility deployment, then migrate that choice into the repository-owned rules file;
 - keep both checks with `-AcknowledgeOverlap` after confirming duplication is intentional;
 - manually reconcile or remove the existing workflow, then preview again.
 
