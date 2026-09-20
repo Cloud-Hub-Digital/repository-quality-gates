@@ -12,237 +12,237 @@
     {
       "path": ".githooks/pre-commit",
       "module": "secret-scanning",
-      "sha256": "92c9c24afeb1afe833384e8b2fe1f9fafac135193c97a0306a09983ec8e652a8"
+      "sha256": "8204233bee2cca6144ddc3f4976759094eee713889ebce1f53b8af7d4c1f7487"
     },
     {
       "path": ".githooks/pre-push",
       "module": "secret-scanning",
-      "sha256": "4a20602b0c9b890ca993997ccdba35c8b3a040916e46594ad59dc68047af37b2"
+      "sha256": "5ec998f1c80834ad31c8a5af977f66492fb0dc730b7fbe19c9306ae939680221"
     },
     {
       "path": ".github/workflows/quality-documentation.yml",
       "module": "documentation",
-      "sha256": "f05a230adf71b3867b3607c983653274b5f8bc336e4555fbaf5cdcb6f0de45c3"
+      "sha256": "483caf906c9fa890ade69aa67f313a1361690e2d120d53ed1d3325a1bd43225e"
     },
     {
       "path": ".github/workflows/quality-module-drift.yml",
       "module": "module-drift",
-      "sha256": "6cce7009ddb70da8d02045c0bbbfec362ce93cd40f393f93bcd5b8aed142a050"
+      "sha256": "a8dacfad88e886563d717efc3fdc9fbc6fa5724517f9b77d61a16f011d214445"
     },
     {
       "path": ".github/workflows/quality-powershell.yml",
       "module": "powershell",
-      "sha256": "35d600157c3067625c205c77a87d21d6bb66abc491280ddb5b03e39f879b18b8"
+      "sha256": "80b483157c932ec4ee0677e602210149bca25551662ce0859d03beecde30fc76"
     },
     {
       "path": ".github/workflows/secret-scanning.yml",
       "module": "secret-scanning",
-      "sha256": "bde3015d33707e3f1a529441f2e2a123b85baec9956aa2a21a361df3a6911ca5"
+      "sha256": "87a9409e5df2555e8f7cbbbed34741e098e054a440b8df6d5d060b20822e0220"
     },
     {
       "path": ".gitleaks.toml",
       "module": "secret-scanning",
-      "sha256": "89959bb386284925477919912cbd1cc7f2cbf17aa1dfaaeeeb8f1978916ac875"
+      "sha256": "87c04c6373482deafc16c3949adda715ecc5e0e0263ff3ba572f369cd275a823"
     },
     {
       "path": ".rqg/template/modules/catalog.json",
       "module": "module-drift",
-      "sha256": "61483798b015ddc4a8818e74b2e8fe815e1568d5d493d68ef43a52099b6292bd"
+      "sha256": "656e6888b29d5cba6c75222278e30d6bf77209311dee0b49689103558171bbd1"
     },
     {
       "path": ".rqg/template/modules/documentation/payload/.github/workflows/quality-documentation.yml",
       "module": "module-drift",
-      "sha256": "f05a230adf71b3867b3607c983653274b5f8bc336e4555fbaf5cdcb6f0de45c3"
+      "sha256": "483caf906c9fa890ade69aa67f313a1361690e2d120d53ed1d3325a1bd43225e"
     },
     {
       "path": ".rqg/template/modules/dotnet/payload/.github/workflows/quality-dotnet.yml",
       "module": "module-drift",
-      "sha256": "8941fb4222e06c68846d74a94cb1c89005789e1b9a2b3dfd420f9f0af22b4166"
+      "sha256": "1fc6bd86b5ee4cd443ab116694a13ba5bd9b5fa75d493ea013ee99e349884521"
     },
     {
       "path": ".rqg/template/modules/go/payload/.github/workflows/quality-go.yml",
       "module": "module-drift",
-      "sha256": "2173a825a468b0617d62fb4a65f065788496de33a91268b04edfacee9fee558a"
+      "sha256": "dcfc00d4931b86c31eaecf7b2d16412a5e98fcbb73f89928afd25d0bcb222e59"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/.github/workflows/quality-module-drift.yml",
       "module": "module-drift",
-      "sha256": "6cce7009ddb70da8d02045c0bbbfec362ce93cd40f393f93bcd5b8aed142a050"
+      "sha256": "a8dacfad88e886563d717efc3fdc9fbc6fa5724517f9b77d61a16f011d214445"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/scripts/Invoke-AutomaticQualityGateReconciliation.ps1",
       "module": "module-drift",
-      "sha256": "a17cc020da711265a9d0723e24bd8d865ddd85da70a59036e059813c2bf6522b"
+      "sha256": "0967c72cf2971819ade6c12af4bab930af30eea5dab3f82e422e07673c3cb80b"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/scripts/RepositoryQualityGates.Detection.ps1",
       "module": "module-drift",
-      "sha256": "241a78eea9bbf8e7771c32b180275b6f41de03f259a80915d474d0f2bc9e249e"
+      "sha256": "697f73ec666cf56343a1af8c88f45d3df2c29e928988bfd33b2d60a434baee87"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/scripts/Test-QualityGateModuleDrift.ps1",
       "module": "module-drift",
-      "sha256": "4ba551d8f4a61df01212e7f54073d607768de6f3eec90f69fe15390249f1475c"
+      "sha256": "9d19e4e0c4737d1e54258f381623346e3850021088ddd4a1ac6045c50925669a"
     },
     {
       "path": ".rqg/template/modules/node/payload/.github/workflows/quality-node.yml",
       "module": "module-drift",
-      "sha256": "d06aaa8ef6e78d10d33d72802772d590b9ea137200693d9b69db6fd53d8a7463"
+      "sha256": "ef12d247ab36c71032b9412c591afb206dbbc718ea42a72bddd7e2ddae73bddb"
     },
     {
       "path": ".rqg/template/modules/php/payload/.github/workflows/quality-php.yml",
       "module": "module-drift",
-      "sha256": "7fa41f801246b5a44035964a1981bc8d4ecdc4c42cccbd584e8c032925e9621d"
+      "sha256": "3edab4db967c56ca7814d2b714b9a6b2b511f498fcec71d4060d27c1b411a95e"
     },
     {
       "path": ".rqg/template/modules/platformio/payload/.github/workflows/quality-platformio.yml",
       "module": "module-drift",
-      "sha256": "d14e86394ad10f2c0d20591f3a609a39d08cbea39a1397ef5babe51767f8e14b"
+      "sha256": "dc2c1e3e7d0fcb1f4bd3371233128438aed62efe7e04f08643b7b0efbb97ee8c"
     },
     {
       "path": ".rqg/template/modules/powershell/payload/.github/workflows/quality-powershell.yml",
       "module": "module-drift",
-      "sha256": "35d600157c3067625c205c77a87d21d6bb66abc491280ddb5b03e39f879b18b8"
+      "sha256": "80b483157c932ec4ee0677e602210149bca25551662ce0859d03beecde30fc76"
     },
     {
       "path": ".rqg/template/modules/python/payload/.github/workflows/quality-python.yml",
       "module": "module-drift",
-      "sha256": "e9df438f5d57246fa58d643e5fe9708ab07fe1dbbd77c64796255cf96ac881c2"
+      "sha256": "83903308760f40158f0e7f3a990d98c1a14b83d0ad4b85825552a2cf7613d061"
     },
     {
       "path": ".rqg/template/modules/shell/payload/.github/workflows/quality-shell.yml",
       "module": "module-drift",
-      "sha256": "099aae7215ca639911ab90de23e87b4652cab834b3c1ea2e16147361168a3803"
+      "sha256": "d9e11ab6560bc858c86313b0110ec7119db8f69e57faea347da01fa60c704715"
     },
     {
       "path": ".rqg/template/scripts/Invoke-RepositoryQualityGates.ps1",
       "module": "module-drift",
-      "sha256": "f2e97796b425bc41d1a30427091ebd1cc4996d1f484abeacc7921f74c052e8b0"
+      "sha256": "2e3946fb49c8a966473ff74ade29a2b74949ec00a043b43b606d2ed296758551"
     },
     {
       "path": ".rqg/template/template/.githooks/pre-commit",
       "module": "module-drift",
-      "sha256": "92c9c24afeb1afe833384e8b2fe1f9fafac135193c97a0306a09983ec8e652a8"
+      "sha256": "8204233bee2cca6144ddc3f4976759094eee713889ebce1f53b8af7d4c1f7487"
     },
     {
       "path": ".rqg/template/template/.githooks/pre-push",
       "module": "module-drift",
-      "sha256": "4a20602b0c9b890ca993997ccdba35c8b3a040916e46594ad59dc68047af37b2"
+      "sha256": "5ec998f1c80834ad31c8a5af977f66492fb0dc730b7fbe19c9306ae939680221"
     },
     {
       "path": ".rqg/template/template/.github/workflows/secret-scanning.yml",
       "module": "module-drift",
-      "sha256": "bde3015d33707e3f1a529441f2e2a123b85baec9956aa2a21a361df3a6911ca5"
+      "sha256": "87a9409e5df2555e8f7cbbbed34741e098e054a440b8df6d5d060b20822e0220"
     },
     {
       "path": ".rqg/template/template/.gitignore.secret-scanning.fragment",
       "module": "module-drift",
-      "sha256": "2f0830888513bdd1443b57e0d5be72c73b190d86f9e66597a31ec195abf7affd"
+      "sha256": "60eb640091b67beaf009e337035d16e0f3c10a8ffd8665157d53f8d73ce70cbb"
     },
     {
       "path": ".rqg/template/template/.gitleaks.toml",
       "module": "module-drift",
-      "sha256": "89959bb386284925477919912cbd1cc7f2cbf17aa1dfaaeeeb8f1978916ac875"
+      "sha256": "87c04c6373482deafc16c3949adda715ecc5e0e0263ff3ba572f369cd275a823"
     },
     {
       "path": ".rqg/template/template/scripts/Configure-SecretScanning.ps1",
       "module": "module-drift",
-      "sha256": "274992c067e0ba3e9b8967a81d9dbc032700cbca5aba6e05d2641d3de14e77f9"
+      "sha256": "d863ac439a050b23cfb84798a5fc5d847234abba5aef5eb1ab41bc9ab8340fd0"
     },
     {
       "path": ".rqg/template/template/scripts/gitleaks-lock.json",
       "module": "module-drift",
-      "sha256": "57f5407c9d150918315d4ea30df027021bcf2602fb5d31088916fbf0afa52c97"
+      "sha256": "1ad2300095de8c2bdaec2cff6a345bd66de38afac52e8c4156d9d613f4f8036a"
     },
     {
       "path": ".rqg/template/template/scripts/Install-GitHooks.ps1",
       "module": "module-drift",
-      "sha256": "d31b4927808d40b1b66c69c9144ee7835d7658c22784aca9b4451b61c31f3a0a"
+      "sha256": "451052e68e2b726be2ee819246b947c208a75e0063933f3225bd9d67259b6ef0"
     },
     {
       "path": ".rqg/template/template/scripts/Install-Gitleaks.ps1",
       "module": "module-drift",
-      "sha256": "b5a766f5f3b4722c3376d0fb1aa7c4d1772f863020cd4f52452e57431653b67e"
+      "sha256": "cab4c1e17a97e41f252ec32ae04f4ff93ee38729fdcd9e9c4f99ae70220cf0a0"
     },
     {
       "path": ".rqg/template/template/scripts/Test-DetectionPolicy.ps1",
       "module": "module-drift",
-      "sha256": "1e62050f9580009c198ddb85e49a236c4d425ee29847034d9fd362c69f373555"
+      "sha256": "f766a098ee331242cbf712822addf852a9611d17bde1dc99ff3d2c7f3fe57e4a"
     },
     {
       "path": ".rqg/template/template/scripts/Test-MarkdownAttribution.ps1",
       "module": "module-drift",
-      "sha256": "b02a71bdc61c847c6c9649a0c5d8f62e206ace3098401ed828caacb2e97df081"
+      "sha256": "48899c7c4775e51f79eb707bd9b5eebe95fe7984240609d2bffddbe27ab07313"
     },
     {
       "path": ".rqg/template/template/scripts/Test-Secrets.ps1",
       "module": "module-drift",
-      "sha256": "03e215bda17bf0b40577b640574e7b37fd0340d009ec0eabfafd63bb4fa82b87"
+      "sha256": "7e585dd4f3b1d9a7d280042750d4fbe0af46e6a79ceb9bddd09ed7a615310505"
     },
     {
       "path": ".rqg/template/template/security/gitleaks-portable.toml",
       "module": "module-drift",
-      "sha256": "0c0c21059ee3408c98003ba472961e89876ea5d984e5a5fea8d456a50aa24045"
+      "sha256": "99fb6a12c55d91a7e43d0a8ee024de519a3c0df799b3609dfce6772fbcb6ec59"
     },
     {
       "path": "scripts/Configure-SecretScanning.ps1",
       "module": "secret-scanning",
-      "sha256": "274992c067e0ba3e9b8967a81d9dbc032700cbca5aba6e05d2641d3de14e77f9"
+      "sha256": "d863ac439a050b23cfb84798a5fc5d847234abba5aef5eb1ab41bc9ab8340fd0"
     },
     {
       "path": "scripts/gitleaks-lock.json",
       "module": "secret-scanning",
-      "sha256": "57f5407c9d150918315d4ea30df027021bcf2602fb5d31088916fbf0afa52c97"
+      "sha256": "1ad2300095de8c2bdaec2cff6a345bd66de38afac52e8c4156d9d613f4f8036a"
     },
     {
       "path": "scripts/Install-GitHooks.ps1",
       "module": "secret-scanning",
-      "sha256": "d31b4927808d40b1b66c69c9144ee7835d7658c22784aca9b4451b61c31f3a0a"
+      "sha256": "451052e68e2b726be2ee819246b947c208a75e0063933f3225bd9d67259b6ef0"
     },
     {
       "path": "scripts/Install-Gitleaks.ps1",
       "module": "secret-scanning",
-      "sha256": "b5a766f5f3b4722c3376d0fb1aa7c4d1772f863020cd4f52452e57431653b67e"
+      "sha256": "cab4c1e17a97e41f252ec32ae04f4ff93ee38729fdcd9e9c4f99ae70220cf0a0"
     },
     {
       "path": "scripts/Invoke-AutomaticQualityGateReconciliation.ps1",
       "module": "module-drift",
-      "sha256": "a17cc020da711265a9d0723e24bd8d865ddd85da70a59036e059813c2bf6522b"
+      "sha256": "0967c72cf2971819ade6c12af4bab930af30eea5dab3f82e422e07673c3cb80b"
     },
     {
       "path": "scripts/RepositoryQualityGates.Detection.ps1",
       "module": "module-drift",
-      "sha256": "241a78eea9bbf8e7771c32b180275b6f41de03f259a80915d474d0f2bc9e249e"
+      "sha256": "697f73ec666cf56343a1af8c88f45d3df2c29e928988bfd33b2d60a434baee87"
     },
     {
       "path": "scripts/rqg-module-catalog.json",
       "module": "module-drift",
-      "sha256": "61483798b015ddc4a8818e74b2e8fe815e1568d5d493d68ef43a52099b6292bd"
+      "sha256": "656e6888b29d5cba6c75222278e30d6bf77209311dee0b49689103558171bbd1"
     },
     {
       "path": "scripts/Test-DetectionPolicy.ps1",
       "module": "secret-scanning",
-      "sha256": "1e62050f9580009c198ddb85e49a236c4d425ee29847034d9fd362c69f373555"
+      "sha256": "f766a098ee331242cbf712822addf852a9611d17bde1dc99ff3d2c7f3fe57e4a"
     },
     {
       "path": "scripts/Test-MarkdownAttribution.ps1",
       "module": "secret-scanning",
-      "sha256": "b02a71bdc61c847c6c9649a0c5d8f62e206ace3098401ed828caacb2e97df081"
+      "sha256": "48899c7c4775e51f79eb707bd9b5eebe95fe7984240609d2bffddbe27ab07313"
     },
     {
       "path": "scripts/Test-QualityGateModuleDrift.ps1",
       "module": "module-drift",
-      "sha256": "4ba551d8f4a61df01212e7f54073d607768de6f3eec90f69fe15390249f1475c"
+      "sha256": "9d19e4e0c4737d1e54258f381623346e3850021088ddd4a1ac6045c50925669a"
     },
     {
       "path": "scripts/Test-Secrets.ps1",
       "module": "secret-scanning",
-      "sha256": "03e215bda17bf0b40577b640574e7b37fd0340d009ec0eabfafd63bb4fa82b87"
+      "sha256": "7e585dd4f3b1d9a7d280042750d4fbe0af46e6a79ceb9bddd09ed7a615310505"
     },
     {
       "path": "security/gitleaks-portable.toml",
       "module": "secret-scanning",
-      "sha256": "0c0c21059ee3408c98003ba472961e89876ea5d984e5a5fea8d456a50aa24045"
+      "sha256": "99fb6a12c55d91a7e43d0a8ee024de519a3c0df799b3609dfce6772fbcb6ec59"
     }
   ],
   "gitIgnoreLines": [
