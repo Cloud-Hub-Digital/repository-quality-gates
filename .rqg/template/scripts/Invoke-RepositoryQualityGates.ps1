@@ -21,7 +21,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$productVersion = '1.1.0'
+$productVersion = '1.2.0-dev.1'
 $productRepository = 'https://github.com/terryrogers/repository-quality-gates'
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $detectionLibraryPath = Join-Path $toolRoot 'modules\module-drift\payload\scripts\RepositoryQualityGates.Detection.ps1'
@@ -144,7 +144,10 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
     try { $rules = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
     catch { throw 'The .repository-quality-gates.local.json file is invalid.' }
     foreach ($property in @($rules.PSObject.Properties.Name)) {
-        if ($property -notin @('schemaVersion', 'modules', 'secretScanning')) { throw "Unsupported repository-rules property: $property" }
+        if ($property -notin @('schemaVersion', 'automaticEnrollment', 'modules', 'secretScanning')) { throw "Unsupported repository-rules property: $property" }
+    }
+    if ($rules.PSObject.Properties['automaticEnrollment'] -and $rules.automaticEnrollment -isnot [bool]) {
+        throw 'The repository-rules automaticEnrollment property must be true or false.'
     }
     if ($rules.schemaVersion -ne 1) { throw 'The repository-rules schema is unsupported.' }
     $moduleRules = if ($rules.PSObject.Properties['modules']) { $rules.modules } else { $null }
@@ -165,6 +168,10 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
     $catalogIds = @($Catalog.modules | ForEach-Object { [string]$_.id })
     foreach ($moduleId in @($include + $repositoryOwned | Sort-Object -Unique)) {
         if ($moduleId -notin $catalogIds) { throw "Repository rules reference an unknown module: $moduleId" }
+    }
+    $universalRepositoryOwned = @($repositoryOwned | Where-Object { $_ -in @('secret-scanning', 'module-drift') })
+    if ($universalRepositoryOwned.Count) {
+        throw "Universal modules cannot be repository-owned: $($universalRepositoryOwned -join ', ')"
     }
     $overlap = @($include | Where-Object { $_ -in $repositoryOwned })
     if ($overlap.Count) { throw "Repository rules cannot both include and mark a module repository-owned: $($overlap -join ', ')" }
@@ -242,6 +249,10 @@ foreach ($includedId in $includedIds) {
 $applicableIds = @($detectedIds + $includedIds | Sort-Object -Unique)
 $applicableModules = @($catalog.modules | Where-Object { [string]$_.id -in $applicableIds })
 $preservedIds = @(@($PreserveExistingModule) + @($repositoryRules.repositoryOwnedModules) | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique)
+$universalPreservedIds = @($preservedIds | Where-Object { $_ -in @('secret-scanning', 'module-drift') })
+if ($universalPreservedIds.Count) {
+    throw "Universal modules cannot be preserved outside RQG management: $($universalPreservedIds -join ', ')"
+}
 foreach ($preservedId in $preservedIds) {
     if ($preservedId -notin $applicableIds) { throw "Cannot preserve module '$preservedId' because it is not applicable to this repository." }
 }
