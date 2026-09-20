@@ -37,3 +37,6 @@ jobs:
       - name: Run Automatic Update Tests
         shell: powershell
         run: ./tests/Update-RepositoryQualityGates.Tests.ps1
+      - name: Run Fleet Discovery And Enrolment Tests
+        shell: powershell
+        run: ./tests/Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1

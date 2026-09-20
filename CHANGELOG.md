@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0-dev.1 - 2026-09-20
+
+- Added automatic enrolment for unmanaged repositories visible to the scoped GitHub App.
+- Added the repository-owned `automaticEnrollment: false` opt-out in `.repository-quality-gates.local.json`; absence defaults to enrolment.
+- Reused the temporary branch, open-pull-request deferral, validation, auto-merge, and cleanup controls for initial enrolment.
+- Require exact branch, base, repository-origin, and provenance-marker evidence before expired RQG pull requests are removed.
+- Reject repository-owned replacement of the universal secret-scanning and module-drift modules.
+- Added an explicit `-Enroll` mode to the single-repository updater while preserving the default skip for unmanaged repositories.
+- Prevented unattended initial enrolment from silently accepting undeclared workflow overlaps.
+- Enabled the daily fleet workflow to discover and enrol new repositories automatically unless they explicitly opt out.
+
 ## 1.1.0 - 2026-09-20
 
 ### Added

@@ -75,7 +75,7 @@ If a repository already has a reviewed implementation of a detected module, pres
   "schemaVersion": 1,
   "modules": {
     "include": [],
-    "repositoryOwned": ["secret-scanning"]
+    "repositoryOwned": ["documentation"]
   },
   "secretScanning": {
     "additionalConfigFiles": []
@@ -83,7 +83,7 @@ If a repository already has a reviewed implementation of a detected module, pres
 }
 ```
 
-Preservation is allowed only when an existing workflow contains a catalog overlap marker for that module. The existing files remain unmanaged and unchanged, and the matching evidence appears in the JSON preview. `.repository-quality-gates.local.json` remains owned by the downstream repository and is never copied or replaced by RQG. The managed `.repository-quality-gates.json` file records the resolved snapshot for drift checking.
+Preservation is allowed only for non-universal modules when an existing workflow contains a catalog overlap marker for that module. The universal `secret-scanning` and `module-drift` modules always remain RQG-managed. Other existing module files remain unmanaged and unchanged, and the matching evidence appears in the JSON preview. `.repository-quality-gates.local.json` remains owned by the downstream repository and is never copied or replaced by RQG. The managed `.repository-quality-gates.json` file records the resolved snapshot for drift checking.
 
 If an existing `.gitignore` pattern matches a required managed file, the preview reports an exact negation such as `!/scripts/Test-Secrets.ps1`. Apply merges only those exact exceptions and then verifies every managed file is visible to Git. Deployment stops if a parent-directory rule still prevents a required file from being tracked.
 

@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The current stable template version written to managed state is `1.1.0`.
+The current development template version written to managed state is `1.2.0-dev.1`. The latest stable release remains `1.1.0`.
 
-Version `1.1.0` adds fully automatic downstream template updates with repository-owned adjustment files, open-pull-request deferral, temporary update branches, and required-check-gated auto-merge. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.2.0-dev.1` adds automatic enrolment for every unmanaged repository visible to the scoped GitHub App unless its repository-owned rules file explicitly sets `automaticEnrollment` to `false`. Version `1.1.0` added fully automatic downstream template updates with repository-owned adjustment files, open-pull-request deferral, temporary update branches, and required-check-gated auto-merge. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## What It Provides
 
@@ -77,6 +77,7 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `template` | Universal secret-scanning payload retained for compatibility |
 | `tests/Invoke-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for selection, deployment, conflict, recovery, preservation, and idempotence behavior |
 | `tests/Update-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for version comparison, safe updates, skips, and managed-file conflicts |
+| `tests/Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1` | Synthetic fleet-discovery suite for automatic enrolment, repository opt-out, open-pull-request deferral, and workflow activation |
 | `scripts/Update-RepositoryQualityGates.ps1` | Preview or apply a newer template to one managed repository |
 | `scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1` | Discover GitHub App repositories, open update pull requests, and enable required-check-gated auto-merge |
 | `docs/quality-gates.md` | Detailed gate and module-selection reference |
@@ -118,6 +119,7 @@ Run the template regression suite from this repository:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGates.Tests.ps1"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Update-RepositoryQualityGates.Tests.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1"
 ```
 
 The regression suite uses generated synthetic repositories only and includes automatic Python-to-PHP reconciliation. It does not use real credentials or private identifier values.

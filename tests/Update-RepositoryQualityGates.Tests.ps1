@@ -12,8 +12,9 @@ function Assert-True([bool]$Condition, [string]$Message) {
     $script:passed++
 }
 
-function Invoke-Update([string]$RepositoryPath, [switch]$Apply) {
+function Invoke-Update([string]$RepositoryPath, [switch]$Enroll, [switch]$Apply) {
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $updateTool, '-RepositoryPath', $RepositoryPath, '-TemplateRoot', $root, '-OutputFormat', 'Json')
+    if ($Enroll) { $arguments += '-Enroll' }
     if ($Apply) { $arguments += '-Apply' }
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -47,7 +48,7 @@ try {
 
     $statePath = Join-Path $managed '.repository-quality-gates.json'
     $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    $state.templateVersion = '1.0.1'
+    $state.templateVersion = '1.1.0'
     $stateJson = ($state | ConvertTo-Json -Depth 8).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"
     [IO.File]::WriteAllText($statePath, $stateJson, [Text.UTF8Encoding]::new($false))
     Commit-All $managed 'simulate previous stable template'
@@ -63,7 +64,7 @@ try {
     Assert-True ($applyJson.status -eq 'Updated') 'Apply should report an updated repository.'
     Assert-True ($applyJson.changedPaths -contains '.repository-quality-gates.json') 'The update should refresh managed state.'
     $updatedState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    Assert-True ($updatedState.templateVersion -eq '1.1.0') 'Managed state should record the new template version.'
+    Assert-True ($updatedState.templateVersion -eq '1.2.0-dev.1') 'Managed state should record the new template version.'
     Commit-All $managed 'update quality gates'
 
     $current = Invoke-Update $managed
@@ -78,7 +79,7 @@ try {
     Assert-True (($ahead.Output | ConvertFrom-Json).status -eq 'Ahead') 'A newer repository should never be downgraded.'
 
     $aheadState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    $aheadState.templateVersion = '1.0.1'
+    $aheadState.templateVersion = '1.1.0'
     [IO.File]::WriteAllText($statePath, (($aheadState | ConvertTo-Json -Depth 8).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"), [Text.UTF8Encoding]::new($false))
     Commit-All $managed 'restore previous stable template'
     $managedWorkflow = Join-Path $managed '.github\workflows\quality-documentation.yml'
@@ -86,7 +87,7 @@ try {
     $conflict = Invoke-Update $managed -Apply
     Assert-True ($conflict.ExitCode -ne 0) 'A modified managed file should stop the automatic update.'
     Assert-True ((Get-Content -LiteralPath $managedWorkflow -Raw).Contains('# repository-owned change')) 'A failed automatic update must preserve the repository-owned change.'
-    Assert-True ((Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json).templateVersion -eq '1.0.1') 'A failed automatic update must not advance managed state.'
+    Assert-True ((Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json).templateVersion -eq '1.1.0') 'A failed automatic update must not advance managed state.'
 
     $unmanaged = Join-Path $testRoot 'unmanaged'
     New-Item -ItemType Directory -Path $unmanaged | Out-Null
@@ -99,21 +100,47 @@ try {
     Assert-True ($unmanagedResult.ExitCode -eq 0) 'An unmanaged repository should be skipped cleanly.'
     Assert-True (($unmanagedResult.Output | ConvertFrom-Json).status -eq 'Unmanaged') 'An unmanaged repository should report Unmanaged.'
 
+    $enrollmentPreview = Invoke-Update $unmanaged -Enroll
+    Assert-True ($enrollmentPreview.ExitCode -eq 0) "An explicitly enrolled unmanaged repository should accept an enrolment preview. $($enrollmentPreview.Output)"
+    $enrollmentPreviewJson = $enrollmentPreview.Output | ConvertFrom-Json
+    Assert-True ($enrollmentPreviewJson.status -eq 'EnrollmentAvailable') 'An explicitly enrolled unmanaged repository should report an available enrolment.'
+    Assert-True ($enrollmentPreviewJson.selectedModules -contains 'secret-scanning') 'Initial enrolment should include the universal secret-scanning module.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $unmanaged '.repository-quality-gates.json'))) 'An enrolment preview must not modify the repository.'
+
+    $enrollmentApply = Invoke-Update $unmanaged -Enroll -Apply
+    Assert-True ($enrollmentApply.ExitCode -eq 0) "An explicitly enrolled unmanaged repository should enrol successfully. $($enrollmentApply.Output)"
+    $enrollmentApplyJson = $enrollmentApply.Output | ConvertFrom-Json
+    Assert-True ($enrollmentApplyJson.status -eq 'Enrolled') 'Applied initial enrolment should report Enrolled.'
+    $enrolledState = Get-Content -LiteralPath (Join-Path $unmanaged '.repository-quality-gates.json') -Raw | ConvertFrom-Json
+    Assert-True ($enrolledState.templateVersion -eq '1.2.0-dev.1') 'Initial enrolment should record the current template version.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $unmanaged '.github\workflows\secret-scanning.yml')) 'Initial enrolment should deploy the selected quality-gate workflows.'
+
+    $overlap = Join-Path $testRoot 'overlap'
+    New-Item -ItemType Directory -Path (Join-Path $overlap '.github\workflows') -Force | Out-Null
+    & git -C $overlap init -q
+    & git -C $overlap config user.name 'Fixture'
+    & git -C $overlap config user.email 'fixture@example.invalid'
+    "name: Existing Security`nsteps:`n  - run: gitleaks detect" | Set-Content -LiteralPath (Join-Path $overlap '.github\workflows\security.yml') -Encoding utf8
+    Commit-All $overlap 'existing overlapping workflow'
+    $overlapEnrollment = Invoke-Update $overlap -Enroll -Apply
+    Assert-True ($overlapEnrollment.ExitCode -ne 0) 'Automatic enrolment should stop when an undeclared existing workflow overlaps a selected module.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $overlap '.repository-quality-gates.json'))) 'Failed automatic enrolment must not create managed state.'
+
     $legacyPreserved = Join-Path $testRoot 'legacy-preserved'
     New-Item -ItemType Directory -Path $legacyPreserved | Out-Null
     & git -C $legacyPreserved init -q
     & git -C $legacyPreserved config user.name 'Fixture'
     & git -C $legacyPreserved config user.email 'fixture@example.invalid'
     New-Item -ItemType Directory -Path (Join-Path $legacyPreserved '.github\workflows') -Force | Out-Null
-    "name: Existing Security`nsteps:`n  - run: gitleaks detect" | Set-Content -LiteralPath (Join-Path $legacyPreserved '.github\workflows\ci.yml') -Encoding utf8
-    'title = "Existing Project Policy"' | Set-Content -LiteralPath (Join-Path $legacyPreserved '.gitleaks.toml') -Encoding utf8
+    "name: Existing Documentation Check`nsteps:`n  - run: markdownlint README.md" | Set-Content -LiteralPath (Join-Path $legacyPreserved '.github\workflows\ci.yml') -Encoding utf8
+    '# Legacy Preservation Fixture' | Set-Content -LiteralPath (Join-Path $legacyPreserved 'README.md') -Encoding utf8
     Commit-All $legacyPreserved 'initial legacy preservation fixture'
-    $null = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deploymentTool -RepositoryPath $legacyPreserved -Apply -PreserveExistingModule secret-scanning -OutputFormat Json 2>&1)
+    $null = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deploymentTool -RepositoryPath $legacyPreserved -Apply -PreserveExistingModule documentation -OutputFormat Json 2>&1)
     Assert-True ($LASTEXITCODE -eq 0) 'The legacy preservation fixture should accept its initial deployment.'
     Commit-All $legacyPreserved 'install legacy preserved quality gates'
     $legacyStatePath = Join-Path $legacyPreserved '.repository-quality-gates.json'
     $legacyState = Get-Content -LiteralPath $legacyStatePath -Raw | ConvertFrom-Json
-    $legacyState.templateVersion = '1.0.1'
+    $legacyState.templateVersion = '1.1.0'
     [IO.File]::WriteAllText($legacyStatePath, (($legacyState | ConvertTo-Json -Depth 8).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"), [Text.UTF8Encoding]::new($false))
     Commit-All $legacyPreserved 'simulate legacy stable template'
     $legacyUpdate = Invoke-Update $legacyPreserved -Apply
@@ -121,7 +148,7 @@ try {
     $migratedRulesPath = Join-Path $legacyPreserved '.repository-quality-gates.local.json'
     Assert-True (Test-Path -LiteralPath $migratedRulesPath) 'The updater should create a downstream rules file for legacy preserved modules.'
     $migratedRules = Get-Content -LiteralPath $migratedRulesPath -Raw | ConvertFrom-Json
-    Assert-True ($migratedRules.modules.repositoryOwned -contains 'secret-scanning') 'The migrated rules file should retain the repository-owned module decision.'
+    Assert-True ($migratedRules.modules.repositoryOwned -contains 'documentation') 'The migrated rules file should retain the repository-owned module decision.'
     $migratedState = Get-Content -LiteralPath $legacyStatePath -Raw | ConvertFrom-Json
     Assert-True (@($migratedState.files | Where-Object path -eq '.repository-quality-gates.local.json').Count -eq 0) 'The migrated downstream rules file must remain outside managed state.'
 
@@ -137,7 +164,7 @@ try {
     Commit-All $localRules 'install quality gates'
     $localStatePath = Join-Path $localRules '.repository-quality-gates.json'
     $localState = Get-Content -LiteralPath $localStatePath -Raw | ConvertFrom-Json
-    $localState.templateVersion = '1.0.1'
+    $localState.templateVersion = '1.1.0'
     [IO.File]::WriteAllText($localStatePath, (($localState | ConvertTo-Json -Depth 8).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"), [Text.UTF8Encoding]::new($false))
     $localRulesPath = Join-Path $localRules '.repository-quality-gates.local.json'
     $repositoryPolicyPath = Join-Path $localRules 'security\gitleaks-repository.toml'
@@ -155,6 +182,7 @@ keywords = ["RQG_REPO_ONLY_"]
     $rulesText = @'
 {
   "schemaVersion": 1,
+  "automaticEnrollment": false,
   "modules": {
     "include": ["php"],
     "repositoryOwned": []

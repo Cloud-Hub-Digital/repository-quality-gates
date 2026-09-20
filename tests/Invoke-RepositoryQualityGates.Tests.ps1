@@ -221,14 +221,14 @@ try {
 
     $preserved = New-Fixture 'preserved-module'
     New-Item -ItemType Directory -Path (Join-Path $preserved '.github\workflows') -Force | Out-Null
-    "name: Existing Security`nsteps:`n  - run: gitleaks detect" | Set-Content -LiteralPath (Join-Path $preserved '.github\workflows\ci.yml') -Encoding utf8
-    'title = "Existing Project Policy"' | Set-Content -LiteralPath (Join-Path $preserved '.gitleaks.toml') -Encoding utf8
+    "name: Existing Documentation Check`nsteps:`n  - run: markdownlint README.md" | Set-Content -LiteralPath (Join-Path $preserved '.github\workflows\ci.yml') -Encoding utf8
+    '# Fixture' | Set-Content -LiteralPath (Join-Path $preserved 'README.md') -Encoding utf8
     $preservedRulesText = @'
 {
   "schemaVersion": 1,
   "modules": {
     "include": [],
-    "repositoryOwned": ["secret-scanning"]
+    "repositoryOwned": ["documentation"]
   },
   "secretScanning": {
     "additionalConfigFiles": []
@@ -240,22 +240,56 @@ try {
     $preservePreview = Invoke-Tool $preserved @('-OutputFormat', 'Json')
     Assert-True ($preservePreview.ExitCode -eq 0) 'Preview should accept an applicable preserved module.'
     $preserveJson = $preservePreview.Output | ConvertFrom-Json
-    Assert-True ($preserveJson.selectedModules -contains 'secret-scanning') 'A preserved module should remain detected.'
-    Assert-True ($preserveJson.managedModules -notcontains 'secret-scanning') 'A preserved module should not deploy template payload files.'
+    Assert-True ($preserveJson.selectedModules -contains 'documentation') 'A preserved module should remain detected.'
+    Assert-True ($preserveJson.managedModules -notcontains 'documentation') 'A preserved module should not deploy template payload files.'
     Assert-True (@($preserveJson.preservationEvidence).Count -gt 0) 'A preserved module should report matching workflow evidence.'
-    Assert-True (@($preserveJson.plan | Where-Object path -eq '.gitleaks.toml').Count -eq 0) 'A preserved module should not conflict with its existing project policy.'
+    Assert-True (@($preserveJson.plan | Where-Object path -eq '.github/workflows/quality-documentation.yml').Count -eq 0) 'A preserved module should not deploy the central workflow over its existing implementation.'
     Assert-True ($preserveJson.repositoryRulesFile -eq '.repository-quality-gates.local.json') 'Preview should report the downstream repository rules file.'
     $preserveApply = Invoke-Tool $preserved @('-Apply', '-OutputFormat', 'Json')
     Assert-True ($preserveApply.ExitCode -eq 0) 'Apply should retain a verified existing module without requiring overlap acknowledgement.'
     $preservedState = Get-Content -LiteralPath (Join-Path $preserved '.repository-quality-gates.json') -Raw | ConvertFrom-Json
-    Assert-True ($preservedState.preservedModules -contains 'secret-scanning') 'Managed state should record preserved existing modules.'
+    Assert-True ($preservedState.preservedModules -contains 'documentation') 'Managed state should record preserved existing modules.'
     Assert-True (@($preservedState.files | Where-Object path -eq '.repository-quality-gates.local.json').Count -eq 0) 'The downstream repository rules file must never become managed state.'
+
+    $universalOwned = New-Fixture 'universal-repository-owned'
+    New-Item -ItemType Directory -Path (Join-Path $universalOwned '.github\workflows') -Force | Out-Null
+    "name: Existing Security`nsteps:`n  - run: gitleaks detect" | Set-Content -LiteralPath (Join-Path $universalOwned '.github\workflows\ci.yml') -Encoding utf8
+    $universalOwnedRulesText = @'
+{
+  "schemaVersion": 1,
+  "modules": {
+    "include": [],
+    "repositoryOwned": ["secret-scanning"]
+  },
+  "secretScanning": {
+    "additionalConfigFiles": []
+  }
+}
+'@
+    [IO.File]::WriteAllText((Join-Path $universalOwned '.repository-quality-gates.local.json'), $universalOwnedRulesText.Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $universalOwned
+    $universalOwnedPreview = Invoke-Tool $universalOwned @('-OutputFormat', 'Json')
+    Assert-True ($universalOwnedPreview.ExitCode -ne 0) 'Repository rules must not replace a universal quality-gate module.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $universalOwned '.repository-quality-gates.json'))) 'Rejected universal-module ownership must not create managed state.'
+
+    $invalidEnrollmentRule = New-Fixture 'invalid-enrollment-rule'
+    $invalidEnrollmentRulesText = @'
+{
+  "schemaVersion": 1,
+  "automaticEnrollment": "false"
+}
+'@
+    [IO.File]::WriteAllText((Join-Path $invalidEnrollmentRule '.repository-quality-gates.local.json'), $invalidEnrollmentRulesText.Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $invalidEnrollmentRule
+    $invalidEnrollmentPreview = Invoke-Tool $invalidEnrollmentRule @('-OutputFormat', 'Json')
+    Assert-True ($invalidEnrollmentPreview.ExitCode -ne 0) 'The automaticEnrollment repository rule must be a Boolean.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidEnrollmentRule '.repository-quality-gates.json'))) 'An invalid automatic-enrolment rule must not create managed state.'
 
     $unverified = New-Fixture 'unverified-preserved-module'
     'fixture' | Set-Content -LiteralPath (Join-Path $unverified 'README.md') -Encoding ascii
     Commit-Fixture $unverified
     $unverifiedApply = Invoke-Tool $unverified @('-Apply', '-PreserveExistingModule', 'secret-scanning', '-OutputFormat', 'Json')
-    Assert-True ($unverifiedApply.ExitCode -ne 0) 'Apply should reject a preserved module without matching workflow evidence.'
+    Assert-True ($unverifiedApply.ExitCode -ne 0) 'Apply should reject preserving a universal module outside RQG management.'
 
     $ignoredManaged = New-Fixture 'ignored-managed-files'
     [IO.File]::WriteAllText((Join-Path $ignoredManaged '.gitignore'), "*secrets*`n", [Text.UTF8Encoding]::new($false))
@@ -330,7 +364,7 @@ try {
 
     $versionOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.1.0')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.2.0-dev.1')) 'The version interface should report the canonical version.'
 
     Write-Host "$passed assertions passed."
 } finally {

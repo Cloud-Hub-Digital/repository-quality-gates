@@ -2,6 +2,8 @@
 
 This guide applies Repository Quality Gates to a new or existing local Git repository using the prepared PowerShell deployment script.
 
+For GitHub-hosted repositories, version `1.2.0-dev.1` also supports unattended initial enrolment. Every unmanaged repository visible to the scoped RQG GitHub App is eligible by default. To exclude one, commit `.repository-quality-gates.local.json` with `automaticEnrollment` set to `false`. The central daily workflow detects eligible repository contents, selects applicable modules, and enrols them through checked temporary pull requests. See [Automatic Repository Updates](automatic-repository-updates.md).
+
 ## Prerequisites
 
 - Windows PowerShell 5.1 or PowerShell 7.
@@ -84,7 +86,7 @@ If an existing workflow already provides a reviewed implementation, record that 
   "schemaVersion": 1,
   "modules": {
     "include": [],
-    "repositoryOwned": ["secret-scanning"]
+    "repositoryOwned": ["documentation"]
   },
   "secretScanning": {
     "additionalConfigFiles": []
@@ -92,7 +94,7 @@ If an existing workflow already provides a reviewed implementation, record that 
 }
 ```
 
-Replace `secret-scanning` with the applicable module ID and commit the file to that downstream repository. The command succeeds only when the module is detected or included and an existing workflow contains matching catalog evidence. The deployment tool still accepts `-PreserveExistingModule` for one-off and compatibility use, but automatic updates use the committed repository-owned file.
+Replace `documentation` with the applicable non-universal module ID and commit the file to that downstream repository. The command succeeds only when the module is detected or included and an existing workflow contains matching catalog evidence. The universal `secret-scanning` and `module-drift` modules must remain centrally managed and cannot appear in `repositoryOwned`. The deployment tool still accepts `-PreserveExistingModule` for one-off and compatibility use, but automatic updates use the committed repository-owned file.
 
 ### Intentional Duplicate Workflows
 

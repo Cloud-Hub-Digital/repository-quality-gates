@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][string]$RepositoryPath,
     [string]$TemplateRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$TargetVersion,
+    [switch]$Enroll,
     [switch]$Apply,
     [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text'
 )
@@ -66,48 +67,52 @@ $result = [ordered]@{
     changedPaths = @()
 }
 
-if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
+$isManaged = Test-Path -LiteralPath $statePath -PathType Leaf
+if (-not $isManaged -and -not $Enroll) {
     Write-Result $result
     return
 }
 
-try { $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json }
-catch { throw 'The repository quality-gates state file is invalid.' }
-if (-not $state.PSObject.Properties['templateVersion'] -or -not [string]$state.templateVersion) {
-    throw 'The repository quality-gates state file does not identify its template version.'
-}
-$result.currentVersion = [string]$state.templateVersion
-$comparison = Compare-RqgVersion $result.currentVersion $TargetVersion
-if ($comparison -eq 0) {
-    $result.status = 'Current'
-    Write-Result $result
-    return
-}
-if ($comparison -gt 0) {
-    $result.status = 'Ahead'
-    Write-Result $result
-    return
+$state = $null
+if ($isManaged) {
+    try { $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json }
+    catch { throw 'The repository quality-gates state file is invalid.' }
+    if (-not $state.PSObject.Properties['templateVersion'] -or -not [string]$state.templateVersion) {
+        throw 'The repository quality-gates state file does not identify its template version.'
+    }
+    $result.currentVersion = [string]$state.templateVersion
+    $comparison = Compare-RqgVersion $result.currentVersion $TargetVersion
+    if ($comparison -eq 0) {
+        $result.status = 'Current'
+        Write-Result $result
+        return
+    }
+    if ($comparison -gt 0) {
+        $result.status = 'Ahead'
+        Write-Result $result
+        return
+    }
 }
 
 $preservedModules = @()
 $migrateRepositoryRules = $false
-if (-not (Test-Path -LiteralPath $rulesPath -PathType Leaf) -and $state.PSObject.Properties['preservedModules']) {
-    $preservedModules = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ })
+if ($isManaged -and -not (Test-Path -LiteralPath $rulesPath -PathType Leaf) -and $state.PSObject.Properties['preservedModules']) {
+    $preservedModules = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ -and $_ -notin @('secret-scanning', 'module-drift') })
     $migrateRepositoryRules = $preservedModules.Count -gt 0
 }
 $arguments = @{
     RepositoryPath = $repositoryRoot
     PruneManaged = $true
-    AcknowledgeOverlap = $true
     OutputFormat = 'Json'
 }
+if ($isManaged) { $arguments.AcknowledgeOverlap = $true }
 if ($preservedModules.Count) { $arguments.PreserveExistingModule = $preservedModules }
 
 $previewText = @(& $deploymentTool @arguments) -join [Environment]::NewLine
 $preview = $previewText | ConvertFrom-Json
 $result.selectedModules = @($preview.selectedModules)
 $managedModules = @($preview.managedModules | ForEach-Object { [string]$_ })
-$result.status = 'Available'
+$result.status = if ($isManaged) { 'Available' } else { 'EnrollmentAvailable' }
 if (-not $Apply) {
     Write-Result $result
     return
@@ -150,5 +155,5 @@ foreach ($check in $validation) {
 }
 
 $result.changedPaths = @(& git -C $repositoryRoot status --short | ForEach-Object { ([string]$_).Substring(3) })
-$result.status = 'Updated'
+$result.status = if ($isManaged) { 'Updated' } else { 'Enrolled' }
 Write-Result $result
