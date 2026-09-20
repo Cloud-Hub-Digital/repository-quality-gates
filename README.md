@@ -4,6 +4,8 @@ Repository Quality Gates is a preview-first PowerShell deployment tool for addin
 
 The current stable template version written to managed state is `1.0.1`.
 
+Development version `1.1.0-dev.1` adds automatic template-update pull requests across managed repositories. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+
 ## What It Provides
 
 Every target repository receives the universal secret-scanning and module-drift modules. Additional modules are selected from the repository's tracked and unignored source files:
@@ -73,6 +75,9 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `modules/*/payload` | Module-specific files copied into applicable repositories |
 | `template` | Universal secret-scanning payload retained for compatibility |
 | `tests/Invoke-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for selection, deployment, conflict, recovery, preservation, and idempotence behavior |
+| `tests/Update-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for version comparison, safe updates, skips, and managed-file conflicts |
+| `scripts/Update-RepositoryQualityGates.ps1` | Preview or apply a newer template to one managed repository |
+| `scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1` | Discover GitHub App repositories and open update pull requests for outdated managed repositories |
 | `docs/quality-gates.md` | Detailed gate and module-selection reference |
 | `docs/deployment-guide.md` | End-to-end operator instructions |
 | `docs/module-system.md` | Architecture and managed-file lifecycle reference |
@@ -111,6 +116,7 @@ Run the template regression suite from this repository:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGates.Tests.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Update-RepositoryQualityGates.Tests.ps1"
 ```
 
 The regression suite uses generated synthetic repositories only and includes automatic Python-to-PHP reconciliation. It does not use real credentials or private identifier values.

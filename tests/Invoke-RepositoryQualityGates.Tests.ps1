@@ -111,9 +111,14 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-module-drift.yml')) 'The automatic module-drift workflow should be deployed universally.'
     $moduleDriftWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-module-drift.yml'))
     Assert-True ($moduleDriftWorkflow.Contains("if: github.ref_type == 'branch'")) 'Automatic reconciliation should be restricted to branch references and must not mutate tag checkouts.'
-    Assert-True ($moduleDriftWorkflow.Contains("BaseName -ne 'quality-module-drift'")) 'Post-reconciliation validation must not redispatch the module-drift workflow into a redundant self-run.'
+    Assert-True ($moduleDriftWorkflow.Contains("'quality-module-drift', 'update-managed-repositories'")) 'Post-reconciliation validation must not redispatch the module-drift or central fleet-update workflows.'
     Assert-True ($moduleDriftWorkflow.Contains("steps.commit_reconciliation.outputs.reconciled == 'true'")) 'Validation dispatch must require an explicit successful reconciliation output.'
     Assert-True ($moduleDriftWorkflow.Contains('git diff --cached --name-only')) 'The reconciliation decision must use the staged Git index instead of runner-specific status output.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $projectRoot '.github\workflows\update-managed-repositories.yml')) 'The central template should provide a fleet-update workflow.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1')) 'The central template should provide the fleet updater.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $projectRoot 'scripts\Update-RepositoryQualityGates.ps1')) 'The central template should provide the single-repository updater.'
+    $fleetWorkflow = [IO.File]::ReadAllText((Join-Path $projectRoot '.github\workflows\update-managed-repositories.yml'))
+    Assert-True ($fleetWorkflow.Contains('actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1')) 'The fleet workflow should pin its GitHub App token action to an exact commit.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Test-QualityGateModuleDrift.ps1')) 'The module-drift checker should be deployed universally.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\RepositoryQualityGates.Detection.ps1')) 'The shared detection library should be deployed universally.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\rqg-module-catalog.json')) 'The module catalog snapshot should be deployed universally.'
@@ -290,7 +295,7 @@ try {
 
     $versionOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.0.1')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.1.0-dev.1')) 'The version interface should report the canonical version.'
 
     Write-Host "$passed assertions passed."
 } finally {

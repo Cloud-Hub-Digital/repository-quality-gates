@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0-dev.1 - 2026-09-20
+
+### Added
+
+- A central fleet updater discovers repositories selected for a scoped GitHub App installation and opens update pull requests for outdated managed repositories.
+- A single-repository updater previews or applies a newer template while preserving unmanaged files and stopping on modified managed files.
+- Scheduled and release-triggered automation resolves the latest stable release before preparing repository updates.
+- Synthetic update coverage verifies available, current, ahead, unmanaged, successful-update, and managed-conflict behavior.
+
+### Security
+
+- Cross-repository access uses a short-lived GitHub App installation token rather than a reusable personal access token.
+- Automatic updates open pull requests and never merge them.
+- The central fleet workflow is excluded from module-reconciliation redispatch.
+
 ## 1.0.1 - 2026-09-19
 
 ### Fixed

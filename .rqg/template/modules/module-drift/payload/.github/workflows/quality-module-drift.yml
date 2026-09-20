@@ -73,8 +73,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $excludedWorkflows = @('quality-module-drift', 'update-managed-repositories')
           Get-ChildItem -LiteralPath .github/workflows -File | Where-Object {
-            $_.Extension -in @('.yml', '.yaml') -and $_.BaseName -ne 'quality-module-drift'
+            $_.Extension -in @('.yml', '.yaml') -and $_.BaseName -notin $excludedWorkflows
           } | ForEach-Object {
             $workflowPath = '.github/workflows/' + $_.Name
             gh workflow run $workflowPath --ref $env:GITHUB_REF_NAME

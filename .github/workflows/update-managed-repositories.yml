@@ -1,0 +1,50 @@
+name: Update Managed Repositories
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: '23 4 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-quality-gates-fleet-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Open Quality Gate Update Pull Requests
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Resolve Latest Stable Release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = (gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $tag) { throw 'Unable to resolve the latest stable Repository Quality Gates release.' }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          persist-credentials: false
+
+      - name: Create Scoped Fleet Token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RQG_APP_ID }}
+          private-key: ${{ secrets.RQG_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Update Managed Repositories
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: ./scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1 -Owner $env:GITHUB_REPOSITORY_OWNER -Apply
