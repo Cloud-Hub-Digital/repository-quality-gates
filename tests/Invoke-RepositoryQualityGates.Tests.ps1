@@ -120,7 +120,16 @@ try {
     $fleetWorkflow = [IO.File]::ReadAllText((Join-Path $projectRoot '.github\workflows\update-managed-repositories.yml'))
     Assert-True ($fleetWorkflow.Contains('actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1')) 'The fleet workflow should pin its GitHub App token action to an exact commit.'
     Assert-True ($fleetWorkflow.Contains('-Apply -AutoMerge')) 'The fleet workflow should request automatic downstream completion.'
+    Assert-True ($fleetWorkflow.Contains("cron: '23 4 * * *'")) 'The fleet workflow should retry deferred repositories every day.'
     $fleetScript = [IO.File]::ReadAllText((Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'))
+    Assert-True ($fleetScript.Contains('gh pr list --repo $RepositoryName --state open --limit 1000')) 'The fleet updater should inspect all open pull requests before changing a downstream repository.'
+    Assert-True ($fleetScript.Contains("status = 'DeferredOpenPullRequests'")) 'A repository with an open pull request should be explicitly deferred.'
+    Assert-True ($fleetScript.Contains('No RQG branch was pushed.')) 'The fleet updater should check again immediately before publishing its temporary branch.'
+    Assert-True ($fleetScript.Contains('gh pr close')) 'Expired or failed RQG pull requests should be closed automatically.'
+    Assert-True ($fleetScript.Contains('--delete-branch')) 'Temporary RQG branches should be removed after merge, expiry, or failed setup.'
+    Assert-True ($fleetScript.Contains('TemporaryBranchLifetimeHours = 24')) 'The default temporary branch inspection window should be limited to 24 hours.'
+    Assert-True ($fleetScript.IndexOf('$openPullRequests = @(Get-OpenPullRequests $fullName)') -lt $fleetScript.IndexOf('gh repo clone')) 'The initial open-pull-request gate must run before cloning or preparing an update.'
+    Assert-True ($fleetScript.IndexOf('$lateOpenPullRequests = @(Get-OpenPullRequests $fullName)') -lt $fleetScript.IndexOf('& git -C $clonePath fetch origin')) 'The second open-pull-request gate must run before publishing the temporary branch.'
     Assert-True ($fleetScript.Contains('gh pr merge')) 'The fleet updater should configure merge behavior on the downstream pull request.'
     Assert-True ($fleetScript.Contains('--auto --squash --delete-branch')) 'Downstream updates should wait for requirements, squash, and remove their version branch.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Test-QualityGateModuleDrift.ps1')) 'The module-drift checker should be deployed universally.'
@@ -314,7 +323,7 @@ try {
 
     $versionOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.1.0-dev.2')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.1.0-dev.3')) 'The version interface should report the canonical version.'
 
     Write-Host "$passed assertions passed."
 } finally {

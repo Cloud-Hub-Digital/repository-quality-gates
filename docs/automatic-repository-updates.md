@@ -1,6 +1,6 @@
 # Automatic Repository Updates
 
-Repository Quality Gates can update its managed template across selected repositories without storing a personal access token. The central workflow runs when a stable release is published, once each week, or when started manually. Each update uses a pull request so the downstream repository's required checks remain the merge gate, then GitHub merges the pull request automatically when those requirements pass.
+Repository Quality Gates can update its managed template across selected repositories without storing a personal access token. The central workflow runs when a stable release is published, once each day, or when started manually. A downstream repository is updated only when it has no open pull requests. Each update uses its own pull request so the downstream repository's required checks remain the merge gate, then GitHub merges the pull request automatically when those requirements pass.
 
 ## What The Automation Does
 
@@ -9,15 +9,20 @@ Repository Quality Gates can update its managed template across selected reposit
 3. Enumerates only repositories selected for that GitHub App installation.
 4. Skips the central template repository and repositories without `.repository-quality-gates.json`.
 5. Skips repositories already on the target version and refuses to downgrade a newer version.
-6. Clones each outdated repository from its default branch into a temporary runner folder.
-7. Reads the downstream repository's optional `.repository-quality-gates.local.json` rules.
-8. Applies the released template with managed pruning and the repository-owned adjustments.
-9. Stops if a managed file was changed by the repository or another deployment conflict is found.
-10. Runs the public working-tree, detection-policy, module-drift, and staged secret checks.
-11. Pushes `rqg/update-v<VERSION>` and opens or refreshes a pull request.
-12. Enables squash auto-merge and branch deletion for that pull request.
+6. Removes an RQG-created pull request and branch that have remained open for 24 hours, then checks eligibility again.
+7. Defers an outdated repository when any pull request is open and reports every blocking pull request.
+8. Clones each eligible outdated repository from its default branch into a temporary runner folder.
+9. Reads the downstream repository's optional `.repository-quality-gates.local.json` rules.
+10. Applies the released template with managed pruning and the repository-owned adjustments.
+11. Stops if a managed file was changed by the repository or another deployment conflict is found.
+12. Runs the public working-tree, detection-policy, module-drift, and staged secret checks.
+13. Checks for open pull requests again immediately before publishing the temporary branch.
+14. Pushes `rqg/update-v<VERSION>` and opens a pull request.
+15. Enables squash auto-merge and branch deletion for that pull request.
 
-GitHub completes the merge only after the downstream repository's branch rules and required checks allow it. A failed check, conflict, missing prerequisite, or unavailable auto-merge leaves the pull request open and reports the repository as failed.
+GitHub completes the merge only after the downstream repository's branch rules and required checks allow it. A failed check, conflict, missing prerequisite, or unavailable auto-merge leaves the pull request open and reports the repository as failed. While that RQG pull request remains open, later fleet runs defer the repository like any other repository with an open pull request.
+
+The `rqg/update-v<VERSION>` namespace is reserved for temporary branches created by this automation. A successful squash merge deletes the branch immediately. A failure after publishing the branch causes the updater to close its pull request and delete its branch during the same run. If required checks leave an auto-merge pull request open, the next daily run removes it after 24 hours. This retains a short inspection window without accumulating long-lived update branches.
 
 ## Downstream Repository Rules
 
@@ -78,10 +83,12 @@ The workflow exchanges these values for a short-lived installation token at runt
 The central `.github/workflows/update-managed-repositories.yml` workflow runs:
 
 - immediately after a stable GitHub Release is published;
-- weekly at its documented UTC schedule; and
+- daily at its documented UTC schedule; and
 - on a manual `workflow_dispatch` request.
 
 Every run resolves the latest published release and checks out that immutable tag before updating repositories. Development work on `main` therefore cannot be distributed before it becomes a release.
+
+If a release-triggered run finds an open pull request, it records `DeferredOpenPullRequests` and does not clone, create a branch, push, or create an RQG pull request for that repository. The updater checks again immediately before its first push so a pull request opened during local preparation also causes deferral without a remote branch. The daily fallback checks again automatically. Once every pull request is closed or merged, the next run builds the update from the then-current default branch.
 
 ## Local Preview
 
@@ -107,6 +114,10 @@ The local command changes files but does not commit, push, create a pull request
 - `.repository-quality-gates.local.json` and every policy it names remain repository-owned and unmanaged.
 - A repository on a newer template version is never downgraded.
 - Unmanaged repositories are skipped.
+- Repositories with any open pull request are deferred without a branch, commit, push, or RQG pull request change.
+- Successful RQG pull requests delete their temporary branch immediately after merge.
+- Failed post-push preparation removes the RQG pull request and temporary branch in the same run.
+- An RQG auto-merge pull request still open after 24 hours is closed and its reserved temporary branch is deleted by the next daily run.
 - Temporary clones are deleted when the fleet run finishes.
 - A failed repository is reported without preventing the updater from assessing the remaining repositories.
 

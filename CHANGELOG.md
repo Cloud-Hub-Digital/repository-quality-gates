@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0-dev.3 - 2026-09-20
+
+### Changed
+
+- The fleet updater defers an outdated downstream repository whenever any pull request is open in that repository.
+- Deferred repositories are checked again by the daily fallback or a manual fleet run after every pull request is closed or merged.
+- Temporary RQG branches are deleted after successful merge, removed immediately after post-push setup failures, and expire with their RQG pull request after 24 hours.
+
+### Security
+
+- RQG does not create, update, push, or auto-merge an update branch while another pull request is open.
+- The updater checks again immediately before its first push so a pull request opened during preparation does not leave a remote RQG branch.
+- Fleet results identify the blocking pull requests so deferred repositories remain visible without competing with active development.
+
 ## 1.1.0-dev.2 - 2026-09-20
 
 ### Added

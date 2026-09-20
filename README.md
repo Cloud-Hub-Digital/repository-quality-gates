@@ -4,7 +4,7 @@ Repository Quality Gates is a preview-first PowerShell deployment tool for addin
 
 The current stable template version written to managed state is `1.0.1`.
 
-Development version `1.1.0-dev.2` adds fully automatic downstream template updates with repository-owned adjustment files and required-check-gated auto-merge. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Development version `1.1.0-dev.3` adds fully automatic downstream template updates with repository-owned adjustment files, open-pull-request deferral, and required-check-gated auto-merge. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## What It Provides
 
