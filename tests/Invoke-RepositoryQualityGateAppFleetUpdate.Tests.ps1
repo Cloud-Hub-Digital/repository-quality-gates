@@ -4,6 +4,7 @@ Set-StrictMode -Version Latest
 
 $root = Split-Path -Parent $PSScriptRoot
 $appFleetTool = Join-Path $root 'scripts\Invoke-RepositoryQualityGateAppFleetUpdate.ps1'
+$fleetWorkflow = Join-Path $root '.github\workflows\update-managed-repositories.yml'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('rqg-app-fleet-tests-' + [guid]::NewGuid().ToString('N'))
 $passed = 0
 
@@ -20,6 +21,12 @@ function ConvertFrom-Base64Url([string]$Value) {
 
 try {
     . $appFleetTool
+
+    $workflowText = Get-Content -LiteralPath $fleetWorkflow -Raw
+    Assert-True ($workflowText.Contains('timeout-minutes: 120')) 'The complete fleet rollout should allow up to 120 minutes.'
+    Assert-True ($workflowText.Contains('name: Email Fleet Rollout Report')) 'The fleet workflow should send its configured completion report.'
+    Assert-True ($workflowText.Contains("vars.RQG_REPORT_EMAIL_ENABLED == 'true'")) 'Email reporting should remain controlled by the repository variable.'
+    Assert-True ($workflowText.Contains("steps.rollout.outcome == 'failure'")) 'A reported rollout failure should still fail the workflow.'
 
     $rsa = [Security.Cryptography.RSA]::Create(2048)
     try {
