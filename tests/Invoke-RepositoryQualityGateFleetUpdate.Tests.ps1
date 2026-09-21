@@ -110,7 +110,10 @@ try {
         Assert-True ($fleetText.Contains("status = 'ChecksPending'")) 'Automatic updates should queue pull requests for explicit quality-check verification.'
         Assert-True ($fleetText.Contains('Wait-PullRequestQualityChecks')) 'Automatic updates should wait for every reported pull-request quality check.'
         Assert-True ($fleetText.Contains("status = 'MergedAfterChecks'")) 'Automatic updates should report only a verified post-check merge as merged.'
-        Assert-True (-not $fleetText.Contains('gh pr merge $entry.pullRequest --repo $fullName --auto')) 'The fleet must not depend on repository-level GitHub auto-merge settings.'
+        Assert-True ($fleetText.Contains('gh api --method PUT "repos/$repositoryName/pulls/$pullRequestNumber/merge"')) 'Verified pull requests should merge through the REST API supported by GitHub App installation tokens.'
+        Assert-True (-not $fleetText.Contains('gh pr merge')) 'The fleet must not depend on the GitHub CLI GraphQL merge path or repository-level auto-merge settings.'
+        Assert-True ($fleetText.Contains('gh api --method DELETE "repos/$repositoryName/git/refs/heads/$branchName"')) 'A successful REST merge should remove its temporary update branch.'
+        Assert-True ($fleetText.IndexOf('if ($pending.Count)') -lt $fleetText.IndexOf('if ($failed.Count)')) 'The fleet should wait for running checks before removing a branch after another check fails.'
         $emptyPullRequestOutput = @()
         $normalizedEmptyPullRequest = ($emptyPullRequestOutput -join [Environment]::NewLine).Trim()
         Assert-True ($normalizedEmptyPullRequest -eq '') 'Zero GitHub CLI output lines should normalize to an empty pull-request URL.'

@@ -62,8 +62,11 @@ function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullReq
             }
             $failed.Add("$name (unsupported check type)")
         }
-        if ($failed.Count) { throw "Pull-request quality checks failed: $($failed -join ', ')" }
+        # Do not remove the temporary branch while another check is still
+        # running. A workflow that is checking out that branch would then fail
+        # for the wrong reason and hide the original result.
         if ($pending.Count) { Start-Sleep -Seconds 10; continue }
+        if ($failed.Count) { throw "Pull-request quality checks failed: $($failed -join ', ')" }
         return $checks.Count
     }
     throw 'Timed out waiting for pull-request quality checks to complete.'
@@ -298,9 +301,23 @@ finally {
 if ($Apply -and $AutoMerge) {
     foreach ($entry in @($results | Where-Object status -eq 'ChecksPending')) {
         try {
-            $checkCount = Wait-PullRequestQualityChecks ([string]$entry.repository) ([string]$entry.pullRequest)
-            $mergeOutput = @(& gh pr merge ([string]$entry.pullRequest) --repo ([string]$entry.repository) --squash --delete-branch 2>&1)
+            $repositoryName = [string]$entry.repository
+            $pullRequestUrl = [string]$entry.pullRequest
+            $checkCount = Wait-PullRequestQualityChecks $repositoryName $pullRequestUrl
+            if ($pullRequestUrl -notmatch '/pull/(?<number>[1-9]\d*)/?$') { throw 'The update pull-request URL does not contain a valid pull-request number.' }
+            $pullRequestNumber = [int]$Matches.number
+            $mergeOutput = @(& gh api --method PUT "repos/$repositoryName/pulls/$pullRequestNumber/merge" -f merge_method=squash 2>&1)
             if ($LASTEXITCODE -ne 0) { throw "Unable to merge the verified update pull request: $($mergeOutput -join [Environment]::NewLine)" }
+            try { $mergeResponse = (($mergeOutput -join [Environment]::NewLine) | ConvertFrom-Json) }
+            catch { throw 'GitHub returned invalid pull-request merge data.' }
+            if ($mergeResponse.merged -ne $true) { throw "GitHub did not merge the verified update pull request: $([string]$mergeResponse.message)" }
+            $deleteOutput = @(& gh api --method DELETE "repos/$repositoryName/git/refs/heads/$branchName" 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                $entry.detail += " $checkCount reported quality check(s) passed and the pull request merged, but the temporary branch could not be removed: $($deleteOutput -join [Environment]::NewLine)"
+                $entry.autoMerge = $true
+                $entry.status = 'MergedCleanupRequired'
+                continue
+            }
             $entry.autoMerge = $true
             $entry.status = 'MergedAfterChecks'
             $entry.detail += " $checkCount reported quality check(s) passed before merge."
