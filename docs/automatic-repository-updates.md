@@ -2,7 +2,7 @@
 
 Repository Quality Gates can enrol unmanaged repositories and update its managed template across every account or organization where its GitHub App is installed, without storing a personal access token or publishing an owner inventory. The central workflow runs when a stable release is published, once each day, or when started manually. Every unmanaged repository visible to any installation is eligible unless its repository-owned rules file explicitly opts out. A downstream repository is changed only when it has no open pull requests. Each enrolment or update uses its own pull request so the downstream repository's required checks remain the merge gate, then GitHub merges the pull request automatically when those requirements pass.
 
-The central `.github/workflows/automatic-release.yml` workflow creates that stable release from `main`. It waits for Documentation Quality, Fleet Update Quality, Quality Gate Module Drift, Secret Scanning, and PowerShell Quality on the exact commit. It then confirms the commit is still current, verifies one stable semantic version across the deployment engine, managed state, and changelog, creates an annotated `v<VERSION>` tag, and publishes the immutable GitHub Release. A release event immediately starts the fleet workflow described below.
+The central `.github/workflows/automatic-release.yml` workflow creates that stable release from `main`. It waits for Documentation Quality, Fleet Update Quality, Quality Gate Module Drift, Secret Scanning, and PowerShell Quality on the exact commit. It then confirms the commit is still current, verifies one stable semantic version across the deployment engine, managed state, and changelog, creates an annotated `v<VERSION>` tag, publishes the immutable GitHub Release, and explicitly dispatches the fleet workflow described below. The explicit dispatch is required because GitHub suppresses most new workflow events created by the repository's own `GITHUB_TOKEN`.
 
 The release workflow binds every required result to both its exact workflow path and expected display name. It does nothing when the canonical version is unchanged and the matching release already exists. It skips prerelease versions and commits superseded on `main`. It fails closed when a required workflow fails, is missing, or is replaced by a same-name workflow at another path; when version metadata disagrees; when the changelog entry is missing; or when the version tag already identifies another commit. If tag creation succeeded but release creation was interrupted, a manual rerun can create the missing release only when the tag still identifies the exact validated commit.
 
@@ -115,11 +115,12 @@ The central `.github/workflows/automatic-release.yml` workflow runs on every pus
 
 The central `.github/workflows/update-managed-repositories.yml` workflow runs:
 
-- immediately after a stable GitHub Release is published;
+- immediately after the automatic release workflow explicitly dispatches it;
+- after a stable GitHub Release is published by an external authorized actor;
 - daily at its documented UTC schedule; and
 - on a manual `workflow_dispatch` request.
 
-Every run resolves the latest published release and checks out that immutable tag before updating repositories. Development work on `main` therefore cannot be distributed before it becomes a release.
+The automatic release passes its exact stable tag to the fleet workflow, and an externally published release supplies its event tag. Scheduled runs and manual runs without a tag resolve the latest published release. Every path verifies that the selected tag is a published, non-draft, non-prerelease stable semantic version and checks out that immutable tag before updating repositories. Development work on `main` therefore cannot be distributed before it becomes a release, and a release-triggered rollout cannot drift to a different release.
 
 If a release-triggered run finds an open pull request, it records `DeferredOpenPullRequests` and does not clone, create a branch, push, or create an RQG pull request for that repository. The updater checks again immediately before its first push so a pull request opened during local preparation also causes deferral without a remote branch. The daily fallback checks again automatically. Once every pull request is closed or merged, the next run builds the update from the then-current default branch.
 

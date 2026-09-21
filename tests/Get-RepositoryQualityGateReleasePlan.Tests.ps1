@@ -73,7 +73,7 @@ try {
     Assert-True (-not $result.Succeeded) 'A failed required workflow should block release.'
 
     $wrongPathChecks = Write-Checks $fixture
-    $wrongPathRuns = @(Get-Content -LiteralPath $wrongPathChecks -Raw | ConvertFrom-Json)
+    $wrongPathRuns = @(Get-Content -LiteralPath $wrongPathChecks -Raw | ConvertFrom-Json | ForEach-Object { $_ })
     $wrongPathRuns[0].path = '.github/workflows/lookalike.yml'
     [IO.File]::WriteAllText($wrongPathChecks, ($wrongPathRuns | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
     $result = Invoke-Plan $fixture @{ CheckRunsPath = $wrongPathChecks }

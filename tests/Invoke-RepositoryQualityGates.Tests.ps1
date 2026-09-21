@@ -130,6 +130,9 @@ try {
     Assert-True (-not $fleetWorkflow.Contains('github.repository_owner')) 'The fleet workflow should not limit discovery to the central repository owner.'
     Assert-True ($fleetWorkflow.Contains('-Apply -AutoMerge')) 'The fleet workflow should request automatic downstream completion.'
     Assert-True ($fleetWorkflow.Contains("cron: '23 4 * * *'")) 'The fleet workflow should retry deferred repositories every day.'
+    Assert-True ($fleetWorkflow.Contains('release_tag:')) 'The fleet workflow should accept an exact release tag from the automatic release workflow.'
+    Assert-True ($fleetWorkflow.Contains('PUBLISHED_RELEASE_TAG: ${{ github.event.release.tag_name }}')) 'Release-event fleet runs should use the exact published release tag.'
+    Assert-True ($fleetWorkflow.Contains('gh release view $tag --json tagName,isDraft,isPrerelease')) 'The fleet workflow should verify that its selected tag is a published stable release.'
     $fleetScript = [IO.File]::ReadAllText((Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'))
     Assert-True ($fleetScript.Contains('gh pr list --repo $RepositoryName --state open --limit 1000')) 'The fleet updater should inspect all open pull requests before changing a downstream repository.'
     Assert-True ($fleetScript.Contains("status = 'DeferredOpenPullRequests'")) 'A repository with an open pull request should be explicitly deferred.'
@@ -380,7 +383,7 @@ try {
 
     $versionOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.3.0')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.3.1')) 'The version interface should report the canonical version.'
     Assert-True (($versionOutput -join "`n").Contains('https://github.com/Cloud-Hub-Digital/repository-quality-gates')) 'The version interface should report the authoritative organization-owned repository.'
 
     Write-Host "$passed assertions passed."

@@ -6,6 +6,11 @@ on:
   schedule:
     - cron: '23 4 * * *'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Exact stable release tag to deploy; leave empty to use the latest release.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -20,14 +25,23 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
-      - name: Resolve Latest Stable Release
+      - name: Resolve Stable Release
         id: release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          REQUESTED_RELEASE_TAG: ${{ inputs.release_tag }}
+          PUBLISHED_RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          $tag = (gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name).Trim()
-          if ($LASTEXITCODE -ne 0 -or -not $tag) { throw 'Unable to resolve the latest stable Repository Quality Gates release.' }
+          $tag = ([string]$env:REQUESTED_RELEASE_TAG).Trim()
+          if (-not $tag) { $tag = ([string]$env:PUBLISHED_RELEASE_TAG).Trim() }
+          if (-not $tag) {
+            $tag = (gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $tag) { throw 'Unable to resolve the latest stable Repository Quality Gates release.' }
+          }
+          if ($tag -notmatch '^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$') { throw 'The requested Repository Quality Gates release tag is not a stable semantic version.' }
+          $release = gh release view $tag --json tagName,isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $release.tagName -ne $tag -or $release.isDraft -or $release.isPrerelease) { throw 'The requested Repository Quality Gates release is not a published stable release.' }
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

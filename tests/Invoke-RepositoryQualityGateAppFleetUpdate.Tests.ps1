@@ -47,6 +47,9 @@ param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch
 [pscustomobject]@{
     repositories = @($Repository)
     token = $env:GH_TOKEN
+    gitConfigCount = $env:GIT_CONFIG_COUNT
+    gitConfigKey = $env:GIT_CONFIG_KEY_0
+    gitAuthorizationHeader = $env:GIT_CONFIG_VALUE_0
     autoEnroll = [bool]$AutoEnroll
     apply = [bool]$Apply
     autoMerge = [bool]$AutoMerge
@@ -86,6 +89,12 @@ param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch
 
     $testRsa = [Security.Cryptography.RSA]::Create(2048)
     $oldToken = $env:GH_TOKEN
+    $oldGitConfigCount = $env:GIT_CONFIG_COUNT
+    $oldGitConfigKey0 = $env:GIT_CONFIG_KEY_0
+    $oldGitConfigValue0 = $env:GIT_CONFIG_VALUE_0
+    $env:GIT_CONFIG_COUNT = '7'
+    $env:GIT_CONFIG_KEY_0 = 'test.original.key'
+    $env:GIT_CONFIG_VALUE_0 = 'test-original-value'
     $env:RQG_TEST_RECORD_PATH = $recordPath
     try {
         Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -EnableAutoEnroll -EnableApply -EnableAutoMerge -BranchLifetimeHours 24
@@ -94,8 +103,13 @@ param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch
         Assert-True ($records[0].repositories[0] -eq 'first-owner/one') 'The first installation should receive only its repository list.'
         Assert-True ($records[1].repositories[0] -eq 'second-owner/two') 'The second installation should receive only its repository list.'
         Assert-True ($records[0].token -eq 'installation-token-101' -and $records[1].token -eq 'installation-token-202') 'Each installation should use its own short-lived token.'
+        Assert-True ($records[0].gitConfigCount -eq '1' -and $records[1].gitConfigCount -eq '1') 'Git should receive one temporary authentication configuration entry.'
+        Assert-True ($records[0].gitConfigKey -eq 'http.https://github.com/.extraheader') 'Git authentication should be scoped to HTTPS requests for github.com.'
+        $expectedHeader = 'AUTHORIZATION: basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('x-access-token:installation-token-101'))
+        Assert-True ($records[0].gitAuthorizationHeader -eq $expectedHeader -and $records[0].gitAuthorizationHeader -ne $records[1].gitAuthorizationHeader) 'Each installation should receive its own masked Git authorization header.'
         Assert-True ($records[0].autoEnroll -and $records[0].apply -and $records[0].autoMerge) 'The wrapper should forward the requested automation switches.'
         Assert-True ($records[0].lifetime -eq 24) 'The wrapper should forward the temporary branch lifetime.'
+        Assert-True ($env:GIT_CONFIG_COUNT -eq '7' -and $env:GIT_CONFIG_KEY_0 -eq 'test.original.key' -and $env:GIT_CONFIG_VALUE_0 -eq 'test-original-value') 'The wrapper should restore the caller Git configuration environment.'
     }
     finally {
         $testRsa.Dispose()
@@ -103,6 +117,9 @@ param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch
         Remove-Item Function:\global:gh -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_RECORD_PATH -ErrorAction SilentlyContinue
         if ($null -eq $oldToken) { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue } else { $env:GH_TOKEN = $oldToken }
+        if ($null -eq $oldGitConfigCount) { Remove-Item Env:\GIT_CONFIG_COUNT -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_COUNT = $oldGitConfigCount }
+        if ($null -eq $oldGitConfigKey0) { Remove-Item Env:\GIT_CONFIG_KEY_0 -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_KEY_0 = $oldGitConfigKey0 }
+        if ($null -eq $oldGitConfigValue0) { Remove-Item Env:\GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_VALUE_0 = $oldGitConfigValue0 }
     }
 
     Write-Host "$passed assertions passed."

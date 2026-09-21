@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.1 - 2026-09-21
+
+### Fixed
+
+- Supply each short-lived GitHub App installation token to Git through an installation-specific HTTPS authorization header so prepared update branches can be fetched, pushed, and cleaned up without an interactive credential prompt.
+- Explicitly dispatch the downstream fleet workflow after automatic release creation because GitHub suppresses most workflow events created by `GITHUB_TOKEN`.
+- Bind release-triggered fleet runs to the exact published stable tag, while retaining latest-release resolution for scheduled and unpinned manual recovery runs.
+- Normalize release-check JSON arrays when running under Windows PowerShell 5.1 so valid workflow results are evaluated individually.
+
+### Security
+
+- Pass the Git authorization header through temporary process environment configuration instead of command-line arguments, mask the token and header in Actions logs, isolate credentials per installation, and restore the caller's Git environment after the run.
+
 ## 1.3.0 - 2026-09-21
 
 ### Added

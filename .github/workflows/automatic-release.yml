@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: read
+  actions: write
   contents: write
 
 concurrency:
@@ -128,3 +128,13 @@ jobs:
           RELEASE_TAG: ${{ steps.plan.outputs.tag }}
           RELEASE_VERSION: ${{ steps.plan.outputs.version }}
         run: gh release create $env:RELEASE_TAG --verify-tag --title "Repository Quality Gates $env:RELEASE_VERSION" --generate-notes
+
+      - name: Start Downstream Fleet Update
+        if: steps.plan.outputs.action == 'CreateTagAndRelease' || steps.plan.outputs.action == 'CreateRelease'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          gh workflow run .github/workflows/update-managed-repositories.yml --ref main -f "release_tag=$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to start the downstream Repository Quality Gates fleet update.' }

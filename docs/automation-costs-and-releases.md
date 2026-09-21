@@ -58,4 +58,4 @@ The recommended sequence is therefore:
 
 The reusable downstream template deploys build and test gates for detected codebases, but it does not create downstream releases, tags, versions, or deployment artifacts. Release automation for downstream products still requires a separate module because package formats, signing requirements, version sources, target platforms, and release approval steps vary by project.
 
-The central Repository Quality Gates repository is the documented exception. Its stable output is the repository itself, so `.github/workflows/automatic-release.yml` can create an annotated version tag and immutable GitHub Release after all central checks pass. That release then triggers downstream template distribution.
+The central Repository Quality Gates repository is the documented exception. Its stable output is the repository itself, so `.github/workflows/automatic-release.yml` can create an annotated version tag and immutable GitHub Release after all central checks pass. It then explicitly dispatches downstream template distribution because GitHub does not recursively start most workflows from events created with `GITHUB_TOKEN`.

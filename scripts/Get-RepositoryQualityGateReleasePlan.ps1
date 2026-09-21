@@ -64,7 +64,7 @@ if ($CommitSha -ine $RemoteMainSha) {
     exit 0
 }
 
-$checkRuns = @(Get-Content -LiteralPath $CheckRunsPath -Raw | ConvertFrom-Json)
+$checkRuns = @(Get-Content -LiteralPath $CheckRunsPath -Raw | ConvertFrom-Json | ForEach-Object { $_ })
 foreach ($required in $requiredChecks) {
     $matches = @($checkRuns | Where-Object { [string]$_.name -eq $required.name -and [string]$_.path -eq $required.path })
     if ($matches.Count -ne 1) { throw "Required workflow result is missing or ambiguous: $($required.path)" }

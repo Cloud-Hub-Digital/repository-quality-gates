@@ -17,7 +17,7 @@ The following settings were verified through the GitHub API on 20 September 2026
 | Actions Sources | Only actions from Cloud-Hub-Digital and GitHub are allowed; verified third-party creators and additional patterns are not allowed |
 | Actions Integrity | Every action must be pinned to a full-length commit SHA |
 | Workflow Token | Read-only repository contents and packages by default; GitHub Actions cannot create or approve pull requests |
-| Release Workflow | The central automatic-release job requests `actions: read` and `contents: write` only for its run |
+| Release Workflow | The central automatic-release job requests `actions: write` to dispatch the fleet workflow and `contents: write` to create the tag and release |
 | Workflow Retention | Artifacts and logs retained for 30 days |
 | Fork Workflows | Approval required for all external contributors |
 | Pull Requests | Merge commits, squash merging, and rebase merging enabled; auto-merge disabled |
@@ -60,7 +60,7 @@ Downstream fleet updates already use short-lived pull requests and can operate u
 
 ## Automatic Stable Releases
 
-The central automatic-release workflow is intentionally repository-specific and is not copied into downstream repositories. A push to `main` is eligible only when the canonical version is stable, matches `.repository-quality-gates.json`, has a matching changelog heading, and all five required RQG workflows succeed on the exact commit. The job checks remote `main` again before creating an annotated tag, then creates the immutable GitHub Release. Existing matching releases are a clean no-op; a tag collision blocks publication.
+The central automatic-release workflow is intentionally repository-specific and is not copied into downstream repositories. A push to `main` is eligible only when the canonical version is stable, matches `.repository-quality-gates.json`, has a matching changelog heading, and all five required RQG workflows succeed on the exact commit. The job checks remote `main` again before creating an annotated tag, creates the immutable GitHub Release, and explicitly dispatches the fleet workflow. Existing matching releases are a clean no-op; a tag collision blocks publication.
 
 The repository must continue allowing workflow-level `contents: write` permission because the default token remains read-only. The active `v*` ruleset must permit new tags while continuing to block tag updates, deletion, and force pushes. Immutable Releases must remain enabled. Do not add an environment approval to this workflow unless the automatic publication policy is intentionally changed back to a manual gate.
 

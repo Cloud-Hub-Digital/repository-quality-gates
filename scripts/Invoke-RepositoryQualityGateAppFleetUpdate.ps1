@@ -93,11 +93,21 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
     if (-not $installations.Count) { throw 'The GitHub App has no accessible installations.' }
 
     $originalToken = $env:GH_TOKEN
+    $originalGitConfigCount = $env:GIT_CONFIG_COUNT
+    $originalGitConfigKey0 = $env:GIT_CONFIG_KEY_0
+    $originalGitConfigValue0 = $env:GIT_CONFIG_VALUE_0
     try {
         foreach ($installation in $installations) {
             $token = New-GitHubAppInstallationToken $jwt ([long]$installation.id)
             try {
                 $env:GH_TOKEN = $token
+                $basicCredential = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$token"))
+                $authorizationHeader = "AUTHORIZATION: basic $basicCredential"
+                Write-Host "::add-mask::$token"
+                Write-Host "::add-mask::$authorizationHeader"
+                $env:GIT_CONFIG_COUNT = '1'
+                $env:GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader'
+                $env:GIT_CONFIG_VALUE_0 = $authorizationHeader
                 $repositories = @(& gh api --paginate /installation/repositories --jq '.repositories[].full_name' 2>$null | Where-Object { $_ } | Sort-Object -Unique)
                 if ($LASTEXITCODE -ne 0) { throw 'Unable to enumerate repositories for a GitHub App installation.' }
                 foreach ($repositoryName in $repositories) {
@@ -123,12 +133,20 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                     if ($LASTEXITCODE -ne 0) { Write-Warning 'Unable to revoke a GitHub App installation token before its normal expiry.' }
                 }
                 Remove-Variable token -ErrorAction SilentlyContinue
+                Remove-Variable basicCredential -ErrorAction SilentlyContinue
+                Remove-Variable authorizationHeader -ErrorAction SilentlyContinue
             }
         }
     }
     finally {
         if ($null -eq $originalToken) { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue }
         else { $env:GH_TOKEN = $originalToken }
+        if ($null -eq $originalGitConfigCount) { Remove-Item Env:\GIT_CONFIG_COUNT -ErrorAction SilentlyContinue }
+        else { $env:GIT_CONFIG_COUNT = $originalGitConfigCount }
+        if ($null -eq $originalGitConfigKey0) { Remove-Item Env:\GIT_CONFIG_KEY_0 -ErrorAction SilentlyContinue }
+        else { $env:GIT_CONFIG_KEY_0 = $originalGitConfigKey0 }
+        if ($null -eq $originalGitConfigValue0) { Remove-Item Env:\GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue }
+        else { $env:GIT_CONFIG_VALUE_0 = $originalGitConfigValue0 }
     }
 }
 

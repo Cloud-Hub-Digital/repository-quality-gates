@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The prepared stable template version written to managed state is `1.3.0`. The latest published GitHub Release remains `1.0.1` until the automatic-release change is committed, pushed, and its required workflows pass.
+The prepared patch template version written to managed state is `1.3.1`. The latest published GitHub Release is [`1.3.0`](https://github.com/Cloud-Hub-Digital/repository-quality-gates/releases/tag/v1.3.0).
 
-Version `1.3.0` adds automatic stable release creation, refuses stale or reused release versions, and corrects multi-installation GitHub App discovery. Publishing the central release starts the existing opt-out automatic enrolment and update process. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.3.1` adds authenticated Git transport for each short-lived GitHub App installation token and explicitly starts the fleet workflow after automatic release creation. It retains the automatic stable release, stale-version, tag-collision, and multi-installation controls introduced in `1.3.0`. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## What It Provides
 
