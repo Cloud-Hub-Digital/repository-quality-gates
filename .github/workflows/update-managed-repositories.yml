@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 120
     outputs:
       release_tag: ${{ steps.release.outputs.tag }}
-      report_base64: ${{ steps.rollout.outputs.report_base64 }}    steps:
+    steps:
       - name: Resolve Stable Release
         id: release
         shell: pwsh
@@ -68,19 +68,15 @@ jobs:
             $_ | Out-String | Tee-Object -FilePath $reportPath -Append | Write-Host
             exit 1
           }
-          finally {
-            $report = if (Test-Path -LiteralPath $reportPath) {
-              Get-Content -LiteralPath $reportPath -Raw
-            }
-            else {
-              'No rollout output was captured.'
-            }
-            if ($report.Length -gt 200000) {
-              $report = "[Earlier output omitted because the report exceeded 200,000 characters.]`n`n" + $report.Substring($report.Length - 200000)
-            }
-            $encodedReport = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($report))
-            "report_base64=$encodedReport" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          }
+
+      - name: Preserve Fleet Rollout Report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fleet-rollout-report-${{ github.run_id }}
+          path: rollout-report.txt
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Fail When Fleet Rollout Failed
         if: ${{ always() && steps.rollout.outcome == 'failure' }}
@@ -94,11 +90,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      - name: Retrieve Fleet Rollout Report
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: fleet-rollout-report-${{ github.run_id }}
+          path: .rqg-report
+
       - name: Send Fleet Rollout Report
         env:
           ROLLOUT_OUTCOME: ${{ needs.update.result }}
           RELEASE_TAG: ${{ needs.update.outputs.release_tag }}
-          REPORT_BASE64: ${{ needs.update.outputs.report_base64 }}
           SMTP_HOST: ${{ vars.RQG_REPORT_SMTP_HOST }}
           SMTP_PORT: ${{ vars.RQG_REPORT_SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.RQG_REPORT_SMTP_USERNAME }}
@@ -107,7 +109,6 @@ jobs:
           MESSAGE_TO: ${{ secrets.RQG_REPORT_TO }}
         run: |
           python - <<'PY'
-          import base64
           import os
           import smtplib
           import ssl
@@ -126,12 +127,14 @@ jobs:
           if missing:
               raise RuntimeError("Missing required GitHub Actions settings: " + ", ".join(missing))
 
-          encoded_report = os.environ.get("REPORT_BASE64", "").strip()
-          report = (
-              base64.b64decode(encoded_report, validate=True).decode("utf-8", errors="replace")
-              if encoded_report
-              else "No detailed rollout output was available. The update job may have timed out or been cancelled."
-          )
+          report_path = os.path.join(".rqg-report", "rollout-report.txt")
+          if os.path.isfile(report_path):
+              with open(report_path, "r", encoding="utf-8", errors="replace") as report_file:
+                  report = report_file.read()
+              if len(report) > 200000:
+                  report = "[Earlier output omitted because the report exceeded 200,000 characters.]\n\n" + report[-200000:]
+          else:
+              report = "No detailed rollout output was available. The update job may have timed out or been cancelled."
           outcome = os.environ.get("ROLLOUT_OUTCOME", "unknown").upper()
           release_tag = os.environ.get("RELEASE_TAG", "").strip() or "unresolved"
           run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"

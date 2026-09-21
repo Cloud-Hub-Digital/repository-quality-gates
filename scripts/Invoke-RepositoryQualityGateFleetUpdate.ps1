@@ -31,15 +31,24 @@ function Get-OpenPullRequests([string]$RepositoryName) {
 }
 
 function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullRequestUrl) {
+    if ($PullRequestUrl -notmatch '/pull/(?<number>\d+)(?:[/?#]|$)') { throw 'The pull-request URL does not contain a pull-request number.' }
+    $pullRequestNumber = [int]$Matches.number
+    $headOutput = @(& gh api "repos/$RepositoryName/pulls/$pullRequestNumber" --jq .head.sha 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw "Unable to inspect the pull-request head commit: $($headOutput -join [Environment]::NewLine)" }
+    $headSha = ($headOutput -join [Environment]::NewLine).Trim()
+    if ($headSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'GitHub returned an invalid pull-request head commit.' }
+
     $deadline = [DateTimeOffset]::UtcNow.AddMinutes(45)
     $discoveryDeadline = [DateTimeOffset]::UtcNow.AddMinutes(4)
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
-        $output = @(& gh pr view $PullRequestUrl --repo $RepositoryName --json statusCheckRollup 2>&1)
+        # Read the Checks API directly. GitHub's GraphQL rollup also expands
+        # workflow-run metadata, which requires broader Actions access even
+        # though RQG only needs each check's name, status, and conclusion.
+        $output = @(& gh api --paginate -H 'Accept: application/vnd.github+json' "repos/$RepositoryName/commits/$headSha/check-runs?per_page=100" --jq '.check_runs[] | {name,status,conclusion}' 2>&1)
         if ($LASTEXITCODE -ne 0) { throw "Unable to inspect pull-request quality checks: $($output -join [Environment]::NewLine)" }
         $text = ($output -join [Environment]::NewLine).Trim()
-        try { $response = $text | ConvertFrom-Json }
+        try { $checks = @($output | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json }) }
         catch { throw 'GitHub returned invalid pull-request quality-check data.' }
-        $checks = @($response.statusCheckRollup)
         if (-not $checks.Count) {
             if ([DateTimeOffset]::UtcNow -ge $discoveryDeadline) { throw 'No quality checks were reported for the update pull request.' }
             Start-Sleep -Seconds 5
@@ -50,17 +59,8 @@ function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullReq
         $failed = [Collections.Generic.List[string]]::new()
         foreach ($check in $checks) {
             $name = if ($check.PSObject.Properties['name']) { [string]$check.name } else { 'Unnamed Check' }
-            if ([string]$check.__typename -eq 'CheckRun') {
-                if ([string]$check.status -ne 'COMPLETED') { $pending.Add($name); continue }
-                if ([string]$check.conclusion -notin @('SUCCESS', 'NEUTRAL', 'SKIPPED')) { $failed.Add("$name ($($check.conclusion))") }
-                continue
-            }
-            if ([string]$check.__typename -eq 'StatusContext') {
-                if ([string]$check.state -in @('PENDING', 'EXPECTED')) { $pending.Add($name); continue }
-                if ([string]$check.state -ne 'SUCCESS') { $failed.Add("$name ($($check.state))") }
-                continue
-            }
-            $failed.Add("$name (unsupported check type)")
+            if ([string]$check.status -ne 'completed') { $pending.Add($name); continue }
+            if ([string]$check.conclusion -notin @('success', 'neutral', 'skipped')) { $failed.Add("$name ($($check.conclusion))") }
         }
         # Do not remove the temporary branch while another check is still
         # running. A workflow that is checking out that branch would then fail

@@ -110,6 +110,8 @@ try {
         Assert-True ($fleetText.Contains("status = 'ChecksPending'")) 'Automatic updates should queue pull requests for explicit quality-check verification.'
         Assert-True ($fleetText.Contains('Wait-PullRequestQualityChecks')) 'Automatic updates should wait for every reported pull-request quality check.'
         Assert-True ($fleetText.Contains('[DateTimeOffset]::UtcNow.AddMinutes(4)')) 'Automatic updates should allow four minutes for quality checks to appear.'
+        Assert-True ($fleetText.Contains('commits/$headSha/check-runs?per_page=100')) 'Automatic updates should read check results through the least-privilege Checks API.'
+        Assert-True (-not $fleetText.Contains('statusCheckRollup')) 'Automatic updates should not request broader workflow-run metadata through GraphQL.'
         Assert-True ($fleetText.Contains("status = 'MergedAfterChecks'")) 'Automatic updates should report only a verified post-check merge as merged.'
         Assert-True ($fleetText.Contains('gh api --method PUT "repos/$repositoryName/pulls/$pullRequestNumber/merge"')) 'Verified pull requests should merge through the REST API supported by GitHub App installation tokens.'
         Assert-True (-not $fleetText.Contains('gh pr merge')) 'The fleet must not depend on the GitHub CLI GraphQL merge path or repository-level auto-merge settings.'
