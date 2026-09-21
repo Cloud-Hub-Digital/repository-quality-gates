@@ -102,6 +102,7 @@ jobs:
           "action=$($plan.action)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "tag=$($plan.tag)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "version=$($plan.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          exit 0
 
       - name: Create Annotated Tag
         if: steps.plan.outputs.action == 'CreateTagAndRelease'
