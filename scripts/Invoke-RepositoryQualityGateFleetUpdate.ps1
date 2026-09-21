@@ -32,7 +32,7 @@ function Get-OpenPullRequests([string]$RepositoryName) {
 
 function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullRequestUrl) {
     $deadline = [DateTimeOffset]::UtcNow.AddMinutes(45)
-    $discoveryDeadline = [DateTimeOffset]::UtcNow.AddMinutes(2)
+    $discoveryDeadline = [DateTimeOffset]::UtcNow.AddMinutes(4)
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
         $output = @(& gh pr view $PullRequestUrl --repo $RepositoryName --json statusCheckRollup 2>&1)
         if ($LASTEXITCODE -ne 0) { throw "Unable to inspect pull-request quality checks: $($output -join [Environment]::NewLine)" }
