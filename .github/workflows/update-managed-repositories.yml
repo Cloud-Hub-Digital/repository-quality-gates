@@ -23,8 +23,10 @@ jobs:
   update:
     name: Update Downstream Repository Quality Gates
     runs-on: ${{ fromJSON(((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) || !github.event.repository.private) && '["windows-2025"]' || (vars.RQG_WINDOWS_RUNS_ON || '["windows-2025"]')) }}
-    timeout-minutes: 60
-    steps:
+    timeout-minutes: 120
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
+      report_base64: ${{ steps.rollout.outputs.report_base64 }}    steps:
       - name: Resolve Stable Release
         id: release
         shell: pwsh
@@ -46,14 +48,115 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Recovery runs use the reviewed workflow ref while still resolving and
-          # deploying the exact immutable stable release selected above.
-          ref: ${{ github.ref }}
+          ref: ${{ steps.release.outputs.tag }}
           persist-credentials: false
 
       - name: Update Installed Repository Fleets
+        id: rollout
+        continue-on-error: true
         shell: pwsh
         env:
           RQG_APP_ID: ${{ vars.RQG_APP_ID }}
           RQG_APP_PRIVATE_KEY: ${{ secrets.RQG_APP_PRIVATE_KEY }}
-        run: ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply -AutoMerge
+        run: |
+          $reportPath = Join-Path $env:GITHUB_WORKSPACE 'rollout-report.txt'
+          try {
+            ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply -AutoMerge *>&1 |
+              Tee-Object -FilePath $reportPath
+          }
+          catch {
+            $_ | Out-String | Tee-Object -FilePath $reportPath -Append | Write-Host
+            exit 1
+          }
+          finally {
+            $report = if (Test-Path -LiteralPath $reportPath) {
+              Get-Content -LiteralPath $reportPath -Raw
+            }
+            else {
+              'No rollout output was captured.'
+            }
+            if ($report.Length -gt 200000) {
+              $report = "[Earlier output omitted because the report exceeded 200,000 characters.]`n`n" + $report.Substring($report.Length - 200000)
+            }
+            $encodedReport = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($report))
+            "report_base64=$encodedReport" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+
+      - name: Fail When Fleet Rollout Failed
+        if: ${{ always() && steps.rollout.outcome == 'failure' }}
+        shell: pwsh
+        run: throw 'The downstream fleet rollout failed. Review the emailed report and workflow log.'
+
+  report:
+    name: Email Fleet Rollout Report
+    needs: update
+    if: ${{ always() && vars.RQG_REPORT_EMAIL_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Send Fleet Rollout Report
+        env:
+          ROLLOUT_OUTCOME: ${{ needs.update.result }}
+          RELEASE_TAG: ${{ needs.update.outputs.release_tag }}
+          REPORT_BASE64: ${{ needs.update.outputs.report_base64 }}
+          SMTP_HOST: ${{ vars.RQG_REPORT_SMTP_HOST }}
+          SMTP_PORT: ${{ vars.RQG_REPORT_SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.RQG_REPORT_SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.RQG_REPORT_SMTP_PASSWORD }}
+          MESSAGE_FROM: ${{ secrets.RQG_REPORT_FROM }}
+          MESSAGE_TO: ${{ secrets.RQG_REPORT_TO }}
+        run: |
+          python - <<'PY'
+          import base64
+          import os
+          import smtplib
+          import ssl
+          from contextlib import suppress
+          from email.message import EmailMessage
+
+          required = (
+              "SMTP_HOST",
+              "SMTP_PORT",
+              "SMTP_USERNAME",
+              "SMTP_PASSWORD",
+              "MESSAGE_FROM",
+              "MESSAGE_TO",
+          )
+          missing = [name for name in required if not os.environ.get(name, "").strip()]
+          if missing:
+              raise RuntimeError("Missing required GitHub Actions settings: " + ", ".join(missing))
+
+          encoded_report = os.environ.get("REPORT_BASE64", "").strip()
+          report = (
+              base64.b64decode(encoded_report, validate=True).decode("utf-8", errors="replace")
+              if encoded_report
+              else "No detailed rollout output was available. The update job may have timed out or been cancelled."
+          )
+          outcome = os.environ.get("ROLLOUT_OUTCOME", "unknown").upper()
+          release_tag = os.environ.get("RELEASE_TAG", "").strip() or "unresolved"
+          run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          message = EmailMessage()
+          message["Subject"] = f"[RQG] Fleet Rollout {outcome}: {release_tag}"
+          message["From"] = os.environ["MESSAGE_FROM"]
+          message["To"] = os.environ["MESSAGE_TO"]
+          message.set_content(
+              f"Repository Quality Gates fleet rollout report\n\n"
+              f"Release: {release_tag}\n"
+              f"Outcome: {outcome}\n"
+              f"Workflow run: {run_url}\n\n"
+              f"Rollout output:\n{report}"
+          )
+
+          client = None
+          try:
+              client = smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ["SMTP_PORT"]), timeout=30)
+              client.ehlo()
+              client.starttls(context=ssl.create_default_context())
+              client.ehlo()
+              client.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
+              client.send_message(message)
+          finally:
+              if client is not None:
+                  with suppress(Exception):
+                      client.quit()
+          PY

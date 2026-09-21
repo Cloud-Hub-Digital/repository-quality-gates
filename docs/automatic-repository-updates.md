@@ -95,9 +95,10 @@ Use these repository permissions:
 | Contents | Read And Write | Read managed state and push the update branch |
 | Pull Requests | Read And Write | Find or create the update pull request |
 | Workflows | Read And Write | Add and update the GitHub Actions workflow files deployed by RQG |
+| Checks | Read | Wait for and inspect every downstream pull-request quality check before merging |
 | Metadata | Read | Required GitHub App repository metadata |
 
-The app does not need issue, administration, secrets, Actions administration, deployment, package, or organization permissions.
+The app does not need issue, administration, secrets, Actions administration, deployment, package, or organization permissions. GitHub reports pull-request check-rollup data through the Checks permission, so omitting that read-only permission prevents the updater from verifying private-repository checks.
 
 Install the App only on repositories that Repository Quality Gates may manage. The combined installations form the outer fleet allow-list. Within that scope, an existing managed-state file authorizes updates and an unmanaged repository is automatically eligible unless its committed repository rules opt out. The workflow discovers installations at runtime, so no owner names or repository inventory need to be stored in source, variables, or secrets.
 
@@ -110,7 +111,8 @@ In the central `repository-quality-gates` repository:
 1. Open **Settings** → **Secrets And Variables** → **Actions**.
 2. Under **Variables**, create `RQG_APP_ID` containing the GitHub App ID.
 3. Under **Secrets**, create `RQG_APP_PRIVATE_KEY` containing the complete private key generated for the app.
-4. Keep the private key out of files, commits, workflow logs, and pull-request content.
+4. To receive a report after every rollout, create the `RQG_REPORT_EMAIL_ENABLED` variable with value `true`, the `RQG_REPORT_SMTP_HOST` and `RQG_REPORT_SMTP_PORT` variables, and the `RQG_REPORT_SMTP_USERNAME`, `RQG_REPORT_SMTP_PASSWORD`, `RQG_REPORT_FROM`, and `RQG_REPORT_TO` secrets.
+5. Keep the private key and email credentials out of files, commits, workflow logs, and pull-request content.
 
 The workflow exchanges these values for a short-lived App JWT, then creates a separate short-lived installation token for each installation. It never reuses one installation's token for another installation, copies no token or private key into a managed repository, masks discovered owner and full repository names before downstream log output, and requests revocation of each installation token when processing finishes.
 
@@ -124,6 +126,8 @@ The central `.github/workflows/update-managed-repositories.yml` workflow runs:
 - after a stable GitHub Release is published by an external authorized actor;
 - daily at its documented UTC schedule; and
 - on a manual `workflow_dispatch` request.
+
+The rollout job has a 120-minute overall limit. Each downstream pull request may wait up to 45 minutes for reported checks to finish, after allowing up to two minutes for the first check to appear. When email reporting is enabled, the workflow sends a final success or failure report after the rollout step, including the selected release, workflow-run link, and captured per-repository output. A rollout failure remains a workflow failure after the report is sent.
 
 The automatic release passes its exact stable tag to the fleet workflow, and an externally published release supplies its event tag. Scheduled runs and manual runs without a tag resolve the latest published release. Every path verifies that the selected tag is a published, non-draft, non-prerelease stable semantic version and checks out that immutable tag before updating repositories. Development work on `main` therefore cannot be distributed before it becomes a release, and a release-triggered rollout cannot drift to a different release.
 

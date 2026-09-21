@@ -72,6 +72,7 @@ The deployment guide includes complete commands for preview, JSON review, apply-
 - Push fetches the remote, rejects a branch that is behind, scans the exact outgoing commit range, and never force-pushes.
 - Private identifier policies stay outside every repository and are referenced only through local Git configuration.
 - Each GitHub App installation is enumerated independently and receives its own short-lived token; owner and full repository names are masked before downstream processing writes to the public workflow log.
+- The fleet workflow allows up to 120 minutes for a complete run and can send an authenticated SMTP success or failure report with the selected release, workflow link, and per-repository results.
 
 See [Module System](docs/module-system.md) for state tracking, file classification, conflict behavior, recovery copies, preservation, pruning, and push safeguards.
 
