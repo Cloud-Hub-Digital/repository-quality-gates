@@ -154,6 +154,8 @@ try {
     Assert-True ($fleetWorkflow.Contains('PUBLISHED_RELEASE_TAG: ${{ github.event.release.tag_name }}')) 'Release-event fleet runs should use the exact published release tag.'
     Assert-True ($fleetWorkflow.Contains('gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,isDraft,isPrerelease')) 'The fleet workflow should verify its selected tag against the explicit central repository before checkout.'
     $fleetScript = [IO.File]::ReadAllText((Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'))
+    $appFleetScript = [IO.File]::ReadAllText((Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateAppFleetUpdate.ps1'))
+    Assert-True ($appFleetScript.Contains("OutputFormat = 'Json'")) 'Cross-owner fleet runs should retain complete structured per-repository diagnostics.'
     Assert-True ($fleetScript.Contains('gh pr list --repo $RepositoryName --state open --limit 1000')) 'The fleet updater should inspect all open pull requests before changing a downstream repository.'
     Assert-True ($fleetScript.Contains("status = 'DeferredOpenPullRequests'")) 'A repository with an open pull request should be explicitly deferred.'
     Assert-True ($fleetScript.Contains('No RQG branch was pushed.')) 'The fleet updater should check again immediately before publishing its temporary branch.'
