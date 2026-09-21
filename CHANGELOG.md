@@ -11,6 +11,7 @@
 
 - Stable `main` versions now create an annotated semantic-version tag and immutable GitHub Release automatically; publishing that release starts the existing downstream fleet update.
 - Corrected GitHub App installation discovery so PowerShell normalizes a top-level JSON array before processing each installation separately.
+- Corrected push-event source resolution so only manual API lookups evaluate an external-process exit status.
 
 ### Security
 
