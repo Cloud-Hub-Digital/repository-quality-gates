@@ -114,6 +114,8 @@ try {
         Assert-True (-not $fleetText.Contains('gh pr merge')) 'The fleet must not depend on the GitHub CLI GraphQL merge path or repository-level auto-merge settings.'
         Assert-True ($fleetText.Contains('gh api --method DELETE "repos/$repositoryName/git/refs/heads/$branchName"')) 'A successful REST merge should remove its temporary update branch.'
         Assert-True ($fleetText.IndexOf('if ($pending.Count)') -lt $fleetText.IndexOf('if ($failed.Count)')) 'The fleet should wait for running checks before removing a branch after another check fails.'
+        Assert-True ($fleetText.Contains('Repository Quality Gates update failed for')) 'Preparation failures should be written without table truncation.'
+        Assert-True ($fleetText.Contains('Repository Quality Gates completion failed for')) 'Post-check completion failures should be written without table truncation.'
         $emptyPullRequestOutput = @()
         $normalizedEmptyPullRequest = ($emptyPullRequestOutput -join [Environment]::NewLine).Trim()
         Assert-True ($normalizedEmptyPullRequest -eq '') 'Zero GitHub CLI output lines should normalize to an empty pull-request URL.'

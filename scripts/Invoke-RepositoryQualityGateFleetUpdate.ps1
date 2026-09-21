@@ -290,6 +290,7 @@ try {
             }
             $entry.status = 'Failed'
             $entry.detail = $failureMessage
+            Write-Warning "Repository Quality Gates update failed for '$fullName': $failureMessage"
         }
         $results.Add([pscustomobject]$entry)
     }
@@ -330,6 +331,7 @@ if ($Apply -and $AutoMerge) {
             $entry.autoMerge = $false
             $entry.status = 'Failed'
             $entry.detail = $failureMessage
+            Write-Warning "Repository Quality Gates completion failed for '$($entry.repository)': $failureMessage"
         }
     }
 }

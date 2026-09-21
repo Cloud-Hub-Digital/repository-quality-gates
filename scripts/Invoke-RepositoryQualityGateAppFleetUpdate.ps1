@@ -123,6 +123,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                     Repository = $repositories
                     TemplateRoot = $ResolvedTemplateRoot
                     TemporaryBranchLifetimeHours = $BranchLifetimeHours
+                    OutputFormat = 'Json'
                 }
                 if ($EnableAutoEnroll) { $fleetArguments.AutoEnroll = $true }
                 if ($EnableApply) { $fleetArguments.Apply = $true }
