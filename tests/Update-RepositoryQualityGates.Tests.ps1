@@ -65,7 +65,7 @@ try {
     Assert-True ($applyJson.status -eq 'Updated') 'Apply should report an updated repository.'
     Assert-True ($applyJson.changedPaths -contains '.repository-quality-gates.json') 'The update should refresh managed state.'
     $updatedState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    Assert-True ($updatedState.templateVersion -eq '1.4.0') 'Managed state should record the new template version.'
+    Assert-True ($updatedState.templateVersion -eq '1.4.1') 'Managed state should record the new template version.'
     Commit-All $managed 'update quality gates'
 
     $current = Invoke-Update $managed
@@ -113,7 +113,7 @@ try {
     $enrollmentApplyJson = $enrollmentApply.Output | ConvertFrom-Json
     Assert-True ($enrollmentApplyJson.status -eq 'Enrolled') 'Applied initial enrolment should report Enrolled.'
     $enrolledState = Get-Content -LiteralPath (Join-Path $unmanaged '.repository-quality-gates.json') -Raw | ConvertFrom-Json
-    Assert-True ($enrolledState.templateVersion -eq '1.4.0') 'Initial enrolment should record the current template version.'
+    Assert-True ($enrolledState.templateVersion -eq '1.4.1') 'Initial enrolment should record the current template version.'
     Assert-True (Test-Path -LiteralPath (Join-Path $unmanaged '.github\workflows\secret-scanning.yml')) 'Initial enrolment should deploy the selected quality-gate workflows.'
 
     $overlap = Join-Path $testRoot 'overlap'
@@ -152,6 +152,58 @@ try {
     Assert-True ($migratedRules.modules.repositoryOwned -contains 'documentation') 'The migrated rules file should retain the repository-owned module decision.'
     $migratedState = Get-Content -LiteralPath $legacyStatePath -Raw | ConvertFrom-Json
     Assert-True (@($migratedState.files | Where-Object path -eq '.repository-quality-gates.local.json').Count -eq 0) 'The migrated downstream rules file must remain outside managed state.'
+
+    $legacySecret = Join-Path $testRoot 'legacy-secret-preservation'
+    New-Item -ItemType Directory -Path $legacySecret | Out-Null
+    & git -C $legacySecret init -q
+    & git -C $legacySecret config user.name 'Fixture'
+    & git -C $legacySecret config user.email 'fixture@example.invalid'
+    '# Legacy Secret Fixture' | Set-Content -LiteralPath (Join-Path $legacySecret 'README.md') -Encoding utf8
+    Commit-All $legacySecret 'initial legacy secret fixture'
+    $null = @(& pwsh -NoProfile -File $deploymentTool -RepositoryPath $legacySecret -Apply -OutputFormat Json 2>&1)
+    Assert-True ($LASTEXITCODE -eq 0) 'The legacy secret fixture should accept its initial deployment.'
+    $legacySecretStatePath = Join-Path $legacySecret '.repository-quality-gates.json'
+    $legacySecretState = Get-Content -LiteralPath $legacySecretStatePath -Raw | ConvertFrom-Json
+    $legacySecretState.templateVersion = '1.3.1'
+    $legacySecretState.files = @($legacySecretState.files | Where-Object module -ne 'secret-scanning')
+    $legacySecretState.preservedModules = @(@($legacySecretState.preservedModules) + 'secret-scanning' | Sort-Object -Unique)
+    [IO.File]::WriteAllText($legacySecretStatePath, (($legacySecretState | ConvertTo-Json -Depth 8).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+    $legacyRootPolicy = Join-Path $legacySecret '.gitleaks.toml'
+    Add-Content -LiteralPath $legacyRootPolicy -Value "`n# repository-owned exception" -Encoding utf8
+    $legacyRootPolicyHash = (Get-FileHash -LiteralPath $legacyRootPolicy -Algorithm SHA256).Hash
+    Commit-All $legacySecret 'simulate legacy preserved secret-scanning module'
+    $legacySecretUpdate = Invoke-Update $legacySecret -Apply
+    Assert-True ($legacySecretUpdate.ExitCode -eq 0) "A legacy preserved secret-scanning module should migrate safely. $($legacySecretUpdate.Output)"
+    Assert-True ((Get-FileHash -LiteralPath $legacyRootPolicy -Algorithm SHA256).Hash -eq $legacyRootPolicyHash) 'The customized legacy root Gitleaks policy should remain byte for byte unchanged.'
+    $legacySecretRules = Get-Content -LiteralPath (Join-Path $legacySecret '.repository-quality-gates.local.json') -Raw | ConvertFrom-Json
+    Assert-True ($legacySecretRules.paths.repositoryOwned -contains '.gitleaks.toml') 'The migrated local rules should record the customized root Gitleaks policy as repository-owned.'
+    $legacySecretUpdatedState = Get-Content -LiteralPath $legacySecretStatePath -Raw | ConvertFrom-Json
+    Assert-True (@($legacySecretUpdatedState.files | Where-Object path -eq '.gitleaks.toml').Count -eq 0) 'The customized root Gitleaks policy must remain outside managed state after migration.'
+    Assert-True ($legacySecretUpdatedState.modules -contains 'secret-scanning') 'The remaining secret-scanning payload should return to central management.'
+
+    $deceptiveLegacySecret = Join-Path $testRoot 'deceptive-legacy-secret-preservation'
+    & git clone -q $legacySecret $deceptiveLegacySecret
+    & git -C $deceptiveLegacySecret config user.name 'Fixture'
+    & git -C $deceptiveLegacySecret config user.email 'fixture@example.invalid'
+    $deceptiveRulesPath = Join-Path $deceptiveLegacySecret '.repository-quality-gates.local.json'
+    Remove-Item -LiteralPath $deceptiveRulesPath -Force -ErrorAction SilentlyContinue
+    $deceptiveStatePath = Join-Path $deceptiveLegacySecret '.repository-quality-gates.json'
+    $deceptiveState = Get-Content -LiteralPath $deceptiveStatePath -Raw | ConvertFrom-Json
+    $deceptiveState.templateVersion = '1.3.1'
+    $deceptiveState.files = @($deceptiveState.files | Where-Object module -ne 'secret-scanning')
+    $deceptiveState.preservedModules = @(@($deceptiveState.preservedModules) + 'secret-scanning' | Sort-Object -Unique)
+    [IO.File]::WriteAllText($deceptiveStatePath, (($deceptiveState | ConvertTo-Json -Depth 8).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+    @'
+[extend]
+
+[[rules]]
+id = "synthetic-rule"
+path = "security/gitleaks-portable.toml"
+'@ | Set-Content -LiteralPath (Join-Path $deceptiveLegacySecret '.gitleaks.toml') -Encoding utf8
+    Commit-All $deceptiveLegacySecret 'simulate deceptive legacy root policy'
+    $deceptiveLegacyUpdate = Invoke-Update $deceptiveLegacySecret -Apply
+    Assert-True ($deceptiveLegacyUpdate.ExitCode -ne 0) 'A path key outside the extend section must not satisfy legacy portable-policy inheritance.'
+    Assert-True ($deceptiveLegacyUpdate.Output -match 'does not extend security/gitleaks-portable.toml') 'The deceptive legacy policy should fail with the inheritance error.'
 
     $localRules = Join-Path $testRoot 'local-rules'
     New-Item -ItemType Directory -Path $localRules | Out-Null

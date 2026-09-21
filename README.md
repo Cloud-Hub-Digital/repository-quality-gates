@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The prepared patch template version written to managed state is `1.4.0`. The latest published GitHub Release is [`1.3.1`](https://github.com/Cloud-Hub-Digital/repository-quality-gates/releases/tag/v1.3.1).
+The prepared template version written to managed state is `1.4.1`. The automatic release workflow publishes the matching immutable [`v1.4.1`](https://github.com/Cloud-Hub-Digital/repository-quality-gates/releases/tag/v1.4.1) GitHub Release after the required checks pass for the release commit.
 
-Version `1.4.0` standardizes the supported execution path on PowerShell 7 through `pwsh` and corrects release resolution for explicitly dispatched fleet runs before checkout. It retains the authenticated Git transport and explicit release-to-fleet dispatch introduced in `1.3.1`, plus the automatic stable release, stale-version, tag-collision, and multi-installation controls introduced in `1.3.0`. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.4.1` repairs downstream fleet reconciliation after the `1.4.0` rollout, while retaining the PowerShell 7 execution path and release-resolution corrections introduced in `1.4.0`. Empty repositories are deferred, absent pull requests are handled safely, later GitHub App installations continue after an earlier installation fails, and verified legacy secret-scanning files can migrate back to central management without replacing a repository-specific root `.gitleaks.toml`. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## Runtime Requirement
 

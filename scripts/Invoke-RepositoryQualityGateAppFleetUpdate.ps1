@@ -96,10 +96,12 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
     $originalGitConfigCount = $env:GIT_CONFIG_COUNT
     $originalGitConfigKey0 = $env:GIT_CONFIG_KEY_0
     $originalGitConfigValue0 = $env:GIT_CONFIG_VALUE_0
+    $installationFailureCount = 0
     try {
         foreach ($installation in $installations) {
-            $token = New-GitHubAppInstallationToken $jwt ([long]$installation.id)
+            $token = $null
             try {
+                $token = New-GitHubAppInstallationToken $jwt ([long]$installation.id)
                 $env:GH_TOKEN = $token
                 $basicCredential = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$token"))
                 $authorizationHeader = "AUTHORIZATION: basic $basicCredential"
@@ -127,15 +129,31 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 if ($EnableAutoMerge) { $fleetArguments.AutoMerge = $true }
                 & $fleetTool @fleetArguments
             }
+            catch {
+                $installationFailureCount++
+                Write-Warning 'A GitHub App installation failed; processing will continue with the remaining installations.'
+            }
             finally {
-                if ($env:GH_TOKEN) {
+                if (-not [string]::IsNullOrWhiteSpace($token)) {
+                    $env:GH_TOKEN = $token
                     $null = @(& gh api --method DELETE /installation/token 2>&1)
                     if ($LASTEXITCODE -ne 0) { Write-Warning 'Unable to revoke a GitHub App installation token before its normal expiry.' }
                 }
+                if ($null -eq $originalToken) { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue }
+                else { $env:GH_TOKEN = $originalToken }
+                if ($null -eq $originalGitConfigCount) { Remove-Item Env:\GIT_CONFIG_COUNT -ErrorAction SilentlyContinue }
+                else { $env:GIT_CONFIG_COUNT = $originalGitConfigCount }
+                if ($null -eq $originalGitConfigKey0) { Remove-Item Env:\GIT_CONFIG_KEY_0 -ErrorAction SilentlyContinue }
+                else { $env:GIT_CONFIG_KEY_0 = $originalGitConfigKey0 }
+                if ($null -eq $originalGitConfigValue0) { Remove-Item Env:\GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue }
+                else { $env:GIT_CONFIG_VALUE_0 = $originalGitConfigValue0 }
                 Remove-Variable token -ErrorAction SilentlyContinue
                 Remove-Variable basicCredential -ErrorAction SilentlyContinue
                 Remove-Variable authorizationHeader -ErrorAction SilentlyContinue
             }
+        }
+        if ($installationFailureCount) {
+            throw "$installationFailureCount GitHub App installation(s) failed after all accessible installations were processed. Review the masked per-repository results above."
         }
     }
     finally {

@@ -13,21 +13,22 @@ The release workflow binds every required result to both its exact workflow path
 3. Enumerates every account or organization where the App is installed.
 4. Creates a separate short-lived token for one installation at a time.
 5. Enumerates only the repositories selected for that installation and masks each owner and full repository name before downstream processing writes to the public workflow log.
-6. Revokes that installation token after its repositories have been processed, then repeats the process for the next installation.
+6. Revokes that installation token after its repositories have been processed, then repeats the process for the next installation. If one installation fails, the wrapper records that failure, continues through every remaining installation, and fails the completed run with an aggregate installation count.
 7. Skips the central template repository.
 8. Treats a repository containing `.repository-quality-gates.json` as managed.
 9. Treats an unmanaged repository as eligible for initial enrolment unless `.repository-quality-gates.local.json` sets `automaticEnrollment` to `false`.
 10. Skips managed repositories already on the target version and refuses to downgrade a newer version.
 11. Removes an RQG-marked pull request and branch that have remained open for 24 hours only when the exact temporary-branch pattern, expected base branch, same-repository head, and RQG provenance marker all match, then checks eligibility again.
 12. Defers an eligible repository when any pull request is open and reports every blocking pull request.
-13. Clones the repository's default branch into a temporary runner folder.
-14. Reads the downstream repository's optional `.repository-quality-gates.local.json` rules.
-15. Detects repository contents and selects only applicable modules during initial enrolment, or applies the released template with managed pruning during an update.
-16. Stops if an initial enrolment finds an undeclared overlapping workflow, a managed file was changed, or another deployment conflict is found.
-17. Runs the public working-tree, detection-policy, module-drift, and staged secret checks.
-18. Checks for open pull requests and the repository-owned enrolment opt-out again immediately before publishing the temporary branch.
-19. Pushes `rqg/update-v<VERSION>` and opens an RQG-marked pull request.
-20. Enables squash auto-merge and branch deletion for that pull request.
+13. Defers an empty repository until its first commit creates a usable default branch.
+14. Clones the repository's default branch into a temporary runner folder.
+15. Reads the downstream repository's optional `.repository-quality-gates.local.json` rules.
+16. Detects repository contents and selects only applicable modules during initial enrolment, or applies the released template with managed pruning during an update.
+17. Stops if an initial enrolment finds an undeclared overlapping workflow, a managed file was changed, or another deployment conflict is found.
+18. Runs the public working-tree, detection-policy, module-drift, and staged secret checks.
+19. Checks for open pull requests and the repository-owned enrolment opt-out again immediately before publishing the temporary branch.
+20. Pushes `rqg/update-v<VERSION>` and opens an RQG-marked pull request.
+21. Enables squash auto-merge and branch deletion for that pull request.
 
 GitHub completes the merge only after the downstream repository's branch rules and required checks allow it. A failed check, conflict, missing prerequisite, or unavailable auto-merge leaves the pull request open and reports the repository as failed. While that RQG pull request remains open, later fleet runs defer the repository like any other repository with an open pull request.
 
@@ -62,6 +63,9 @@ A downstream repository may contain `.repository-quality-gates.local.json`. The 
     "include": [],
     "repositoryOwned": []
   },
+  "paths": {
+    "repositoryOwned": []
+  },
   "secretScanning": {
     "additionalConfigFiles": []
   }
@@ -73,11 +77,12 @@ A downstream repository may contain `.repository-quality-gates.local.json`. The 
 | `automaticEnrollment` | Optional Boolean. Set to `false` to keep an unmanaged repository outside automatic enrolment; absence defaults to `true` |
 | `modules.include` | Install a named RQG module even when normal file detection does not select it |
 | `modules.repositoryOwned` | Keep a repository's existing verified implementation of a detected or explicitly included module instead of deploying the RQG payload |
+| `paths.repositoryOwned` | Preserve specific existing repository-relative files outside RQG managed state; every listed path must already be a regular file and cannot be the managed-state or local-rules file |
 | `secretScanning.additionalConfigFiles` | Run additional committed repository-specific Gitleaks TOML policies as separate scan layers |
 
 The file is declarative. It cannot run commands, change GitHub permissions, disable the universal secret-scanning or module-drift modules, or override managed files. Module IDs must exist in the released catalogue. A repository-owned module must still have matching workflow evidence, and each additional secret policy must be a contained repository-relative TOML file that does not traverse a symbolic link or junction.
 
-Older managed state that records preserved modules is migrated into this file during its first successful update. After migration, the repository-owned file is the source of truth and the managed state contains only the resolved snapshot used for drift reporting.
+Older managed state that records preserved modules is migrated into this file during its first successful update. Legacy secret-scanning files return to central management only when each file matches a verified hash from a published RQG release. A customized root `.gitleaks.toml` may instead be recorded under `paths.repositoryOwned` when it still extends `security/gitleaks-portable.toml`; unknown or modified legacy files stop the update for review. After migration, the repository-owned file is the source of truth and the managed state contains only the resolved snapshot used for drift reporting.
 
 ## One-Time GitHub App Setup
 
@@ -145,6 +150,8 @@ The local command changes files but does not commit, push, create a pull request
 - A file whose current hash matches the previously recorded managed hash may be updated.
 - A modified managed file stops the update and is preserved.
 - Repository-owned files are not replaced.
+- Files listed under `paths.repositoryOwned` are not added to managed state, overwritten, or pruned.
+- Historical RQG files are adopted only when their content matches an exact verified release hash.
 - `.repository-quality-gates.local.json` and every policy it names remain repository-owned and unmanaged.
 - A repository on a newer template version is never downgraded.
 - Unmanaged repositories are enrolled when the fleet workflow enables automatic enrolment, unless their committed repository rules set `automaticEnrollment` to `false`.

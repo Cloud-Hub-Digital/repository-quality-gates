@@ -55,6 +55,7 @@ param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch
     autoMerge = [bool]$AutoMerge
     lifetime = $TemporaryBranchLifetimeHours
 } | ConvertTo-Json -Compress | Add-Content -LiteralPath $env:RQG_TEST_RECORD_PATH -Encoding utf8
+if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-101') { throw 'Synthetic first-installation failure.' }
 '@
     [IO.File]::WriteAllText((Join-Path $testRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'), $fakeFleet, [Text.UTF8Encoding]::new($false))
 
@@ -110,12 +111,27 @@ param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch
         Assert-True ($records[0].autoEnroll -and $records[0].apply -and $records[0].autoMerge) 'The wrapper should forward the requested automation switches.'
         Assert-True ($records[0].lifetime -eq 24) 'The wrapper should forward the temporary branch lifetime.'
         Assert-True ($env:GIT_CONFIG_COUNT -eq '7' -and $env:GIT_CONFIG_KEY_0 -eq 'test.original.key' -and $env:GIT_CONFIG_VALUE_0 -eq 'test-original-value') 'The wrapper should restore the caller Git configuration environment.'
+
+        Remove-Item -LiteralPath $recordPath -Force
+        $env:RQG_TEST_FAIL_FIRST = '1'
+        $aggregateFailure = $null
+        try {
+            Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -EnableAutoEnroll -EnableApply -EnableAutoMerge -BranchLifetimeHours 24
+        }
+        catch { $aggregateFailure = $_ }
+        $failureRecords = @(Get-Content -LiteralPath $recordPath | ForEach-Object { $_ | ConvertFrom-Json })
+        Assert-True ($null -ne $aggregateFailure) 'An installation failure should make the complete App fleet run fail after processing finishes.'
+        Assert-True ($aggregateFailure.Exception.Message -match '^1 GitHub App installation\(s\) failed after all accessible installations were processed\.') 'The final error should report the aggregate installation failure count.'
+        Assert-True ($failureRecords.Count -eq 2) 'A failed installation must not prevent a later installation from running.'
+        Assert-True ($failureRecords[1].repositories[0] -eq 'second-owner/two') 'The later installation should still receive its repository list after an earlier failure.'
+        Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
     }
     finally {
         $testRsa.Dispose()
         Remove-Item Function:\global:Invoke-RestMethod -ErrorAction SilentlyContinue
         Remove-Item Function:\global:gh -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_RECORD_PATH -ErrorAction SilentlyContinue
+        Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
         if ($null -eq $oldToken) { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue } else { $env:GH_TOKEN = $oldToken }
         if ($null -eq $oldGitConfigCount) { Remove-Item Env:\GIT_CONFIG_COUNT -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_COUNT = $oldGitConfigCount }
         if ($null -eq $oldGitConfigKey0) { Remove-Item Env:\GIT_CONFIG_KEY_0 -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_KEY_0 = $oldGitConfigKey0 }

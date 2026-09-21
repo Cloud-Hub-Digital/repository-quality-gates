@@ -39,10 +39,14 @@ try {
         $joined = $args -join ' '
         if ($args[0] -eq 'api') {
             $endpoint = [string]$args[1]
-            if ($endpoint -match '^repos/owner/(?<name>[^/?]+)$' -and $joined -match '--jq \.default_branch') {
-                'main'
-                $global:LASTEXITCODE = 0
-                return
+            if ($endpoint -match '^repos/owner/(?<name>[^/?]+)$') {
+                $repositoryName = $Matches.name
+                if ($joined -match 'defaultBranch') {
+                    if ($repositoryName -eq 'empty') { '{"defaultBranch":"main","size":0}' }
+                    else { '{"defaultBranch":"main","size":1}' }
+                    $global:LASTEXITCODE = 0
+                    return
+                }
             }
             if ($endpoint -match '/contents/\.repository-quality-gates\.json') {
                 'gh: Not Found (HTTP 404)'
@@ -73,18 +77,20 @@ try {
     $oldToken = $env:GH_TOKEN
     $env:GH_TOKEN = 'synthetic-test-token'
     try {
-        $preview = Invoke-Fleet @('owner/enrol', 'owner/optout', 'owner/busy') -AutoEnroll
+        $preview = Invoke-Fleet @('owner/enrol', 'owner/optout', 'owner/busy', 'owner/empty') -AutoEnroll
         Assert-True ($preview.ExitCode -eq 0) "Fleet enrolment preview should succeed. $($preview.Output)"
         $previewJson = $preview.Output | ConvertFrom-Json
         $enrol = @($previewJson.repositories | Where-Object repository -eq 'owner/enrol')[0]
         $optout = @($previewJson.repositories | Where-Object repository -eq 'owner/optout')[0]
         $busy = @($previewJson.repositories | Where-Object repository -eq 'owner/busy')[0]
+        $empty = @($previewJson.repositories | Where-Object repository -eq 'owner/empty')[0]
         Assert-True ($enrol.status -eq 'EnrollmentAvailable') 'An unmanaged repository without an opt-out rule should become an enrolment candidate.'
         Assert-True ([bool]$enrol.enrolment) 'The enrolment candidate should be explicitly identified in structured output.'
         Assert-True ($optout.status -eq 'EnrollmentOptOut') 'An unmanaged repository with automaticEnrollment set to false should remain unenrolled.'
         Assert-True (-not [bool]$optout.enrolment) 'An opted-out repository should not be marked for enrolment.'
         Assert-True ($busy.status -eq 'DeferredOpenPullRequests') 'An automatically eligible repository with an open pull request should be deferred.'
         Assert-True (@($busy.blockingPullRequests).Count -eq 1) 'The deferred enrolment should report its blocking pull request.'
+        Assert-True ($empty.status -eq 'EmptyRepository') 'An empty repository should be deferred without failing the fleet.'
 
         $disabled = Invoke-Fleet @('owner/enrol')
         Assert-True ($disabled.ExitCode -eq 0) 'A fleet preview with automatic enrolment disabled should succeed.'
@@ -99,6 +105,7 @@ try {
         Assert-True ($fleetText.Contains('baseRefName,isCrossRepository,body')) 'Expired pull-request cleanup should obtain base, repository-origin, and provenance evidence.'
         Assert-True ($fleetText.Contains("status = 'EnrollmentOptOut'")) 'The fleet should honour the downstream automatic-enrolment opt-out.'
         Assert-True ($fleetText.Contains('opted out while automatic enrolment was being prepared')) 'The fleet should recheck the opt-out immediately before publishing the first enrolment branch.'
+        Assert-True ($fleetText.Contains("([string](& gh pr list")) 'A missing existing pull request must normalize to an empty string without a null-method failure.'
     }
     finally {
         Remove-Item Function:\global:gh -ErrorAction SilentlyContinue

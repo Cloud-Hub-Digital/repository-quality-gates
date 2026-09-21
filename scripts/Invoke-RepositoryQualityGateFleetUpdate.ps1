@@ -82,8 +82,18 @@ try {
             if ($fullName -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Invalid repository name: $fullName" }
             if ($Owner -and ($fullName -split '/')[0] -ine $Owner) { $entry.detail = 'Repository is outside the selected owner.'; $results.Add([pscustomobject]$entry); continue }
 
-            $defaultBranch = (& gh api "repos/$fullName" --jq .default_branch 2>$null).Trim()
-            if ($LASTEXITCODE -ne 0 -or -not $defaultBranch) { throw 'Unable to read repository metadata.' }
+            $metadataText = @(& gh api "repos/$fullName" --jq '{defaultBranch:.default_branch,size:.size}' 2>$null) -join [Environment]::NewLine
+            if ($LASTEXITCODE -ne 0 -or -not $metadataText) { throw 'Unable to read repository metadata.' }
+            try { $metadata = $metadataText | ConvertFrom-Json }
+            catch { throw 'GitHub returned invalid repository metadata.' }
+            $defaultBranch = ([string]$metadata.defaultBranch).Trim()
+            if ([long]$metadata.size -eq 0) {
+                $entry.status = 'EmptyRepository'
+                $entry.detail = 'The repository has no commits. Automatic enrolment will be retried after its first commit.'
+                $results.Add([pscustomobject]$entry)
+                continue
+            }
+            if (-not $defaultBranch) { throw 'The repository does not identify a default branch.' }
             $stateFile = Get-RemoteTextFile $fullName $defaultBranch '.repository-quality-gates.json'
             $isManaged = [bool]$stateFile.exists
             $remoteState = $null
@@ -194,7 +204,8 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Unable to push the update branch.' }
             $pushedUpdateBranch = $true
 
-            $existingPr = (& gh pr list --repo $fullName --state open --head $branchName --base $defaultBranch --json number,url --jq '.[0].url // empty').Trim()
+            $existingPr = ([string](& gh pr list --repo $fullName --state open --head $branchName --base $defaultBranch --json number,url --jq '.[0].url // empty')).Trim()
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to check for an existing update pull request.' }
             if ($existingPr) { $entry.pullRequest = $existingPr }
             else {
                 $bodyPath = Join-Path $clonePath 'rqg-pr-body.md'
@@ -205,8 +216,8 @@ try {
                 }
                 [IO.File]::WriteAllText($bodyPath, $body, [Text.UTF8Encoding]::new($false))
                 $pullRequestTitle = if ($entry.enrolment) { "chore: enrol in Repository Quality Gates $TargetVersion" } else { "chore: update Repository Quality Gates to $TargetVersion" }
-                $entry.pullRequest = (& gh pr create --repo $fullName --base $defaultBranch --head $branchName --title $pullRequestTitle --body-file $bodyPath).Trim()
-                if ($LASTEXITCODE -ne 0) { throw 'Unable to create the update pull request.' }
+                $entry.pullRequest = ([string](& gh pr create --repo $fullName --base $defaultBranch --head $branchName --title $pullRequestTitle --body-file $bodyPath)).Trim()
+                if ($LASTEXITCODE -ne 0 -or -not $entry.pullRequest) { throw 'Unable to create the update pull request.' }
             }
             if ($AutoMerge) {
                 $mergeOutput = @(& gh pr merge $entry.pullRequest --repo $fullName --auto --squash --delete-branch 2>&1)

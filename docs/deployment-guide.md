@@ -88,13 +88,18 @@ If an existing workflow already provides a reviewed implementation, record that 
     "include": [],
     "repositoryOwned": ["documentation"]
   },
+  "paths": {
+    "repositoryOwned": [".gitleaks.toml"]
+  },
   "secretScanning": {
     "additionalConfigFiles": []
   }
 }
 ```
 
-Replace `documentation` with the applicable non-universal module ID and commit the file to that downstream repository. The command succeeds only when the module is detected or included and an existing workflow contains matching catalog evidence. The universal `secret-scanning` and `module-drift` modules must remain centrally managed and cannot appear in `repositoryOwned`. The deployment tool still accepts `-PreserveExistingModule` for one-off and compatibility use, but automatic updates use the committed repository-owned file.
+Replace `documentation` with the applicable non-universal module ID and list only specific existing files under `paths.repositoryOwned`. Commit the file to that downstream repository. The command succeeds only when a repository-owned module is detected or included and an existing workflow contains matching catalog evidence. A repository-owned path must be a contained regular file and cannot be `.git`, `.repository-quality-gates.json`, or `.repository-quality-gates.local.json`. The universal `secret-scanning` and `module-drift` modules must remain centrally managed and cannot appear in `modules.repositoryOwned`. The deployment tool still accepts `-PreserveExistingModule` and `-PreserveExistingPath` for one-off and compatibility use, but automatic updates use the committed repository-owned file.
+
+During the first update from older managed state, the updater can adopt historical RQG secret-scanning files only when their SHA-256 hashes exactly match a verified published release. If the root `.gitleaks.toml` was deliberately extended for that repository and still extends `security/gitleaks-portable.toml`, the updater records it under `paths.repositoryOwned` and restores central management for the remaining secret-scanning files. Unknown or modified files stop the migration for review.
 
 ### Intentional Duplicate Workflows
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.4.1 - 2026-09-21
+
+### Changed
+
+- Continue processing later GitHub App installations when one installation fails, then fail the completed fleet run with an aggregate installation count.
+- Defer empty GitHub repositories until their first commit makes a default branch available.
+
+### Fixed
+
+- Treat an empty GitHub CLI pull-request lookup as no matching pull request instead of calling a method on a null value.
+- Migrate legacy repository-owned secret-scanning modules only when their historical RQG files match verified release hashes.
+- Preserve a customized root `.gitleaks.toml` as a repository-owned path during legacy migration when it continues to extend the central portable policy, while returning the remaining secret-scanning payload to central management.
+
+### Security
+
+- Restrict historical managed-file adoption to exact known SHA-256 hashes and fail closed for unknown or modified legacy files.
+
 ## 1.4.0 - 2026-09-21
 
 ### Changed

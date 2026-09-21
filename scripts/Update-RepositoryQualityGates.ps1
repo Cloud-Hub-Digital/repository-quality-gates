@@ -96,10 +96,49 @@ if ($isManaged) {
 }
 
 $preservedModules = @()
+$preservedPaths = @()
+$adoptedManagedFiles = @()
 $migrateRepositoryRules = $false
 if ($isManaged -and -not (Test-Path -LiteralPath $rulesPath -PathType Leaf) -and $state.PSObject.Properties['preservedModules']) {
-    $preservedModules = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ -and $_ -notin @('secret-scanning', 'module-drift') })
-    $migrateRepositoryRules = $preservedModules.Count -gt 0
+    $legacyPreservedModules = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique)
+    $preservedModules = @($legacyPreservedModules | Where-Object { $_ -notin @('secret-scanning', 'module-drift') })
+
+    if ($legacyPreservedModules -contains 'secret-scanning') {
+        # Versions before path-level repository rules could preserve the entire
+        # secret-scanning module when only the root .gitleaks.toml contained a
+        # repository exception. Adopt only byte-for-byte historical RQG files;
+        # keep a customized root policy repository-owned when it still extends
+        # the centrally managed portable baseline.
+        $legacySecretHashes = @{
+            '.githooks/pre-commit' = @('92c9c24afeb1afe833384e8b2fe1f9fafac135193c97a0306a09983ec8e652a8')
+            '.githooks/pre-push' = @('4a20602b0c9b890ca993997ccdba35c8b3a040916e46594ad59dc68047af37b2')
+            '.github/workflows/secret-scanning.yml' = @('bde3015d33707e3f1a529441f2e2a123b85baec9956aa2a21a361df3a6911ca5')
+            '.gitleaks.toml' = @('d82d36b06c3b6db6f6af4ba3c9f4c337ce1bcf494ba9c28797741a77fa402842', '89959bb386284925477919912cbd1cc7f2cbf17aa1dfaaeeeb8f1978916ac875')
+            'scripts/Configure-SecretScanning.ps1' = @('274992c067e0ba3e9b8967a81d9dbc032700cbca5aba6e05d2641d3de14e77f9')
+            'scripts/Install-GitHooks.ps1' = @('d31b4927808d40b1b66c69c9144ee7835d7658c22784aca9b4451b61c31f3a0a')
+            'scripts/Install-Gitleaks.ps1' = @('b5a766f5f3b4722c3376d0fb1aa7c4d1772f863020cd4f52452e57431653b67e')
+            'scripts/Test-DetectionPolicy.ps1' = @('1e62050f9580009c198ddb85e49a236c4d425ee29847034d9fd362c69f373555')
+            'scripts/Test-Secrets.ps1' = @('86e23ae268a8a030a9e8f489f35bd3edc5d40cfca615436cba02bc1299ac2843', '03e215bda17bf0b40577b640574e7b37fd0340d009ec0eabfafd63bb4fa82b87')
+        }
+        foreach ($relative in @($legacySecretHashes.Keys | Sort-Object)) {
+            $target = Join-Path $repositoryRoot ($relative -replace '/', [IO.Path]::DirectorySeparatorChar)
+            if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { continue }
+            $hash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($hash -in @($legacySecretHashes[$relative])) {
+                $adoptedManagedFiles += "$relative=$hash"
+                continue
+            }
+            if ($relative -eq '.gitleaks.toml') {
+                $policyText = [IO.File]::ReadAllText($target)
+                $extendSection = [regex]::Match($policyText, '(?ms)^\s*\[extend\]\s*(?<body>.*?)(?=^\s*\[|\z)')
+                if (-not $extendSection.Success -or $extendSection.Groups['body'].Value -notmatch '(?m)^\s*path\s*=\s*["'']security/gitleaks-portable\.toml["'']\s*(?:#.*)?$') {
+                    throw 'The legacy repository-owned .gitleaks.toml does not extend security/gitleaks-portable.toml and cannot be migrated automatically.'
+                }
+                $preservedPaths += $relative
+            }
+        }
+    }
+    $migrateRepositoryRules = $preservedModules.Count -gt 0 -or $preservedPaths.Count -gt 0
 }
 $arguments = @{
     RepositoryPath = $repositoryRoot
@@ -108,6 +147,8 @@ $arguments = @{
 }
 if ($isManaged) { $arguments.AcknowledgeOverlap = $true }
 if ($preservedModules.Count) { $arguments.PreserveExistingModule = $preservedModules }
+if ($preservedPaths.Count) { $arguments.PreserveExistingPath = $preservedPaths }
+if ($adoptedManagedFiles.Count) { $arguments.AdoptExistingManagedFile = $adoptedManagedFiles }
 
 $previewText = @(& $deploymentTool @arguments) -join [Environment]::NewLine
 $preview = $previewText | ConvertFrom-Json
@@ -127,6 +168,7 @@ if ($migrateRepositoryRules) {
     $rules = [ordered]@{
         schemaVersion = 1
         modules = [ordered]@{ include = @(); repositoryOwned = @($preservedModules) }
+        paths = [ordered]@{ repositoryOwned = @($preservedPaths) }
         secretScanning = [ordered]@{ additionalConfigFiles = @() }
     }
     $rulesJson = ($rules | ConvertTo-Json -Depth 6).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"

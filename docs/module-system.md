@@ -78,6 +78,9 @@ If a repository already has a reviewed implementation of a detected module, pres
     "include": [],
     "repositoryOwned": ["documentation"]
   },
+  "paths": {
+    "repositoryOwned": [".gitleaks.toml"]
+  },
   "secretScanning": {
     "additionalConfigFiles": []
   }
@@ -85,6 +88,10 @@ If a repository already has a reviewed implementation of a detected module, pres
 ```
 
 Preservation is allowed only for non-universal modules when an existing workflow contains a catalog overlap marker for that module. The universal `licensing`, `secret-scanning`, and `module-drift` modules always remain RQG-managed. Other existing module files remain unmanaged and unchanged, and the matching evidence appears in the JSON preview. `.repository-quality-gates.local.json` remains owned by the downstream repository and is never copied or replaced by RQG. The managed `.repository-quality-gates.json` file records the resolved snapshot for drift checking.
+
+A repository-owned path is narrower than a repository-owned module. It preserves one existing regular file, keeps it outside managed state, and prevents pruning. This supports a repository-specific root policy such as `.gitleaks.toml` while the rest of the universal secret-scanning module remains centrally managed. Protected metadata paths and symbolic links or junctions are rejected.
+
+The updater can perform a one-time migration of legacy secret-scanning state. It adopts only historical files whose SHA-256 hashes exactly match known published RQG payloads. A customized root `.gitleaks.toml` is preserved only when it still extends the central `security/gitleaks-portable.toml`; any unknown or modified legacy file fails closed for manual review.
 
 The `licensing` module writes `LICENSES/Repository-Quality-Gates-MIT.txt`. It attributes only the RQG files copied into the repository and does not select, replace, or modify the downstream project's own licence.
 

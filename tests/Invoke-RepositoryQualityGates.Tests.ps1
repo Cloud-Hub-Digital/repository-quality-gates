@@ -275,6 +275,33 @@ try {
     Assert-True ($preservedState.preservedModules -contains 'documentation') 'Managed state should record preserved existing modules.'
     Assert-True (@($preservedState.files | Where-Object path -eq '.repository-quality-gates.local.json').Count -eq 0) 'The downstream repository rules file must never become managed state.'
 
+    $ownedPath = New-Fixture 'repository-owned-path'
+    $ownedPolicyPath = Join-Path $ownedPath '.gitleaks.toml'
+    $ownedPolicy = "title = `"Repository Policy`"`n`n[extend]`npath = `"security/gitleaks-portable.toml`"`n`n# repository-owned exception`n"
+    [IO.File]::WriteAllText($ownedPolicyPath, $ownedPolicy, [Text.UTF8Encoding]::new($false))
+    $ownedPathRules = '{"schemaVersion":1,"paths":{"repositoryOwned":[".gitleaks.toml"]}}'
+    [IO.File]::WriteAllText((Join-Path $ownedPath '.repository-quality-gates.local.json'), $ownedPathRules + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $ownedPath
+    $ownedHashBefore = (Get-FileHash -LiteralPath $ownedPolicyPath -Algorithm SHA256).Hash
+    $ownedApply = Invoke-Tool $ownedPath @('-Apply', '-OutputFormat', 'Json')
+    Assert-True ($ownedApply.ExitCode -eq 0) "A declared repository-owned path should not block universal module deployment. $($ownedApply.Output)"
+    Assert-True ((Get-FileHash -LiteralPath $ownedPolicyPath -Algorithm SHA256).Hash -eq $ownedHashBefore) 'RQG must preserve a declared repository-owned path byte for byte.'
+    $ownedState = Get-Content -LiteralPath (Join-Path $ownedPath '.repository-quality-gates.json') -Raw | ConvertFrom-Json
+    Assert-True (@($ownedState.files | Where-Object path -eq '.gitleaks.toml').Count -eq 0) 'A repository-owned path must remain outside managed state.'
+
+    $adopted = New-Fixture 'adopted-historical-file'
+    New-Item -ItemType Directory -Path (Join-Path $adopted '.github\workflows') -Force | Out-Null
+    $adoptedPath = Join-Path $adopted '.github\workflows\secret-scanning.yml'
+    [IO.File]::WriteAllText($adoptedPath, "name: Historical RQG Secret Scan`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $adopted
+    $adoptedHash = (Get-FileHash -LiteralPath $adoptedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $adoptPreview = Invoke-Tool $adopted @('-AdoptExistingManagedFile', ".github/workflows/secret-scanning.yml=$adoptedHash", '-OutputFormat', 'Json')
+    Assert-True ($adoptPreview.ExitCode -eq 0) "A file with an explicitly verified historical hash should be adoptable. $($adoptPreview.Output)"
+    $adoptJson = $adoptPreview.Output | ConvertFrom-Json
+    Assert-True ((@($adoptJson.plan | Where-Object path -eq '.github/workflows/secret-scanning.yml')[0]).action -eq 'Update') 'A verified historical file should become a managed update.'
+    $adoptMismatch = Invoke-Tool $adopted @('-AdoptExistingManagedFile', '.github/workflows/secret-scanning.yml=0000000000000000000000000000000000000000000000000000000000000000', '-Apply', '-OutputFormat', 'Json')
+    Assert-True ($adoptMismatch.ExitCode -ne 0) 'A historical-file adoption with the wrong hash must remain blocked.'
+
     $universalOwned = New-Fixture 'universal-repository-owned'
     New-Item -ItemType Directory -Path (Join-Path $universalOwned '.github\workflows') -Force | Out-Null
     "name: Existing Security`nsteps:`n  - run: gitleaks detect" | Set-Content -LiteralPath (Join-Path $universalOwned '.github\workflows\ci.yml') -Encoding utf8
@@ -396,7 +423,7 @@ try {
 
     $versionOutput = & pwsh -NoProfile -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.4.0')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.4.1')) 'The version interface should report the canonical version.'
     Assert-True (($versionOutput -join "`n").Contains('https://github.com/Cloud-Hub-Digital/repository-quality-gates')) 'The version interface should report the authoritative organization-owned repository.'
 
     Write-Host "$passed assertions passed."

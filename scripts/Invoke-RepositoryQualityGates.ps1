@@ -10,6 +10,8 @@ param(
     [switch]$PruneManaged,
     [string[]]$IncludeModule = @(),
     [string[]]$PreserveExistingModule = @(),
+    [string[]]$PreserveExistingPath = @(),
+    [string[]]$AdoptExistingManagedFile = @(),
     [switch]$AllowDirtyWorkingTree,
     [switch]$AcknowledgeOverlap,
     [switch]$ConfigureLocalHooks,
@@ -22,7 +24,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$productVersion = '1.4.0'
+$productVersion = '1.4.1'
 $productRepository = 'https://github.com/Cloud-Hub-Digital/repository-quality-gates'
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $detectionLibraryPath = Join-Path $toolRoot 'modules\module-drift\payload\scripts\RepositoryQualityGates.Detection.ps1'
@@ -140,22 +142,28 @@ function Get-RuleStringArray($Object, [string]$Name, [string]$Context) {
 }
 
 function Read-RepositoryRules([string]$Path, $Catalog) {
-    $empty = [pscustomobject]@{ includeModules = @(); repositoryOwnedModules = @(); additionalSecretConfigs = @() }
+    $empty = [pscustomobject]@{ includeModules = @(); repositoryOwnedModules = @(); repositoryOwnedPaths = @(); additionalSecretConfigs = @() }
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $empty }
     try { $rules = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
     catch { throw 'The .repository-quality-gates.local.json file is invalid.' }
     foreach ($property in @($rules.PSObject.Properties.Name)) {
-        if ($property -notin @('schemaVersion', 'automaticEnrollment', 'modules', 'secretScanning')) { throw "Unsupported repository-rules property: $property" }
+        if ($property -notin @('schemaVersion', 'automaticEnrollment', 'modules', 'paths', 'secretScanning')) { throw "Unsupported repository-rules property: $property" }
     }
     if ($rules.PSObject.Properties['automaticEnrollment'] -and $rules.automaticEnrollment -isnot [bool]) {
         throw 'The repository-rules automaticEnrollment property must be true or false.'
     }
     if ($rules.schemaVersion -ne 1) { throw 'The repository-rules schema is unsupported.' }
     $moduleRules = if ($rules.PSObject.Properties['modules']) { $rules.modules } else { $null }
+    $pathRules = if ($rules.PSObject.Properties['paths']) { $rules.paths } else { $null }
     $secretRules = if ($rules.PSObject.Properties['secretScanning']) { $rules.secretScanning } else { $null }
     if ($moduleRules) {
         foreach ($property in @($moduleRules.PSObject.Properties.Name)) {
             if ($property -notin @('include', 'repositoryOwned')) { throw "Unsupported repository-rules modules property: $property" }
+        }
+    }
+    if ($pathRules) {
+        foreach ($property in @($pathRules.PSObject.Properties.Name)) {
+            if ($property -ne 'repositoryOwned') { throw "Unsupported repository-rules paths property: $property" }
         }
     }
     if ($secretRules) {
@@ -165,6 +173,7 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
     }
     $include = @(Get-RuleStringArray $moduleRules 'include' 'modules')
     $repositoryOwned = @(Get-RuleStringArray $moduleRules 'repositoryOwned' 'modules')
+    $repositoryOwnedPaths = @(Get-RuleStringArray $pathRules 'repositoryOwned' 'paths')
     $additionalConfigs = @(Get-RuleStringArray $secretRules 'additionalConfigFiles' 'secretScanning')
     $catalogIds = @($Catalog.modules | ForEach-Object { [string]$_.id })
     foreach ($moduleId in @($include + $repositoryOwned | Sort-Object -Unique)) {
@@ -176,6 +185,15 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
     }
     $overlap = @($include | Where-Object { $_ -in $repositoryOwned })
     if ($overlap.Count) { throw "Repository rules cannot both include and mark a module repository-owned: $($overlap -join ', ')" }
+    foreach ($relative in $repositoryOwnedPaths) {
+        if ([IO.Path]::IsPathRooted($relative)) { throw "A repository-owned path must be relative: $relative" }
+        $normalized = ($relative -replace '\\', '/').TrimStart('/')
+        if ($normalized -in @('.git', '.repository-quality-gates.json', '.repository-quality-gates.local.json') -or $normalized.StartsWith('.git/', [StringComparison]::OrdinalIgnoreCase)) {
+            throw "A protected Repository Quality Gates control path cannot be repository-owned: $relative"
+        }
+        $ownedPath = Resolve-FullChildPath $script:RepositoryRoot $normalized
+        if (-not (Test-Path -LiteralPath $ownedPath -PathType Leaf)) { throw "A repository-owned path is missing: $relative" }
+    }
     foreach ($relative in $additionalConfigs) {
         if ([IO.Path]::IsPathRooted($relative)) { throw "A repository secret configuration path must be relative: $relative" }
         $normalized = ($relative -replace '\\', '/').TrimStart('/')
@@ -186,6 +204,7 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
     return [pscustomobject]@{
         includeModules = @($include)
         repositoryOwnedModules = @($repositoryOwned)
+        repositoryOwnedPaths = @($repositoryOwnedPaths)
         additionalSecretConfigs = @($additionalConfigs)
     }
 }
@@ -209,6 +228,28 @@ $catalog = Get-Content -LiteralPath $catalogFullPath -Raw | ConvertFrom-Json
 if ($catalog.schemaVersion -ne 1) { throw 'The module catalog schema is unsupported.' }
 $repositoryRulesPath = Join-Path $script:RepositoryRoot '.repository-quality-gates.local.json'
 $repositoryRules = Read-RepositoryRules $repositoryRulesPath $catalog
+$repositoryOwnedPaths = @(@($PreserveExistingPath) + @($repositoryRules.repositoryOwnedPaths) | ForEach-Object {
+    if ([IO.Path]::IsPathRooted([string]$_)) { throw "A repository-owned path must be relative: $_" }
+    $normalized = ([string]$_ -replace '\\', '/').TrimStart('/')
+    if (-not $normalized) { throw 'A repository-owned path cannot be empty.' }
+    if ($normalized -in @('.git', '.repository-quality-gates.json', '.repository-quality-gates.local.json') -or $normalized.StartsWith('.git/', [StringComparison]::OrdinalIgnoreCase)) {
+        throw "A protected Repository Quality Gates control path cannot be repository-owned: $_"
+    }
+    $ownedPath = Resolve-FullChildPath $script:RepositoryRoot $normalized
+    if (-not (Test-Path -LiteralPath $ownedPath -PathType Leaf)) { throw "A repository-owned path is missing: $_" }
+    $normalized
+} | Sort-Object -Unique)
+$adoptedManagedFiles = @{}
+foreach ($entry in @($AdoptExistingManagedFile)) {
+    $parts = ([string]$entry).Split('=', 2)
+    if ($parts.Count -ne 2) { throw "An adopted managed file must use relative/path=sha256 syntax: $entry" }
+    $relative = ($parts[0] -replace '\\', '/').TrimStart('/')
+    $hash = $parts[1].Trim().ToLowerInvariant()
+    if (-not $relative -or [IO.Path]::IsPathRooted($relative) -or $hash -notmatch '^[0-9a-f]{64}$') { throw "An adopted managed file is invalid: $entry" }
+    [void](Resolve-FullChildPath $script:RepositoryRoot $relative)
+    if ($adoptedManagedFiles.ContainsKey($relative)) { throw "An adopted managed file path is duplicated: $relative" }
+    $adoptedManagedFiles[$relative] = $hash
+}
 
 $statusBefore = @(& git -C $script:RepositoryRoot status --porcelain=v1 --untracked-files=all)
 if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the repository working tree.' }
@@ -233,6 +274,9 @@ foreach ($relative in @($repositoryRules.additionalSecretConfigs)) {
     if ($managedByPath.ContainsKey($normalized)) {
         throw "A repository-specific secret configuration cannot be an RQG-managed file: $relative"
     }
+}
+foreach ($relative in $repositoryOwnedPaths) {
+    if ($managedByPath.ContainsKey($relative)) { $managedByPath.Remove($relative) }
 }
 
 # Previously deployed template payloads must not alter later module detection.
@@ -270,6 +314,9 @@ foreach ($module in $selectedModules) {
         if ($desired.ContainsKey($relative)) { throw "Modules produce the same target path: $relative" }
         $desired[$relative] = [pscustomobject]@{ module = [string]$module.id; source = $sourceFile.FullName; hash = Get-FileHashValue $sourceFile.FullName }
     }
+}
+foreach ($relative in $repositoryOwnedPaths) {
+    if ($desired.ContainsKey($relative)) { $desired.Remove($relative) }
 }
 if ($selectedIds -contains 'module-drift') {
     $catalogTarget = 'scripts/rqg-module-catalog.json'
@@ -318,6 +365,8 @@ foreach ($relative in @($desired.Keys | Sort-Object)) {
         $action = 'Add'; $reason = 'Target file does not exist.'
     } elseif ($existingHash -eq $item.hash) {
         $action = 'Unchanged'; $reason = 'Target already matches the selected module.'
+    } elseif (-not $managedByPath.ContainsKey($relative) -and $adoptedManagedFiles.ContainsKey($relative) -and [string]$adoptedManagedFiles[$relative] -eq $existingHash) {
+        $action = 'Update'; $reason = 'The file matches a verified historical RQG payload and is adopted for this update.'
     } elseif (-not $managedByPath.ContainsKey($relative)) {
         $action = 'Conflict'; $reason = 'An unmanaged file already uses this path.'
     } elseif ([string]$managedByPath[$relative].sha256 -ne $existingHash) {
@@ -331,6 +380,7 @@ foreach ($relative in @($desired.Keys | Sort-Object)) {
 foreach ($entry in @($state.files)) {
     $relative = [string]$entry.path
     if ($desired.ContainsKey($relative)) { continue }
+    if ($relative -in $repositoryOwnedPaths) { continue }
     $target = Resolve-FullChildPath $script:RepositoryRoot $relative
     $existingHash = Get-FileHashValue $target
     if (-not $existingHash) { continue }
@@ -393,6 +443,7 @@ $result = [ordered]@{
     managedModules = $selectedIds
     preservedModules = $preservedIds
     repositoryRulesFile = if (Test-Path -LiteralPath $repositoryRulesPath -PathType Leaf) { '.repository-quality-gates.local.json' } else { $null }
+    repositoryOwnedPaths = @($repositoryOwnedPaths)
     additionalSecretConfigs = @($repositoryRules.additionalSecretConfigs)
     preservationEvidence = $preservationEvidence
     managedUnignoreLines = @($managedUnignoreLines)
