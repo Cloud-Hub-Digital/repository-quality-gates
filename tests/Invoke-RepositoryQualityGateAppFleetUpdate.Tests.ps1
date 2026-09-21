@@ -28,6 +28,9 @@ try {
     Assert-True ($workflowText.Contains('name: Preserve Fleet Rollout Report')) 'The updater should preserve its detailed report for the email job.'
     Assert-True ($workflowText.Contains('name: Retrieve Fleet Rollout Report')) 'The email job should retrieve the detailed rollout report.'
     Assert-True (-not $workflowText.Contains('report_base64')) 'The detailed report should not use a secret-sensitive job output.'
+    Assert-True ($workflowText.Contains("if (`$line -notmatch '^::add-mask::')")) 'The preserved report must exclude GitHub masking control lines that contain credentials.'
+    Assert-True ($workflowText.Contains('actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4')) 'The report uploader should use the pinned Node.js 24 artifact action.'
+    Assert-True ($workflowText.Contains('actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0')) 'The report downloader should use the pinned Node.js 24 artifact action.'
     Assert-True ($workflowText.Contains("vars.RQG_REPORT_EMAIL_ENABLED == 'true'")) 'Email reporting should remain controlled by the repository variable.'
     Assert-True ($workflowText.Contains("steps.rollout.outcome == 'failure'")) 'A reported rollout failure should still fail the workflow.'
 
