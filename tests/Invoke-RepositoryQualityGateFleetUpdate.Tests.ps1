@@ -107,6 +107,10 @@ try {
         Assert-True ($fleetText.Contains('opted out while automatic enrolment was being prepared')) 'The fleet should recheck the opt-out immediately before publishing the first enrolment branch.'
         Assert-True ($fleetText.Contains('$existingPrOutput = @(& gh pr list')) 'Existing pull-request discovery should capture zero or more output lines as a collection.'
         Assert-True ($fleetText.Contains('$existingPr = ($existingPrOutput -join [Environment]::NewLine).Trim()')) 'A missing existing pull request must normalize to an empty string without a null-method failure.'
+        Assert-True ($fleetText.Contains("status = 'ChecksPending'")) 'Automatic updates should queue pull requests for explicit quality-check verification.'
+        Assert-True ($fleetText.Contains('Wait-PullRequestQualityChecks')) 'Automatic updates should wait for every reported pull-request quality check.'
+        Assert-True ($fleetText.Contains("status = 'MergedAfterChecks'")) 'Automatic updates should report only a verified post-check merge as merged.'
+        Assert-True (-not $fleetText.Contains('gh pr merge $entry.pullRequest --repo $fullName --auto')) 'The fleet must not depend on repository-level GitHub auto-merge settings.'
         $emptyPullRequestOutput = @()
         $normalizedEmptyPullRequest = ($emptyPullRequestOutput -join [Environment]::NewLine).Trim()
         Assert-True ($normalizedEmptyPullRequest -eq '') 'Zero GitHub CLI output lines should normalize to an empty pull-request URL.'

@@ -30,6 +30,45 @@ function Get-OpenPullRequests([string]$RepositoryName) {
     return @(($text | ConvertFrom-Json))
 }
 
+function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullRequestUrl) {
+    $deadline = [DateTimeOffset]::UtcNow.AddMinutes(45)
+    $discoveryDeadline = [DateTimeOffset]::UtcNow.AddMinutes(2)
+    while ([DateTimeOffset]::UtcNow -lt $deadline) {
+        $output = @(& gh pr view $PullRequestUrl --repo $RepositoryName --json statusCheckRollup 2>&1)
+        if ($LASTEXITCODE -ne 0) { throw "Unable to inspect pull-request quality checks: $($output -join [Environment]::NewLine)" }
+        $text = ($output -join [Environment]::NewLine).Trim()
+        try { $response = $text | ConvertFrom-Json }
+        catch { throw 'GitHub returned invalid pull-request quality-check data.' }
+        $checks = @($response.statusCheckRollup)
+        if (-not $checks.Count) {
+            if ([DateTimeOffset]::UtcNow -ge $discoveryDeadline) { throw 'No quality checks were reported for the update pull request.' }
+            Start-Sleep -Seconds 5
+            continue
+        }
+
+        $pending = [Collections.Generic.List[string]]::new()
+        $failed = [Collections.Generic.List[string]]::new()
+        foreach ($check in $checks) {
+            $name = if ($check.PSObject.Properties['name']) { [string]$check.name } else { 'Unnamed Check' }
+            if ([string]$check.__typename -eq 'CheckRun') {
+                if ([string]$check.status -ne 'COMPLETED') { $pending.Add($name); continue }
+                if ([string]$check.conclusion -notin @('SUCCESS', 'NEUTRAL', 'SKIPPED')) { $failed.Add("$name ($($check.conclusion))") }
+                continue
+            }
+            if ([string]$check.__typename -eq 'StatusContext') {
+                if ([string]$check.state -in @('PENDING', 'EXPECTED')) { $pending.Add($name); continue }
+                if ([string]$check.state -ne 'SUCCESS') { $failed.Add("$name ($($check.state))") }
+                continue
+            }
+            $failed.Add("$name (unsupported check type)")
+        }
+        if ($failed.Count) { throw "Pull-request quality checks failed: $($failed -join ', ')" }
+        if ($pending.Count) { Start-Sleep -Seconds 10; continue }
+        return $checks.Count
+    }
+    throw 'Timed out waiting for pull-request quality checks to complete.'
+}
+
 function Get-RemoteTextFile([string]$RepositoryName, [string]$DefaultBranch, [string]$RelativePath) {
     $output = @(& gh api "repos/$RepositoryName/contents/$RelativePath`?ref=$DefaultBranch" --jq .content 2>&1)
     if ($LASTEXITCODE -ne 0) {
@@ -221,10 +260,7 @@ try {
                 if ($LASTEXITCODE -ne 0 -or -not $entry.pullRequest) { throw 'Unable to create the update pull request.' }
             }
             if ($AutoMerge) {
-                $mergeOutput = @(& gh pr merge $entry.pullRequest --repo $fullName --auto --squash --delete-branch 2>&1)
-                if ($LASTEXITCODE -ne 0) { throw "Unable to enable automatic merge for the update pull request: $($mergeOutput -join [Environment]::NewLine)" }
-                $entry.autoMerge = $true
-                $entry.status = 'AutoMergeEnabled'
+                $entry.status = 'ChecksPending'
             } else {
                 $entry.status = 'PullRequest'
             }
@@ -257,6 +293,28 @@ try {
 }
 finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+if ($Apply -and $AutoMerge) {
+    foreach ($entry in @($results | Where-Object status -eq 'ChecksPending')) {
+        try {
+            $checkCount = Wait-PullRequestQualityChecks ([string]$entry.repository) ([string]$entry.pullRequest)
+            $mergeOutput = @(& gh pr merge ([string]$entry.pullRequest) --repo ([string]$entry.repository) --squash --delete-branch 2>&1)
+            if ($LASTEXITCODE -ne 0) { throw "Unable to merge the verified update pull request: $($mergeOutput -join [Environment]::NewLine)" }
+            $entry.autoMerge = $true
+            $entry.status = 'MergedAfterChecks'
+            $entry.detail += " $checkCount reported quality check(s) passed before merge."
+        }
+        catch {
+            $failureMessage = $_.Exception.Message
+            $cleanupOutput = @(& gh pr close ([string]$entry.pullRequest) --repo ([string]$entry.repository) --delete-branch 2>&1)
+            if ($LASTEXITCODE -eq 0) { $failureMessage += ' The failed temporary RQG pull request and branch were removed.' }
+            else { $failureMessage += " Temporary RQG cleanup also failed: $($cleanupOutput -join [Environment]::NewLine)" }
+            $entry.autoMerge = $false
+            $entry.status = 'Failed'
+            $entry.detail = $failureMessage
+        }
+    }
 }
 
 $summary = [ordered]@{
