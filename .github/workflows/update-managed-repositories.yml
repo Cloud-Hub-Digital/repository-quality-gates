@@ -46,7 +46,9 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ steps.release.outputs.tag }}
+          # Recovery runs use the reviewed workflow ref while still resolving and
+          # deploying the exact immutable stable release selected above.
+          ref: ${{ github.ref }}
           persist-credentials: false
 
       - name: Update Installed Repository Fleets

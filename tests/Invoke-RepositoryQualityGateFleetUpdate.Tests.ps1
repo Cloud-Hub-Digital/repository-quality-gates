@@ -105,7 +105,11 @@ try {
         Assert-True ($fleetText.Contains('baseRefName,isCrossRepository,body')) 'Expired pull-request cleanup should obtain base, repository-origin, and provenance evidence.'
         Assert-True ($fleetText.Contains("status = 'EnrollmentOptOut'")) 'The fleet should honour the downstream automatic-enrolment opt-out.'
         Assert-True ($fleetText.Contains('opted out while automatic enrolment was being prepared')) 'The fleet should recheck the opt-out immediately before publishing the first enrolment branch.'
-        Assert-True ($fleetText.Contains("([string](& gh pr list")) 'A missing existing pull request must normalize to an empty string without a null-method failure.'
+        Assert-True ($fleetText.Contains('$existingPrOutput = @(& gh pr list')) 'Existing pull-request discovery should capture zero or more output lines as a collection.'
+        Assert-True ($fleetText.Contains('$existingPr = ($existingPrOutput -join [Environment]::NewLine).Trim()')) 'A missing existing pull request must normalize to an empty string without a null-method failure.'
+        $emptyPullRequestOutput = @()
+        $normalizedEmptyPullRequest = ($emptyPullRequestOutput -join [Environment]::NewLine).Trim()
+        Assert-True ($normalizedEmptyPullRequest -eq '') 'Zero GitHub CLI output lines should normalize to an empty pull-request URL.'
     }
     finally {
         Remove-Item Function:\global:gh -ErrorAction SilentlyContinue

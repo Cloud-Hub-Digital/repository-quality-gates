@@ -204,7 +204,8 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Unable to push the update branch.' }
             $pushedUpdateBranch = $true
 
-            $existingPr = ([string](& gh pr list --repo $fullName --state open --head $branchName --base $defaultBranch --json number,url --jq '.[0].url // empty')).Trim()
+            $existingPrOutput = @(& gh pr list --repo $fullName --state open --head $branchName --base $defaultBranch --json number,url --jq '.[0].url // empty')
+            $existingPr = ($existingPrOutput -join [Environment]::NewLine).Trim()
             if ($LASTEXITCODE -ne 0) { throw 'Unable to check for an existing update pull request.' }
             if ($existingPr) { $entry.pullRequest = $existingPr }
             else {
