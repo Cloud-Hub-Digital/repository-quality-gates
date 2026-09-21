@@ -30,25 +30,25 @@ Detection ignores generated dependency and build directories. The catalog is sto
 Preview is the default and does not modify the target:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository"
+pwsh -NoProfile -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository"
 ```
 
 Apply the reviewed plan:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository" -Apply
+pwsh -NoProfile -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository" -Apply
 ```
 
 Apply and commit after validation and the staged secret scan:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository" -Apply -Commit
+pwsh -NoProfile -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository" -Apply -Commit
 ```
 
 Apply, commit, scan the exact outgoing range, and push without force:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository" -Apply -Commit -Push
+pwsh -NoProfile -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository" -Apply -Commit -Push
 ```
 
 Use `-OutputFormat Json` to obtain a machine-readable plan or result.
@@ -114,7 +114,7 @@ Preview works with any working tree. Apply requires a clean tree unless `-AllowD
 Deploying files does not expose or copy the private publication-safety policy. Configure the private local policy and enable hooks with:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository" -Apply -ConfigureLocalHooks -PrivateConfigPath "C:\Protected\publication-safety.toml"
+pwsh -NoProfile -File .\scripts\Invoke-RepositoryQualityGates.ps1 -RepositoryPath "C:\Path\To\Repository" -Apply -ConfigureLocalHooks -PrivateConfigPath "C:\Protected\publication-safety.toml"
 ```
 
 Hook configuration stops if another hooks path or active unmanaged Git hook already exists. Integrate the existing hooks deliberately before retrying.

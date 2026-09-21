@@ -129,13 +129,13 @@ If a release-triggered run finds an open pull request, it records `DeferredOpenP
 Preview one repository without changing it:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\Update-RepositoryQualityGates.ps1" -RepositoryPath "<REPOSITORY_PATH>"
+pwsh -NoProfile -File ".\scripts\Update-RepositoryQualityGates.ps1" -RepositoryPath "<REPOSITORY_PATH>"
 ```
 
 Apply an update locally after reviewing the preview:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\Update-RepositoryQualityGates.ps1" -RepositoryPath "<REPOSITORY_PATH>" -Apply
+pwsh -NoProfile -File ".\scripts\Update-RepositoryQualityGates.ps1" -RepositoryPath "<REPOSITORY_PATH>" -Apply
 ```
 
 The local command changes files but does not commit, push, create a pull request, or merge.

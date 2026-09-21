@@ -158,7 +158,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Unable to stage the update.' }
             $stagedPaths = @(& git -C $clonePath diff --cached --name-only --diff-filter=ACDMRTUXB | Where-Object { $_ })
             if (-not $stagedPaths.Count) { $entry.status = 'Current'; $results.Add([pscustomobject]$entry); continue }
-            $null = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $clonePath 'scripts\Test-Secrets.ps1') -Mode Staged -Repository $clonePath 2>&1)
+            $null = @(& pwsh -NoLogo -NoProfile -File (Join-Path $clonePath 'scripts\Test-Secrets.ps1') -Mode Staged -Repository $clonePath 2>&1)
             if ($LASTEXITCODE -ne 0) { throw 'The staged publication-safety scan failed.' }
             & git -C $clonePath config user.name 'github-actions[bot]'
             & git -C $clonePath config user.email '41898282+github-actions[bot]@users.noreply.github.com'

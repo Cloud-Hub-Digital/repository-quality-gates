@@ -20,7 +20,7 @@ function Invoke-Update([string]$RepositoryPath, [switch]$Enroll, [switch]$Apply)
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = @(& powershell.exe @arguments 2>&1)
+        $output = @(& pwsh @arguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previousPreference }
@@ -43,7 +43,7 @@ try {
     '# Managed fixture' | Set-Content -LiteralPath (Join-Path $managed 'README.md') -Encoding ascii
     Commit-All $managed 'initial fixture'
 
-    $null = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deploymentTool -RepositoryPath $managed -Apply -OutputFormat Json 2>&1)
+    $null = @(& pwsh -NoProfile -File $deploymentTool -RepositoryPath $managed -Apply -OutputFormat Json 2>&1)
     Assert-True ($LASTEXITCODE -eq 0) 'The update fixture should accept its initial deployment.'
     Commit-All $managed 'install quality gates'
 
@@ -65,7 +65,7 @@ try {
     Assert-True ($applyJson.status -eq 'Updated') 'Apply should report an updated repository.'
     Assert-True ($applyJson.changedPaths -contains '.repository-quality-gates.json') 'The update should refresh managed state.'
     $updatedState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    Assert-True ($updatedState.templateVersion -eq '1.3.1') 'Managed state should record the new template version.'
+    Assert-True ($updatedState.templateVersion -eq '1.4.0') 'Managed state should record the new template version.'
     Commit-All $managed 'update quality gates'
 
     $current = Invoke-Update $managed
@@ -113,7 +113,7 @@ try {
     $enrollmentApplyJson = $enrollmentApply.Output | ConvertFrom-Json
     Assert-True ($enrollmentApplyJson.status -eq 'Enrolled') 'Applied initial enrolment should report Enrolled.'
     $enrolledState = Get-Content -LiteralPath (Join-Path $unmanaged '.repository-quality-gates.json') -Raw | ConvertFrom-Json
-    Assert-True ($enrolledState.templateVersion -eq '1.3.1') 'Initial enrolment should record the current template version.'
+    Assert-True ($enrolledState.templateVersion -eq '1.4.0') 'Initial enrolment should record the current template version.'
     Assert-True (Test-Path -LiteralPath (Join-Path $unmanaged '.github\workflows\secret-scanning.yml')) 'Initial enrolment should deploy the selected quality-gate workflows.'
 
     $overlap = Join-Path $testRoot 'overlap'
@@ -136,7 +136,7 @@ try {
     "name: Existing Documentation Check`nsteps:`n  - run: markdownlint README.md" | Set-Content -LiteralPath (Join-Path $legacyPreserved '.github\workflows\ci.yml') -Encoding utf8
     '# Legacy Preservation Fixture' | Set-Content -LiteralPath (Join-Path $legacyPreserved 'README.md') -Encoding utf8
     Commit-All $legacyPreserved 'initial legacy preservation fixture'
-    $null = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deploymentTool -RepositoryPath $legacyPreserved -Apply -PreserveExistingModule documentation -OutputFormat Json 2>&1)
+    $null = @(& pwsh -NoProfile -File $deploymentTool -RepositoryPath $legacyPreserved -Apply -PreserveExistingModule documentation -OutputFormat Json 2>&1)
     Assert-True ($LASTEXITCODE -eq 0) 'The legacy preservation fixture should accept its initial deployment.'
     Commit-All $legacyPreserved 'install legacy preserved quality gates'
     $legacyStatePath = Join-Path $legacyPreserved '.repository-quality-gates.json'
@@ -160,7 +160,7 @@ try {
     & git -C $localRules config user.email 'fixture@example.invalid'
     '# Local rules fixture' | Set-Content -LiteralPath (Join-Path $localRules 'README.md') -Encoding ascii
     Commit-All $localRules 'initial local rules fixture'
-    $null = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deploymentTool -RepositoryPath $localRules -Apply -OutputFormat Json 2>&1)
+    $null = @(& pwsh -NoProfile -File $deploymentTool -RepositoryPath $localRules -Apply -OutputFormat Json 2>&1)
     Assert-True ($LASTEXITCODE -eq 0) 'The local-rules fixture should accept its initial deployment.'
     Commit-All $localRules 'install quality gates'
     $localStatePath = Join-Path $localRules '.repository-quality-gates.json'
@@ -208,7 +208,7 @@ keywords = ["RQG_REPO_ONLY_"]
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $null = @(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $localRules 'scripts\Test-Secrets.ps1') -Mode WorkingTree -Repository $localRules 2>&1)
+        $null = @(& pwsh -NoProfile -File (Join-Path $localRules 'scripts\Test-Secrets.ps1') -Mode WorkingTree -Repository $localRules 2>&1)
         $repositoryPolicyExit = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previousPreference }

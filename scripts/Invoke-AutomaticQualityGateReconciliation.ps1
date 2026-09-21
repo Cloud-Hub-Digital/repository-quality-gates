@@ -39,7 +39,7 @@ if (-not (Test-Path -LiteralPath $rulesPath -PathType Leaf) -and $state.PSObject
 
 $driftChecker = Join-Path $repositoryRoot 'scripts\Test-QualityGateModuleDrift.ps1'
 $powerShellHost = Get-Command pwsh -ErrorAction SilentlyContinue
-if (-not $powerShellHost) { $powerShellHost = Get-Command powershell.exe -ErrorAction Stop }
+if (-not $powerShellHost) { throw 'PowerShell 7 (pwsh) is required to reconcile Repository Quality Gates.' }
 & $powerShellHost.Source -NoLogo -NoProfile -ExecutionPolicy Bypass -File $driftChecker -RepositoryPath $repositoryRoot -OutputFormat Text
 if ($LASTEXITCODE -ne 0) { throw 'Repository quality-gate reconciliation did not produce a current module set.' }
 

@@ -134,7 +134,7 @@ if ($migrateRepositoryRules) {
 }
 
 $powerShellHost = Get-Command pwsh -ErrorAction SilentlyContinue
-if (-not $powerShellHost) { $powerShellHost = Get-Command powershell.exe -ErrorAction Stop }
+if (-not $powerShellHost) { throw 'PowerShell 7 (pwsh) is required to update Repository Quality Gates.' }
 $validation = @(
     @{ Module = 'secret-scanning'; Path = 'scripts\Install-Gitleaks.ps1'; Arguments = @() },
     @{ Module = 'secret-scanning'; Path = 'scripts\Test-Secrets.ps1'; Arguments = @('-Mode', 'WorkingTree', '-Repository', $repositoryRoot) },

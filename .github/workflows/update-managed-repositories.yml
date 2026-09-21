@@ -40,7 +40,7 @@ jobs:
             if ($LASTEXITCODE -ne 0 -or -not $tag) { throw 'Unable to resolve the latest stable Repository Quality Gates release.' }
           }
           if ($tag -notmatch '^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$') { throw 'The requested Repository Quality Gates release tag is not a stable semantic version.' }
-          $release = gh release view $tag --json tagName,isDraft,isPrerelease | ConvertFrom-Json
+          $release = gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,isDraft,isPrerelease | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $release.tagName -ne $tag -or $release.isDraft -or $release.isPrerelease) { throw 'The requested Repository Quality Gates release is not a published stable release.' }
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "templateVersion": "1.3.1",
+  "templateVersion": "1.4.0",
   "modules": [
     "documentation",
     "licensing",
@@ -13,12 +13,12 @@
     {
       "path": ".githooks/pre-commit",
       "module": "secret-scanning",
-      "sha256": "92c9c24afeb1afe833384e8b2fe1f9fafac135193c97a0306a09983ec8e652a8"
+      "sha256": "14dce8da3e7d386d87fb3372a23542de755c6f1753d9eaa8ad41a4694d0027f2"
     },
     {
       "path": ".githooks/pre-push",
       "module": "secret-scanning",
-      "sha256": "4a20602b0c9b890ca993997ccdba35c8b3a040916e46594ad59dc68047af37b2"
+      "sha256": "7ebb4a10bb9c3b9d4b7e6b61381c77b0013788726fa5289f74f48fa6e2b43a9e"
     },
     {
       "path": ".github/workflows/quality-documentation.yml",
@@ -33,12 +33,12 @@
     {
       "path": ".github/workflows/quality-powershell.yml",
       "module": "powershell",
-      "sha256": "35d600157c3067625c205c77a87d21d6bb66abc491280ddb5b03e39f879b18b8"
+      "sha256": "ef8dd89a35180ca64ba687eb1eaeb29f0fea9557a089852eada62c8d5aefeba6"
     },
     {
       "path": ".github/workflows/secret-scanning.yml",
       "module": "secret-scanning",
-      "sha256": "bde3015d33707e3f1a529441f2e2a123b85baec9956aa2a21a361df3a6911ca5"
+      "sha256": "1e3280a2276ba80730d9fad0c21981e65b7ae2ea10868545087a1f8d4a2fbe71"
     },
     {
       "path": ".gitleaks.toml",
@@ -58,7 +58,7 @@
     {
       "path": ".rqg/template/modules/dotnet/payload/.github/workflows/quality-dotnet.yml",
       "module": "module-drift",
-      "sha256": "8941fb4222e06c68846d74a94cb1c89005789e1b9a2b3dfd420f9f0af22b4166"
+      "sha256": "24f27708460a355afe313badf9796efaaa2c696813c491f4d76ccb2da5efa46c"
     },
     {
       "path": ".rqg/template/modules/go/payload/.github/workflows/quality-go.yml",
@@ -78,7 +78,7 @@
     {
       "path": ".rqg/template/modules/module-drift/payload/scripts/Invoke-AutomaticQualityGateReconciliation.ps1",
       "module": "module-drift",
-      "sha256": "89c04e5695735fe376b51f4ad92c3e25854e691c9c01c6c54794bc5693fb36f9"
+      "sha256": "7fe35e6f4adf137fe7fe08aa373e9d2eb2a890b2cc75d92a724a9be8c18333ea"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/scripts/RepositoryQualityGates.Detection.ps1",
@@ -108,7 +108,7 @@
     {
       "path": ".rqg/template/modules/powershell/payload/.github/workflows/quality-powershell.yml",
       "module": "module-drift",
-      "sha256": "35d600157c3067625c205c77a87d21d6bb66abc491280ddb5b03e39f879b18b8"
+      "sha256": "ef8dd89a35180ca64ba687eb1eaeb29f0fea9557a089852eada62c8d5aefeba6"
     },
     {
       "path": ".rqg/template/modules/python/payload/.github/workflows/quality-python.yml",
@@ -123,22 +123,22 @@
     {
       "path": ".rqg/template/scripts/Invoke-RepositoryQualityGates.ps1",
       "module": "module-drift",
-      "sha256": "c82e330df7113a54e0b8811be2ee845b9288f481d5a2140572225714db6894e7"
+      "sha256": "e5623e540160dc5a36a555d2814bbd9b3c20f032a91a15fa0f8a46b9641cff96"
     },
     {
       "path": ".rqg/template/template/.githooks/pre-commit",
       "module": "module-drift",
-      "sha256": "92c9c24afeb1afe833384e8b2fe1f9fafac135193c97a0306a09983ec8e652a8"
+      "sha256": "14dce8da3e7d386d87fb3372a23542de755c6f1753d9eaa8ad41a4694d0027f2"
     },
     {
       "path": ".rqg/template/template/.githooks/pre-push",
       "module": "module-drift",
-      "sha256": "4a20602b0c9b890ca993997ccdba35c8b3a040916e46594ad59dc68047af37b2"
+      "sha256": "7ebb4a10bb9c3b9d4b7e6b61381c77b0013788726fa5289f74f48fa6e2b43a9e"
     },
     {
       "path": ".rqg/template/template/.github/workflows/secret-scanning.yml",
       "module": "module-drift",
-      "sha256": "bde3015d33707e3f1a529441f2e2a123b85baec9956aa2a21a361df3a6911ca5"
+      "sha256": "1e3280a2276ba80730d9fad0c21981e65b7ae2ea10868545087a1f8d4a2fbe71"
     },
     {
       "path": ".rqg/template/template/.gitignore.secret-scanning.fragment",
@@ -218,7 +218,7 @@
     {
       "path": "scripts/Invoke-AutomaticQualityGateReconciliation.ps1",
       "module": "module-drift",
-      "sha256": "89c04e5695735fe376b51f4ad92c3e25854e691c9c01c6c54794bc5693fb36f9"
+      "sha256": "7fe35e6f4adf137fe7fe08aa373e9d2eb2a890b2cc75d92a724a9be8c18333ea"
     },
     {
       "path": "scripts/RepositoryQualityGates.Detection.ps1",

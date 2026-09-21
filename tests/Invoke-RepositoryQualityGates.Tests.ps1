@@ -17,7 +17,7 @@ function Invoke-Tool([string]$Repository, [string[]]$Arguments) {
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & powershell.exe @all 2>&1
+        $output = & pwsh @all 2>&1
         return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join [Environment]::NewLine) }
     } finally { $ErrorActionPreference = $previousPreference }
 }
@@ -28,7 +28,7 @@ function Invoke-DriftCheck([string]$Repository, [string[]]$Arguments = @()) {
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & powershell.exe @all 2>&1
+        $output = & pwsh @all 2>&1
         return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join [Environment]::NewLine) }
     } finally { $ErrorActionPreference = $previousPreference }
 }
@@ -38,7 +38,7 @@ function Invoke-AutomaticReconciliation([string]$Repository) {
     $previousPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -RepositoryPath $Repository -OutputFormat Json 2>&1
+        $output = & pwsh -NoProfile -File $script -RepositoryPath $Repository -OutputFormat Json 2>&1
         return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join [Environment]::NewLine) }
     } finally { $ErrorActionPreference = $previousPreference }
 }
@@ -111,6 +111,18 @@ try {
     Assert-True ($deployedLicence.Contains("remain subject to the downstream project's own licensing")) 'The deployed RQG attribution file should preserve the downstream project licence boundary.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-node.yml')) 'The Node workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-powershell.yml')) 'The PowerShell workflow should be deployed.'
+    $powerShellWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-powershell.yml'))
+    Assert-True ($powerShellWorkflow.Contains('shell: pwsh')) 'The PowerShell workflow should run its script steps with PowerShell 7.'
+    Assert-True (-not $powerShellWorkflow.Contains('shell: powershell')) 'The PowerShell workflow should not invoke Windows PowerShell 5.1.'
+    $secretWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\secret-scanning.yml'))
+    Assert-True ($secretWorkflow.Contains('shell: pwsh')) 'The secret-scanning workflow should run its script steps with PowerShell 7.'
+    Assert-True (-not $secretWorkflow.Contains('shell: powershell')) 'The secret-scanning workflow should not invoke Windows PowerShell 5.1.'
+    foreach ($hookName in @('pre-commit', 'pre-push')) {
+        $hookText = [IO.File]::ReadAllText((Join-Path $mixed ".githooks\$hookName"))
+        Assert-True ($hookText.Contains('exec pwsh ')) "The $hookName hook should invoke PowerShell 7."
+        Assert-True ($hookText.Contains('-ExecutionPolicy Bypass')) "The $hookName hook should support repositories reached through a trusted network mapping."
+        Assert-True (-not $hookText.Contains('powershell.exe')) "The $hookName hook should not invoke Windows PowerShell 5.1."
+    }
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-python.yml')) 'The Python workflow should be deployed.'
     $pythonWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-python.yml'))
     Assert-True ($pythonWorkflow.Contains('requirements-dev.txt')) 'The Python workflow should install development requirements before running tests.'
@@ -132,7 +144,7 @@ try {
     Assert-True ($fleetWorkflow.Contains("cron: '23 4 * * *'")) 'The fleet workflow should retry deferred repositories every day.'
     Assert-True ($fleetWorkflow.Contains('release_tag:')) 'The fleet workflow should accept an exact release tag from the automatic release workflow.'
     Assert-True ($fleetWorkflow.Contains('PUBLISHED_RELEASE_TAG: ${{ github.event.release.tag_name }}')) 'Release-event fleet runs should use the exact published release tag.'
-    Assert-True ($fleetWorkflow.Contains('gh release view $tag --json tagName,isDraft,isPrerelease')) 'The fleet workflow should verify that its selected tag is a published stable release.'
+    Assert-True ($fleetWorkflow.Contains('gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,isDraft,isPrerelease')) 'The fleet workflow should verify its selected tag against the explicit central repository before checkout.'
     $fleetScript = [IO.File]::ReadAllText((Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'))
     Assert-True ($fleetScript.Contains('gh pr list --repo $RepositoryName --state open --limit 1000')) 'The fleet updater should inspect all open pull requests before changing a downstream repository.'
     Assert-True ($fleetScript.Contains("status = 'DeferredOpenPullRequests'")) 'A repository with an open pull request should be explicitly deferred.'
@@ -377,13 +389,14 @@ try {
 
     $deployerText = Get-Content -LiteralPath $scriptPath -Raw
     Assert-True ($deployerText.Contains('Get-Command pwsh -ErrorAction SilentlyContinue')) 'The deployer should prefer the cross-platform PowerShell host.'
-    Assert-True ($deployerText.Contains('Get-Command powershell.exe -ErrorAction Stop')) 'The deployer should retain a Windows PowerShell fallback.'
+    Assert-True ($deployerText.Contains('PowerShell 7 (pwsh) is required')) 'The deployer should report its PowerShell 7 requirement clearly.'
+    Assert-True (-not $deployerText.Contains('powershell.exe')) 'The deployer should not fall back to Windows PowerShell 5.1.'
     $directHelperPattern = '& \(Join-Path \$script:RepositoryRoot ''scripts\\(?:Configure-SecretScanning|Install-Gitleaks|Test-Secrets)\.ps1''\)'
     Assert-True (-not ($deployerText -match $directHelperPattern)) 'Managed helper scripts should not be invoked directly from a network-backed checkout.'
 
-    $versionOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Version 2>&1
+    $versionOutput = & pwsh -NoProfile -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.3.1')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.4.0')) 'The version interface should report the canonical version.'
     Assert-True (($versionOutput -join "`n").Contains('https://github.com/Cloud-Hub-Digital/repository-quality-gates')) 'The version interface should report the authoritative organization-owned repository.'
 
     Write-Host "$passed assertions passed."

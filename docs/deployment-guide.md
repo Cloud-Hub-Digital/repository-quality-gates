@@ -2,11 +2,11 @@
 
 This guide applies Repository Quality Gates to a new or existing local Git repository using the prepared PowerShell deployment script.
 
-For GitHub-hosted repositories, version `1.3.1` supports unattended initial enrolment across every account or organization where the RQG GitHub App is installed. Every unmanaged repository visible to any installation is eligible by default. To exclude one, commit `.repository-quality-gates.local.json` with `automaticEnrollment` set to `false`. The central daily workflow detects eligible repository contents, selects applicable modules, installs the RQG attribution notice, and enrols them through checked temporary pull requests. See [Automatic Repository Updates](automatic-repository-updates.md).
+For GitHub-hosted repositories, version `1.4.0` supports unattended initial enrolment across every account or organization where the RQG GitHub App is installed. Every unmanaged repository visible to any installation is eligible by default. To exclude one, commit `.repository-quality-gates.local.json` with `automaticEnrollment` set to `false`. The central daily workflow detects eligible repository contents, selects applicable modules, installs the RQG attribution notice, and enrols them through checked temporary pull requests. See [Automatic Repository Updates](automatic-repository-updates.md).
 
 ## Prerequisites
 
-- Windows PowerShell 5.1 or PowerShell 7.
+- PowerShell 7, with `pwsh` available on `PATH`.
 - Git available on `PATH`.
 - A local target directory that is already inside a Git repository.
 - A clean working tree for commit or push operations.
@@ -44,7 +44,7 @@ Resolve, commit, or stash unrelated changes before using `-Commit` or `-Push`. A
 ## Step 2: Preview The Plan
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo"
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo"
 ```
 
 Preview is read-only. Review:
@@ -58,7 +58,7 @@ Preview is read-only. Review:
 Use JSON when a complete machine-readable plan is easier to inspect:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -OutputFormat Json
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo" -OutputFormat Json
 ```
 
 The JSON result contains the repository path, mode, detected modules, managed modules, preserved modules, preservation evidence, exact managed-file unignore rules, file plan, workflow overlaps, recovery path when created, commit ID when created, and push result.
@@ -72,7 +72,7 @@ The default `-ConflictAction Stop` blocks apply. Inspect the conflicting file an
 After deciding that the template should replace it, apply with a recovery copy:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -Apply -ConflictAction BackupAndReplace
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo" -Apply -ConflictAction BackupAndReplace
 ```
 
 The replaced file is copied beneath the target repository's private Git directory in `rqg-backups\<timestamp>`. This recovery directory is local Git metadata and is not staged.
@@ -101,7 +101,7 @@ Replace `documentation` with the applicable non-universal module ID and commit t
 When both the existing and template workflows should remain, acknowledge the reviewed overlap:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -Apply -AcknowledgeOverlap
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo" -Apply -AcknowledgeOverlap
 ```
 
 Do not use this switch merely to bypass an unexplained warning.
@@ -109,7 +109,7 @@ Do not use this switch merely to bypass an unexplained warning.
 ## Step 4: Apply And Configure Local Hooks
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -Apply -ConfigureLocalHooks -PrivateConfigPath "$Policy"
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo" -Apply -ConfigureLocalHooks -PrivateConfigPath "$Policy"
 ```
 
 This command:
@@ -135,15 +135,15 @@ If another `core.hooksPath` or active unmanaged hook already exists, configurati
 From the target repository, run:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Repo\scripts\Test-Secrets.ps1" -Mode WorkingTree
+pwsh -NoProfile -File "$Repo\scripts\Test-Secrets.ps1" -Mode WorkingTree
 ```
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Repo\scripts\Test-Secrets.ps1" -Mode History
+pwsh -NoProfile -File "$Repo\scripts\Test-Secrets.ps1" -Mode History
 ```
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Repo\scripts\Test-DetectionPolicy.ps1"
+pwsh -NoProfile -File "$Repo\scripts\Test-DetectionPolicy.ps1"
 ```
 
 Then run the target repository's own build, tests, static analysis, packaging checks, and any required isolated UI or hardware tests. The deployed workflows establish a baseline; they do not replace product-specific validation.
@@ -177,7 +177,7 @@ The deployment script can apply and commit in one controlled operation, but comm
 For a clean repository, preview first, then run:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -Apply -ConfigureLocalHooks -PrivateConfigPath "$Policy" -Commit -CommitMessage "Add repository quality gates"
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo" -Apply -ConfigureLocalHooks -PrivateConfigPath "$Policy" -Commit -CommitMessage "Add repository quality gates"
 ```
 
 Before creating the commit, the script installs/verifies Gitleaks, stages only planned deployment paths plus `.repository-quality-gates.json`, runs the staged scan, rejects unexpected staged paths, and refuses an empty deployment commit.
@@ -189,7 +189,7 @@ Push is optional and consequential. Use it only after reviewing the exact commit
 For a clean repository where the deployment has not already been applied or committed:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -Apply -ConfigureLocalHooks -PrivateConfigPath "$Policy" -Commit -Push -CommitMessage "Add repository quality gates" -Remote origin
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo" -Apply -ConfigureLocalHooks -PrivateConfigPath "$Policy" -Commit -Push -CommitMessage "Add repository quality gates" -Remote origin
 ```
 
 The script requires a named remote and an attached branch, fetches and prunes the remote, refuses to push when the local branch is behind, scans the exact outgoing commit range, and uses a normal non-force push with upstream tracking.
@@ -207,7 +207,7 @@ Where repository rules are available, require the applicable checks before chang
 Run preview again using the newer template checkout:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -OutputFormat Json
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo" -OutputFormat Json
 ```
 
 The state file records managed modules, paths, and SHA-256 hashes:
@@ -222,7 +222,7 @@ The state file records managed modules, paths, and SHA-256 hashes:
 Run the deployed checker locally at any time:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Repo\scripts\Test-QualityGateModuleDrift.ps1" -RepositoryPath "$Repo"
+pwsh -NoProfile -File "$Repo\scripts\Test-QualityGateModuleDrift.ps1" -RepositoryPath "$Repo"
 ```
 
 Apply reviewed updates with the same apply, validate, review, commit, and push sequence used for initial deployment.
@@ -232,13 +232,13 @@ Apply reviewed updates with the same apply, validate, review, commit, and push s
 Preview pruning first:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -PruneManaged -OutputFormat Json
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo" -PruneManaged -OutputFormat Json
 ```
 
 Apply only after reviewing every `Remove` action:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$Tool" -RepositoryPath "$Repo" -Apply -PruneManaged
+pwsh -NoProfile -File "$Tool" -RepositoryPath "$Repo" -Apply -PruneManaged
 ```
 
 Only unchanged files recorded in the previous managed state can be removed. A modified obsolete file becomes a conflict and is retained. Every local removal is backed up beneath the private Git directory. The GitHub reconciliation workflow supplies `-PruneManaged` automatically from a clean checkout.

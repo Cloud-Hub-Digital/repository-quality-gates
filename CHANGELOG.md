@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0 - 2026-09-21
+
+### Changed
+
+- Require PowerShell 7 and use `pwsh` consistently in GitHub Actions, generated Git hooks, deployment and reconciliation child processes, regression tests, and documented commands.
+- Remove the Windows PowerShell 5.1 fallback from the supported deployment and automatic update path so local and hosted execution use the same PowerShell edition.
+
+### Fixed
+
+- Resolve the selected GitHub Release against the explicit central repository so a dispatched fleet run does not depend on a local checkout that has not happened yet.
+- Preserve the command-scoped execution-policy override in generated `pwsh` Git hooks so secret checks run when a trusted repository is reached through a Windows network mapping.
+
 ## 1.3.1 - 2026-09-21
 
 ### Fixed

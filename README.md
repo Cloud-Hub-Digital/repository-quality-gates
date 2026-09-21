@@ -2,9 +2,13 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The prepared patch template version written to managed state is `1.3.1`. The latest published GitHub Release is [`1.3.0`](https://github.com/Cloud-Hub-Digital/repository-quality-gates/releases/tag/v1.3.0).
+The prepared patch template version written to managed state is `1.4.0`. The latest published GitHub Release is [`1.3.1`](https://github.com/Cloud-Hub-Digital/repository-quality-gates/releases/tag/v1.3.1).
 
-Version `1.3.1` adds authenticated Git transport for each short-lived GitHub App installation token and explicitly starts the fleet workflow after automatic release creation. It retains the automatic stable release, stale-version, tag-collision, and multi-installation controls introduced in `1.3.0`. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.4.0` standardizes the supported execution path on PowerShell 7 through `pwsh` and corrects release resolution for explicitly dispatched fleet runs before checkout. It retains the authenticated Git transport and explicit release-to-fleet dispatch introduced in `1.3.1`, plus the automatic stable release, stale-version, tag-collision, and multi-installation controls introduced in `1.3.0`. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+
+## Runtime Requirement
+
+PowerShell 7 is required locally and in automation. The `pwsh` executable must be available on `PATH`. Repository Quality Gates no longer falls back to Windows PowerShell 5.1.
 
 ## What It Provides
 
@@ -35,14 +39,14 @@ See [Automation Costs And Release Strategy](docs/automation-costs-and-releases.m
 2. Run a preview against the target repository:
 
    ```powershell
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\Invoke-RepositoryQualityGates.ps1" -RepositoryPath "C:\Path\To\Repository"
+   pwsh -NoProfile -File ".\scripts\Invoke-RepositoryQualityGates.ps1" -RepositoryPath "C:\Path\To\Repository"
    ```
 
 3. Review the selected modules, planned actions, conflicts, existing-workflow overlaps, and `.gitignore` changes.
 4. Apply the reviewed plan and configure the local private policy:
 
    ```powershell
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\Invoke-RepositoryQualityGates.ps1" -RepositoryPath "C:\Path\To\Repository" -Apply -ConfigureLocalHooks -PrivateConfigPath "C:\Protected\publication-safety.toml"
+   pwsh -NoProfile -File ".\scripts\Invoke-RepositoryQualityGates.ps1" -RepositoryPath "C:\Path\To\Repository" -Apply -ConfigureLocalHooks -PrivateConfigPath "C:\Protected\publication-safety.toml"
    ```
 
 5. Run the target repository's project tests and review the complete Git diff.
@@ -125,7 +129,7 @@ licence wording, and referenced licence filename are deliberately not matched.
 Validate a protected approved name with:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\Test-MarkdownAttribution.ps1" -RepositoryPath "C:\Path\To\Repository" -ApprovedName "<APPROVED_NAME>"
+pwsh -NoProfile -File ".\scripts\Test-MarkdownAttribution.ps1" -RepositoryPath "C:\Path\To\Repository" -ApprovedName "<APPROVED_NAME>"
 ```
 
 The approved name and the corresponding exact `README.md` allowlist remain in
@@ -144,9 +148,9 @@ See the [Security Policy](SECURITY.md) for supported versions, security boundari
 Run the template and central automation regression suites from this repository:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGates.Tests.ps1"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Update-RepositoryQualityGates.Tests.ps1"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1"
+pwsh -NoProfile -File ".\tests\Invoke-RepositoryQualityGates.Tests.ps1"
+pwsh -NoProfile -File ".\tests\Update-RepositoryQualityGates.Tests.ps1"
+pwsh -NoProfile -File ".\tests\Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1"
 pwsh -NoProfile -File ".\tests\Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1"
 pwsh -NoProfile -File ".\tests\Get-RepositoryQualityGateReleasePlan.Tests.ps1"
 ```

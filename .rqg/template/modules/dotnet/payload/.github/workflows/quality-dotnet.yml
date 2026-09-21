@@ -18,7 +18,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Select Build Targets
-        shell: powershell
+        shell: pwsh
         run: |
           $targets = @(Get-ChildItem -File -Recurse | Where-Object {
             $_.Extension.ToLowerInvariant() -in @('.sln', '.slnx') -and $_.FullName -notmatch '[\\/](bin|obj)[\\/]'
@@ -31,7 +31,7 @@ jobs:
           if (-not $targets) { throw 'No .NET build target was found.' }
           $targets | ForEach-Object { $_.FullName } | Set-Content -LiteralPath "$env:RUNNER_TEMP\dotnet-targets.txt"
       - name: Restore, Build, And Test
-        shell: powershell
+        shell: pwsh
         run: |
           Get-Content -LiteralPath "$env:RUNNER_TEMP\dotnet-targets.txt" | ForEach-Object {
             dotnet restore $_

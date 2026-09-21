@@ -18,7 +18,7 @@ function Invoke-Fleet([string[]]$Repositories, [switch]$AutoEnroll) {
         Owner = 'owner'
         Repository = $Repositories
         TemplateRoot = $root
-        TargetVersion = '1.3.1'
+        TargetVersion = '1.4.0'
         OutputFormat = 'Json'
     }
     if ($AutoEnroll) { $arguments.AutoEnroll = $true }

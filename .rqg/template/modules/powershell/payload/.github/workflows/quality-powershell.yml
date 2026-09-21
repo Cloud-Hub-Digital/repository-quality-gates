@@ -32,8 +32,8 @@ jobs:
           }
           if ($errors) { $errors | Format-List | Out-String | Write-Error; exit 1 }
       - name: Run Synthetic Deployment Tests
-        shell: powershell
+        shell: pwsh
         run: ./tests/Invoke-RepositoryQualityGates.Tests.ps1
       - name: Run Automatic Update Tests
-        shell: powershell
+        shell: pwsh
         run: ./tests/Update-RepositoryQualityGates.Tests.ps1

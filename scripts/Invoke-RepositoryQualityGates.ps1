@@ -22,7 +22,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$productVersion = '1.3.1'
+$productVersion = '1.4.0'
 $productRepository = 'https://github.com/Cloud-Hub-Digital/repository-quality-gates'
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $detectionLibraryPath = Join-Path $toolRoot 'modules\module-drift\payload\scripts\RepositoryQualityGates.Detection.ps1'
@@ -42,7 +42,7 @@ if ($Version) {
 
 if (-not $RepositoryPath) { throw '-RepositoryPath is required unless -Version is used.' }
 $helperCommand = Get-Command pwsh -ErrorAction SilentlyContinue
-if (-not $helperCommand) { $helperCommand = Get-Command powershell.exe -ErrorAction Stop }
+if (-not $helperCommand) { throw 'PowerShell 7 (pwsh) is required to deploy Repository Quality Gates.' }
 $helperHost = $helperCommand.Source
 
 if (-not $CatalogPath) { $CatalogPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'modules\catalog.json' }
@@ -426,7 +426,7 @@ if (@($blockingOverlaps).Count -gt 0 -and -not $AcknowledgeOverlap) {
 }
 
 # Parse existing PowerShell source before making any changes. Read the text as
-# UTF-8 explicitly so Windows PowerShell 5.1 does not misread UTF-8 files
+# Read managed text explicitly as UTF-8 for deterministic cross-platform handling.
 # without a BOM (for example, strings containing an em dash).
 $parseFailures = [Collections.Generic.List[string]]::new()
 $powerShellExtensions = @('.ps1', '.psm1', '.psd1')
