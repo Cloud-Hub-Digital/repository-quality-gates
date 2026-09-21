@@ -348,6 +348,27 @@ try {
     Assert-True ($invalidEnrollmentPreview.ExitCode -ne 0) 'The automaticEnrollment repository rule must be a Boolean.'
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidEnrollmentRule '.repository-quality-gates.json'))) 'An invalid automatic-enrolment rule must not create managed state.'
 
+    $validPullRequestRule = New-Fixture 'valid-pull-request-rule'
+    $validPullRequestRulesText = '{"schemaVersion":1,"pullRequest":{"references":["OP#PROJECT-123","OP#PROJECT-456"]}}'
+    [IO.File]::WriteAllText((Join-Path $validPullRequestRule '.repository-quality-gates.local.json'), $validPullRequestRulesText + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $validPullRequestRule
+    $validPullRequestPreview = Invoke-Tool $validPullRequestRule @('-OutputFormat', 'Json')
+    Assert-True ($validPullRequestPreview.ExitCode -eq 0) "Valid OpenProject pull-request references should be accepted. $($validPullRequestPreview.Output)"
+
+    $invalidPullRequestRule = New-Fixture 'invalid-pull-request-rule'
+    $invalidPullRequestRulesText = '{"schemaVersion":1,"pullRequest":{"references":["PROJECT-123"]}}'
+    [IO.File]::WriteAllText((Join-Path $invalidPullRequestRule '.repository-quality-gates.local.json'), $invalidPullRequestRulesText + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $invalidPullRequestRule
+    $invalidPullRequestPreview = Invoke-Tool $invalidPullRequestRule @('-OutputFormat', 'Json')
+    Assert-True ($invalidPullRequestPreview.ExitCode -ne 0) 'A pull-request reference without the OP# prefix must be rejected.'
+
+    $mixedPullRequestRule = New-Fixture 'mixed-pull-request-rule'
+    $mixedPullRequestRulesText = '{"schemaVersion":1,"pullRequest":{"references":["OP#PROJECT-123","OP#OTHER-456"]}}'
+    [IO.File]::WriteAllText((Join-Path $mixedPullRequestRule '.repository-quality-gates.local.json'), $mixedPullRequestRulesText + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $mixedPullRequestRule
+    $mixedPullRequestPreview = Invoke-Tool $mixedPullRequestRule @('-OutputFormat', 'Json')
+    Assert-True ($mixedPullRequestPreview.ExitCode -ne 0) 'Pull-request references from different OpenProject projects must be rejected.'
+
     $unverified = New-Fixture 'unverified-preserved-module'
     'fixture' | Set-Content -LiteralPath (Join-Path $unverified 'README.md') -Encoding ascii
     Commit-Fixture $unverified

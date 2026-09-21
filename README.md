@@ -6,6 +6,8 @@ The prepared template version written to managed state is `1.4.1`. The automatic
 
 Version `1.4.1` repairs downstream fleet reconciliation after the `1.4.0` rollout, while retaining the PowerShell 7 execution path and release-resolution corrections introduced in `1.4.0`. Empty repositories are deferred, absent pull requests are handled safely, later GitHub App installations continue after an earlier installation fails, and verified legacy secret-scanning files can migrate back to central management without replacing a repository-specific root `.gitleaks.toml`. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
+Downstream repositories can keep repository-specific module, path, secret-policy, enrolment, and OpenProject pull-request rules in their committed `.repository-quality-gates.local.json` file. RQG validates and reads that file but never copies it from or replaces it with the central template.
+
 ## Runtime Requirement
 
 PowerShell 7 is required locally and in automation. The `pwsh` executable must be available on `PATH`. Repository Quality Gates no longer falls back to Windows PowerShell 5.1.
