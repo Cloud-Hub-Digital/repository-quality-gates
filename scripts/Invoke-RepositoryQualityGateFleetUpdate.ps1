@@ -96,6 +96,32 @@ function Test-AutomaticEnrollmentEnabled([string]$RepositoryName, [string]$Defau
     return [bool]$remoteRules.automaticEnrollment
 }
 
+function Get-PullRequestReferences([string]$RepositoryPath) {
+    $rulesPath = Join-Path $RepositoryPath '.repository-quality-gates.local.json'
+    if (-not (Test-Path -LiteralPath $rulesPath -PathType Leaf)) { return @() }
+    try { $rules = Get-Content -LiteralPath $rulesPath -Raw | ConvertFrom-Json }
+    catch { throw 'The downstream repository rules file is not valid JSON.' }
+    if (-not $rules.PSObject.Properties['pullRequest']) { return @() }
+    $pullRequestRules = $rules.pullRequest
+    foreach ($property in @($pullRequestRules.PSObject.Properties.Name)) {
+        if ($property -ne 'references') { throw "Unsupported downstream pullRequest rule: $property" }
+    }
+    if (-not $pullRequestRules.PSObject.Properties['references'] -or $null -eq $pullRequestRules.references) { return @() }
+    if ($pullRequestRules.references -is [string] -or $pullRequestRules.references -isnot [Collections.IEnumerable]) {
+        throw 'The downstream pullRequest.references rule must be an array of OpenProject references.'
+    }
+    $references = @($pullRequestRules.references | ForEach-Object {
+        if ($_ -isnot [string] -or $_ -notmatch '^OP#[A-Z][A-Z0-9_]{1,31}-[1-9][0-9]*$') {
+            throw 'Each downstream pullRequest reference must use the form OP#PROJECT-123.'
+        }
+        $_
+    })
+    if (@($references | Sort-Object -Unique).Count -ne $references.Count) { throw 'The downstream pullRequest references contain duplicates.' }
+    $projectIdentifiers = @($references | ForEach-Object { ($_ -replace '^OP#', '') -replace '-[1-9][0-9]*$', '' } | Sort-Object -Unique)
+    if ($projectIdentifiers.Count -gt 1) { throw 'All downstream pullRequest references must belong to the same OpenProject project.' }
+    return @($references)
+}
+
 if (-not $TargetVersion) {
     $versionOutput = @(& $deploymentTool -Version)
     $TargetVersion = ([string]$versionOutput[0] -replace '^Repository Quality Gates\s+', '').Trim()
@@ -252,13 +278,16 @@ try {
             if ($existingPr) { $entry.pullRequest = $existingPr }
             else {
                 $bodyPath = Join-Path $clonePath 'rqg-pr-body.md'
+                $pullRequestReferences = @(Get-PullRequestReferences $clonePath)
+                $referenceText = if ($pullRequestReferences.Count) { "`nOpenProject: $($pullRequestReferences -join ', ')`n" } else { '' }
                 $body = if ($entry.enrolment) {
-                    "$rqgPullRequestMarker`n`nEnrols this repository in Repository Quality Gates $TargetVersion under the central automatic-enrolment policy.`n`nThe enrolment detected the repository contents, selected only applicable modules, preserved repository-owned files and rules, and passed the public working-tree and staged secret scans before creating this pull request.`n`nGitHub will merge only after the repository's required checks pass.`n"
+                    "$rqgPullRequestMarker`n$referenceText`nEnrols this repository in Repository Quality Gates $TargetVersion under the central automatic-enrolment policy.`n`nThe enrolment detected the repository contents, selected only applicable modules, preserved repository-owned files and rules, and passed the public working-tree and staged secret scans before creating this pull request.`n`nGitHub will merge only after the repository's required checks pass.`n"
                 } else {
-                    "$rqgPullRequestMarker`n`nUpdates the managed Repository Quality Gates files to $TargetVersion.`n`nThe updater preserved repository-owned files, stopped on managed-file conflicts, and passed the public working-tree and staged secret scans before creating this pull request.`n`nGitHub will merge only after the repository's required checks pass.`n"
+                    "$rqgPullRequestMarker`n$referenceText`nUpdates the managed Repository Quality Gates files to $TargetVersion.`n`nThe updater preserved repository-owned files, stopped on managed-file conflicts, and passed the public working-tree and staged secret scans before creating this pull request.`n`nGitHub will merge only after the repository's required checks pass.`n"
                 }
                 [IO.File]::WriteAllText($bodyPath, $body, [Text.UTF8Encoding]::new($false))
-                $pullRequestTitle = if ($entry.enrolment) { "chore: enrol in Repository Quality Gates $TargetVersion" } else { "chore: update Repository Quality Gates to $TargetVersion" }
+                $projectPrefix = if ($pullRequestReferences.Count) { '[' + (($pullRequestReferences[0] -replace '^OP#', '') -replace '-[1-9][0-9]*$', '') + '] ' } else { '' }
+                $pullRequestTitle = $projectPrefix + $(if ($entry.enrolment) { "chore: enrol in Repository Quality Gates $TargetVersion" } else { "chore: update Repository Quality Gates to $TargetVersion" })
                 $entry.pullRequest = ([string](& gh pr create --repo $fullName --base $defaultBranch --head $branchName --title $pullRequestTitle --body-file $bodyPath)).Trim()
                 if ($LASTEXITCODE -ne 0 -or -not $entry.pullRequest) { throw 'Unable to create the update pull request.' }
             }

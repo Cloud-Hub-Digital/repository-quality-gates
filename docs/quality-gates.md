@@ -182,7 +182,7 @@ Fork and Dependabot pull requests normally have read-only tokens and remain repo
 
 **Workflow:** `PowerShell Quality` on `windows-2025`, timeout 10 minutes.
 
-The workflow recursively parses each applicable file with the PowerShell language parser and fails if any parse error is returned. It excludes `.git`, `node_modules`, `vendor`, `bin`, and `obj` directories.
+The workflow recursively parses each applicable file with the PowerShell language parser and fails if any parse error is returned. It excludes `.git`, `node_modules`, `vendor`, `bin`, and `obj` directories. When the repository contains RQG's own synthetic deployment or automatic-update test scripts, the workflow runs them as additional regression suites. Those central test steps are skipped in downstream repositories that do not contain the corresponding files.
 
 The deployment script also parses existing PowerShell files before applying any file changes. A parse failure stops deployment before mutation.
 

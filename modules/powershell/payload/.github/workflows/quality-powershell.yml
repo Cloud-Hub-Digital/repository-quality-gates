@@ -32,8 +32,10 @@ jobs:
           }
           if ($errors) { $errors | Format-List | Out-String | Write-Error; exit 1 }
       - name: Run Synthetic Deployment Tests
+        if: ${{ hashFiles('tests/Invoke-RepositoryQualityGates.Tests.ps1') != '' }}
         shell: pwsh
         run: ./tests/Invoke-RepositoryQualityGates.Tests.ps1
       - name: Run Automatic Update Tests
+        if: ${{ hashFiles('tests/Update-RepositoryQualityGates.Tests.ps1') != '' }}
         shell: pwsh
         run: ./tests/Update-RepositoryQualityGates.Tests.ps1

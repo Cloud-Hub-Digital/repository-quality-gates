@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Allow downstream repository rules to provide validated OpenProject work-package references for automated RQG pull-request titles and bodies.
+
+### Fixed
+
+- Run RQG's central PowerShell regression suites only in repositories that contain those test files, while retaining PowerShell syntax validation for every downstream PowerShell repository.
+
 ## 1.5.0 - 2026-09-23
 
 ### Added

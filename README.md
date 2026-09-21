@@ -6,6 +6,8 @@ The prepared template version written to managed state is `1.5.0`. The automatic
 
 Version `1.5.0` adds guarded self-hosted runner routing for private repositories. Repository-scoped JSON variables select Windows and Linux runners by neutral labels, while public repositories and pull requests from forks always use GitHub-hosted runners. This release also preserves hidden managed-state files during refresh and treats repository paths literally during layered secret scans. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
+Downstream repositories can keep repository-specific module, path, secret-policy, enrolment, and OpenProject pull-request rules in their committed `.repository-quality-gates.local.json` file. RQG validates and reads that file but never copies it from or replaces it with the central template.
+
 ## Runtime Requirement
 
 PowerShell 7 is required locally and in automation. The `pwsh` executable must be available on `PATH`. Repository Quality Gates no longer falls back to Windows PowerShell 5.1.

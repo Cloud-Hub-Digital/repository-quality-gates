@@ -68,6 +68,9 @@ A downstream repository may contain `.repository-quality-gates.local.json`. The 
   },
   "secretScanning": {
     "additionalConfigFiles": []
+  },
+  "pullRequest": {
+    "references": ["OP#PROJECT-123"]
   }
 }
 ```
@@ -79,8 +82,9 @@ A downstream repository may contain `.repository-quality-gates.local.json`. The 
 | `modules.repositoryOwned` | Keep a repository's existing verified implementation of a detected or explicitly included module instead of deploying the RQG payload |
 | `paths.repositoryOwned` | Preserve specific existing repository-relative files outside RQG managed state; every listed path must already be a regular file and cannot be the managed-state or local-rules file |
 | `secretScanning.additionalConfigFiles` | Run additional committed repository-specific Gitleaks TOML policies as separate scan layers |
+| `pullRequest.references` | Add one or more OpenProject work-package references to automated RQG pull requests; the project identifier also prefixes the pull-request title |
 
-The file is declarative. It cannot run commands, change GitHub permissions, disable the universal secret-scanning or module-drift modules, or override managed files. Module IDs must exist in the released catalogue. A repository-owned module must still have matching workflow evidence, and each additional secret policy must be a contained repository-relative TOML file that does not traverse a symbolic link or junction.
+The file is declarative. It cannot run commands, change GitHub permissions, disable the universal secret-scanning or module-drift modules, or override managed files. Module IDs must exist in the released catalogue. A repository-owned module must still have matching workflow evidence, and each additional secret policy must be a contained repository-relative TOML file that does not traverse a symbolic link or junction. Pull-request references must use `OP#PROJECT-123`, must be unique, and must all belong to one OpenProject project. Omit `pullRequest` when the repository has no OpenProject mapping.
 
 Older managed state that records preserved modules is migrated into this file during its first successful update. Legacy secret-scanning files return to central management only when each file matches a verified hash from a published RQG release. A customized root `.gitleaks.toml` may instead be recorded under `paths.repositoryOwned` when it still extends `security/gitleaks-portable.toml`; unknown or modified legacy files stop the update for review. After migration, the repository-owned file is the source of truth and the managed state contains only the resolved snapshot used for drift reporting.
 

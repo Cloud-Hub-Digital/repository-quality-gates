@@ -119,6 +119,13 @@ try {
         Assert-True ($fleetText.IndexOf('if ($pending.Count)') -lt $fleetText.IndexOf('if ($failed.Count)')) 'The fleet should wait for running checks before removing a branch after another check fails.'
         Assert-True ($fleetText.Contains('Repository Quality Gates update failed for')) 'Preparation failures should be written without table truncation.'
         Assert-True ($fleetText.Contains('Repository Quality Gates completion failed for')) 'Post-check completion failures should be written without table truncation.'
+        Assert-True ($fleetText.Contains('Get-PullRequestReferences')) 'The fleet should read repository-owned OpenProject references for automated pull requests.'
+        Assert-True ($fleetText.Contains("'^OP#[A-Z][A-Z0-9_]{1,31}-[1-9][0-9]*$'")) 'Repository-owned pull-request references should use a strict OpenProject token format.'
+        Assert-True ($fleetText.Contains('OpenProject: $($pullRequestReferences -join')) 'Automated pull-request bodies should include the repository-owned OpenProject references.'
+        Assert-True ($fleetText.Contains('$pullRequestTitle = $projectPrefix')) 'Automated pull-request titles should begin with the project identifier derived from the reference.'
+        $powerShellWorkflow = Get-Content -LiteralPath (Join-Path $root 'modules\powershell\payload\.github\workflows\quality-powershell.yml') -Raw
+        Assert-True ($powerShellWorkflow.Contains("if: `${{ hashFiles('tests/Invoke-RepositoryQualityGates.Tests.ps1') != '' }}")) 'The central synthetic deployment suite should run only when a downstream repository contains it.'
+        Assert-True ($powerShellWorkflow.Contains("if: `${{ hashFiles('tests/Update-RepositoryQualityGates.Tests.ps1') != '' }}")) 'The central automatic-update suite should run only when a downstream repository contains it.'
         $emptyPullRequestOutput = @()
         $normalizedEmptyPullRequest = ($emptyPullRequestOutput -join [Environment]::NewLine).Trim()
         Assert-True ($normalizedEmptyPullRequest -eq '') 'Zero GitHub CLI output lines should normalize to an empty pull-request URL.'
