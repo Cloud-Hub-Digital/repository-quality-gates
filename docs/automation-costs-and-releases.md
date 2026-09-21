@@ -24,7 +24,7 @@ Official references:
 
 Automated builds are a useful next module because they prove that a clean GitHub runner can reproduce the build. They should be enabled on pull requests and pushes using the applicable language module.
 
-Release publishing should be a separate, opt-in module with these controls:
+Release publishing for general downstream products should be a separate, opt-in module with these controls:
 
 1. Trigger only from an explicitly approved semantic-version tag or a manual `workflow_dispatch` request containing the exact approved version.
 2. Re-run the complete quality, test, secret, and publication checks before packaging.
@@ -56,4 +56,6 @@ The recommended sequence is therefore:
 
 ## Current Template Status
 
-The template deploys build and test gates for detected codebases, but it does not create releases, tags, versions, or deployment artifacts. Release automation requires a separate module because package formats, signing requirements, version sources, target platforms, and release approval steps vary by project.
+The reusable downstream template deploys build and test gates for detected codebases, but it does not create downstream releases, tags, versions, or deployment artifacts. Release automation for downstream products still requires a separate module because package formats, signing requirements, version sources, target platforms, and release approval steps vary by project.
+
+The central Repository Quality Gates repository is the documented exception. Its stable output is the repository itself, so `.github/workflows/automatic-release.yml` can create an annotated version tag and immutable GitHub Release after all central checks pass. That release then triggers downstream template distribution.

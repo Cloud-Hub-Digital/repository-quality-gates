@@ -1,0 +1,129 @@
+name: Automatic Stable Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: repository-quality-gates-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verify And Publish Stable Release
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Resolve Main Commit
+        id: source
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $sha = if ('${{ github.event_name }}' -eq 'push') {
+            '${{ github.sha }}'
+          } else {
+            (gh api "repos/$env:GITHUB_REPOSITORY/commits/main" --jq .sha).Trim()
+          }
+          if ($LASTEXITCODE -ne 0 -or $sha -notmatch '^[0-9a-f]{40}$') { throw 'Unable to resolve the main commit.' }
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Wait For Required Workflows
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          $required = @(
+            @{ name = 'Documentation Quality'; path = '.github/workflows/quality-documentation.yml' },
+            @{ name = 'Fleet Update Quality'; path = '.github/workflows/quality-fleet-update.yml' },
+            @{ name = 'Quality Gate Module Drift'; path = '.github/workflows/quality-module-drift.yml' },
+            @{ name = 'Secret Scanning'; path = '.github/workflows/secret-scanning.yml' },
+            @{ name = 'PowerShell Quality'; path = '.github/workflows/quality-powershell.yml' }
+          )
+          $deadline = [DateTimeOffset]::UtcNow.AddMinutes(20)
+          do {
+            $mainSha = (gh api "repos/$env:GITHUB_REPOSITORY/commits/main" --jq .sha).Trim()
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to confirm the current main commit.' }
+            if ($mainSha -ne $env:SOURCE_SHA) {
+              @() | ConvertTo-Json | Set-Content -LiteralPath checks.json -Encoding utf8
+              $mainSha | Set-Content -LiteralPath remote-main.txt -Encoding ascii
+              exit 0
+            }
+            $response = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs?head_sha=$env:SOURCE_SHA&per_page=100"
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to read workflow results.' }
+            $runs = @(($response | ConvertFrom-Json).workflow_runs)
+            $selected = @($required | ForEach-Object {
+              $expected = $_
+              @($runs | Where-Object { $_.name -eq $expected.name -and $_.path -eq $expected.path } | Sort-Object run_attempt, created_at -Descending | Select-Object -First 1)
+            })
+            $ready = $selected.Count -eq $required.Count -and @($selected | Where-Object status -ne 'completed').Count -eq 0
+            if (-not $ready) { Start-Sleep -Seconds 10 }
+          } while (-not $ready -and [DateTimeOffset]::UtcNow -lt $deadline)
+          if (-not $ready) { throw 'Timed out waiting for required quality workflows.' }
+          $selected | Select-Object name, path, status, conclusion | ConvertTo-Json | Set-Content -LiteralPath checks.json -Encoding utf8
+          $mainSha | Set-Content -LiteralPath remote-main.txt -Encoding ascii
+
+      - name: Prepare Release Plan
+        id: plan
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          $versionLine = Select-String -LiteralPath ./scripts/Invoke-RepositoryQualityGates.ps1 -Pattern '^\s*\$productVersion\s*=\s*''(?<version>[^'']+)''\s*$' | Select-Object -First 1
+          if (-not $versionLine) { throw 'Unable to resolve the canonical version.' }
+          $tag = "v$($versionLine.Matches[0].Groups['version'].Value)"
+          $tagSha = ''
+          git fetch --tags --force
+          $resolvedTag = git rev-parse --verify --quiet "refs/tags/$tag^{commit}" 2>$null
+          if ($LASTEXITCODE -eq 0) { $tagSha = ($resolvedTag | Select-Object -First 1).Trim() }
+          $null = gh release view $tag 2>$null
+          $releaseExists = $LASTEXITCODE -eq 0
+          $parameters = @{
+            CommitSha = $env:SOURCE_SHA
+            RemoteMainSha = (Get-Content -LiteralPath remote-main.txt -Raw).Trim()
+            CheckRunsPath = './checks.json'
+            TagCommitSha = $tagSha
+            ReleaseExists = $releaseExists
+          }
+          $plan = ./scripts/Get-RepositoryQualityGateReleasePlan.ps1 @parameters
+          $plan | ConvertTo-Json -Compress | Write-Host
+          "action=$($plan.action)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag=$($plan.tag)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "version=$($plan.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Create Annotated Tag
+        if: steps.plan.outputs.action == 'CreateTagAndRelease'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          $mainSha = (gh api "repos/$env:GITHUB_REPOSITORY/commits/main" --jq .sha).Trim()
+          if ($LASTEXITCODE -ne 0 -or $mainSha -ne $env:SOURCE_SHA) { throw 'Main changed after validation; release stopped.' }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a $env:RELEASE_TAG $env:SOURCE_SHA -m "Repository Quality Gates $env:RELEASE_VERSION"
+          git push origin "refs/tags/$env:RELEASE_TAG"
+
+      - name: Create Immutable GitHub Release
+        if: steps.plan.outputs.action == 'CreateTagAndRelease' || steps.plan.outputs.action == 'CreateRelease'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+        run: gh release create $env:RELEASE_TAG --verify-tag --title "Repository Quality Gates $env:RELEASE_VERSION" --generate-notes

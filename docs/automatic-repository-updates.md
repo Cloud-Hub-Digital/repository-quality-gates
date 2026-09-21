@@ -2,6 +2,10 @@
 
 Repository Quality Gates can enrol unmanaged repositories and update its managed template across every account or organization where its GitHub App is installed, without storing a personal access token or publishing an owner inventory. The central workflow runs when a stable release is published, once each day, or when started manually. Every unmanaged repository visible to any installation is eligible unless its repository-owned rules file explicitly opts out. A downstream repository is changed only when it has no open pull requests. Each enrolment or update uses its own pull request so the downstream repository's required checks remain the merge gate, then GitHub merges the pull request automatically when those requirements pass.
 
+The central `.github/workflows/automatic-release.yml` workflow creates that stable release from `main`. It waits for Documentation Quality, Fleet Update Quality, Quality Gate Module Drift, Secret Scanning, and PowerShell Quality on the exact commit. It then confirms the commit is still current, verifies one stable semantic version across the deployment engine, managed state, and changelog, creates an annotated `v<VERSION>` tag, and publishes the immutable GitHub Release. A release event immediately starts the fleet workflow described below.
+
+The release workflow binds every required result to both its exact workflow path and expected display name. It does nothing when the canonical version is unchanged and the matching release already exists. It skips prerelease versions and commits superseded on `main`. It fails closed when a required workflow fails, is missing, or is replaced by a same-name workflow at another path; when version metadata disagrees; when the changelog entry is missing; or when the version tag already identifies another commit. If tag creation succeeded but release creation was interrupted, a manual rerun can create the missing release only when the tag still identifies the exact validated commit.
+
 ## What The Automation Does
 
 1. Resolves the latest published Repository Quality Gates release.
@@ -106,6 +110,8 @@ In the central `repository-quality-gates` repository:
 The workflow exchanges these values for a short-lived App JWT, then creates a separate short-lived installation token for each installation. It never reuses one installation's token for another installation, copies no token or private key into a managed repository, masks discovered owner and full repository names before downstream log output, and requests revocation of each installation token when processing finishes.
 
 ## Workflow Triggers
+
+The central `.github/workflows/automatic-release.yml` workflow runs on every push to `main` and can also be started manually. Only a stable `MAJOR.MINOR.PATCH` version can be published. Every release therefore requires a deliberate version and changelog update in the source commit, while publication itself occurs automatically after the required quality workflows pass.
 
 The central `.github/workflows/update-managed-repositories.yml` workflow runs:
 

@@ -50,7 +50,11 @@ function Get-GitHubAppInstallations([string]$Jwt) {
     }
     $all = [Collections.Generic.List[object]]::new()
     for ($page = 1; ; $page++) {
-        $batch = @(Invoke-RestMethod -Method Get -Uri "https://api.github.com/app/installations?per_page=100&page=$page" -Headers $headers)
+        # Invoke-RestMethod deliberately returns JSON arrays without enumerating
+        # them. Capture the response first so @() normalizes both a JSON array
+        # and a single installation into the same flat collection.
+        $response = Invoke-RestMethod -Method Get -Uri "https://api.github.com/app/installations?per_page=100&page=$page" -Headers $headers
+        $batch = @($response)
         foreach ($installation in $batch) { $all.Add($installation) }
         if ($batch.Count -lt 100) { break }
     }

@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The prepared stable template version written to managed state is `1.2.0`. The latest published stable release remains `1.1.0` until the prepared commit, tag, and GitHub Release complete their separate approval gates.
+The prepared stable template version written to managed state is `1.3.0`. The latest published GitHub Release remains `1.0.1` until the automatic-release change is committed, pushed, and its required workflows pass.
 
-Version `1.2.0` adds opt-out automatic enrolment across GitHub App installations, clarifies the exact scope of the downstream RQG licence notice, records the established GitHub repository settings, and adds weekly grouped Dependabot updates for GitHub Actions. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.3.0` adds automatic stable release creation, refuses stale or reused release versions, and corrects multi-installation GitHub App discovery. Publishing the central release starts the existing opt-out automatic enrolment and update process. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## What It Provides
 
@@ -81,9 +81,11 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `tests/Update-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for version comparison, safe updates, skips, and managed-file conflicts |
 | `tests/Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1` | Synthetic fleet-discovery suite for automatic enrolment, repository opt-out, open-pull-request deferral, and workflow activation |
 | `tests/Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1` | Synthetic authentication suite for multi-installation discovery, token isolation, and cross-owner fleet dispatch |
+| `tests/Get-RepositoryQualityGateReleasePlan.Tests.ps1` | Synthetic automatic-release suite for version, check, commit, tag, and release-state validation |
 | `scripts/Update-RepositoryQualityGates.ps1` | Preview or apply a newer template to one managed repository |
 | `scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1` | Discover GitHub App repositories, open update pull requests, and enable required-check-gated auto-merge |
 | `scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1` | Enumerate every GitHub App installation, issue an isolated token for each, mask discovered identities, and run the fleet updater |
+| `scripts/Get-RepositoryQualityGateReleasePlan.ps1` | Validate the central stable version and determine whether its immutable tag and release may be created or recovered |
 | `docs/quality-gates.md` | Detailed gate and module-selection reference |
 | `docs/deployment-guide.md` | End-to-end operator instructions |
 | `docs/module-system.md` | Architecture and managed-file lifecycle reference |
@@ -139,13 +141,14 @@ See the [Security Policy](SECURITY.md) for supported versions, security boundari
 
 ## Validation
 
-Run the template regression suite from this repository:
+Run the template and central automation regression suites from this repository:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGates.Tests.ps1"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Update-RepositoryQualityGates.Tests.ps1"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1"
 pwsh -NoProfile -File ".\tests\Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1"
+pwsh -NoProfile -File ".\tests\Get-RepositoryQualityGateReleasePlan.Tests.ps1"
 ```
 
 The regression suite uses generated synthetic repositories only and includes automatic Python-to-PHP reconciliation. It does not use real credentials or private identifier values.

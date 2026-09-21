@@ -58,7 +58,10 @@ param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch
     function global:Invoke-RestMethod {
         param([string]$Method, [string]$Uri, [hashtable]$Headers, [string]$ContentType)
         if ($Method -eq 'Get' -and $Uri -match '/app/installations\?') {
-            return @([pscustomobject]@{ id = 101 }, [pscustomobject]@{ id = 202 })
+            # Match Invoke-RestMethod's real treatment of a top-level JSON array:
+            # one non-enumerated response object containing both installations.
+            Write-Output -NoEnumerate @([pscustomobject]@{ id = 101 }, [pscustomobject]@{ id = 202 })
+            return
         }
         if ($Method -eq 'Post' -and $Uri -match '/app/installations/(?<id>\d+)/access_tokens$') {
             return [pscustomobject]@{ token = "installation-token-$($Matches.id)" }

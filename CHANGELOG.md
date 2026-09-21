@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.0 - 2026-09-21
+
+### Added
+
+- Added central automatic stable release creation for the exact current `main` commit after all five required RQG workflows succeed.
+- Added deterministic release planning and regression coverage for version consistency, changelog presence, stale commits, failed checks, existing releases, recoverable missing releases, and tag collisions.
+
+### Changed
+
+- Stable `main` versions now create an annotated semantic-version tag and immutable GitHub Release automatically; publishing that release starts the existing downstream fleet update.
+- Corrected GitHub App installation discovery so PowerShell normalizes a top-level JSON array before processing each installation separately.
+
+### Security
+
+- Release automation uses only `actions: read` and `contents: write`, binds every required result to its exact workflow path and display name, rechecks the remote `main` commit immediately before tagging, and refuses to move or reuse an existing version tag.
+
 ## 1.2.0 - 2026-09-20
 
 ### Added
