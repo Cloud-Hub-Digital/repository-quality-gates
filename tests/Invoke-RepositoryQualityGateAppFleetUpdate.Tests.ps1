@@ -25,6 +25,9 @@ try {
     $workflowText = Get-Content -LiteralPath $fleetWorkflow -Raw
     Assert-True ($workflowText.Contains('timeout-minutes: 120')) 'The complete fleet rollout should allow up to 120 minutes.'
     Assert-True ($workflowText.Contains('name: Email Fleet Rollout Report')) 'The fleet workflow should send its configured completion report.'
+    Assert-True ($workflowText.Contains('name: Preserve Fleet Rollout Report')) 'The updater should preserve its detailed report for the email job.'
+    Assert-True ($workflowText.Contains('name: Retrieve Fleet Rollout Report')) 'The email job should retrieve the detailed rollout report.'
+    Assert-True (-not $workflowText.Contains('report_base64')) 'The detailed report should not use a secret-sensitive job output.'
     Assert-True ($workflowText.Contains("vars.RQG_REPORT_EMAIL_ENABLED == 'true'")) 'Email reporting should remain controlled by the repository variable.'
     Assert-True ($workflowText.Contains("steps.rollout.outcome == 'failure'")) 'A reported rollout failure should still fail the workflow.'
 
