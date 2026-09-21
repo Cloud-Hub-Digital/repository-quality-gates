@@ -109,6 +109,7 @@ try {
         Assert-True ($fleetText.Contains('$existingPr = ($existingPrOutput -join [Environment]::NewLine).Trim()')) 'A missing existing pull request must normalize to an empty string without a null-method failure.'
         Assert-True ($fleetText.Contains("status = 'ChecksPending'")) 'Automatic updates should queue pull requests for explicit quality-check verification.'
         Assert-True ($fleetText.Contains('Wait-PullRequestQualityChecks')) 'Automatic updates should wait for every reported pull-request quality check.'
+        Assert-True ($fleetText.Contains('[DateTimeOffset]::UtcNow.AddMinutes(4)')) 'Automatic updates should allow four minutes for quality checks to appear.'
         Assert-True ($fleetText.Contains("status = 'MergedAfterChecks'")) 'Automatic updates should report only a verified post-check merge as merged.'
         Assert-True ($fleetText.Contains('gh api --method PUT "repos/$repositoryName/pulls/$pullRequestNumber/merge"')) 'Verified pull requests should merge through the REST API supported by GitHub App installation tokens.'
         Assert-True (-not $fleetText.Contains('gh pr merge')) 'The fleet must not depend on the GitHub CLI GraphQL merge path or repository-level auto-merge settings.'
