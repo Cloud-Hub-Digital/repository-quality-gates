@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The prepared template version written to managed state is `1.5.0`. The automatic release workflow publishes the matching immutable `v1.5.0` GitHub Release after the required checks pass for the release commit.
+The prepared template version written to managed state is `1.5.1`. The automatic release workflow publishes the matching immutable `v1.5.1` GitHub Release after the required checks pass for the release commit.
 
-Version `1.5.0` adds guarded self-hosted runner routing for private repositories. Repository-scoped JSON variables select Windows and Linux runners by neutral labels, while public repositories and pull requests from forks always use GitHub-hosted runners. This release also preserves hidden managed-state files during refresh and treats repository paths literally during layered secret scans. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.5.1` completes guarded self-hosted runner routing for private repositories and restores reliable fleet completion. It waits for downstream checks before merging, carries validated OpenProject references into update pull requests, allows 120 minutes per rollout with a four-minute initial check-discovery window, and can email a sanitized success or failure report. Public repositories and pull requests from forks continue to use GitHub-hosted runners. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 Downstream repositories can keep repository-specific module, path, secret-policy, enrolment, and OpenProject pull-request rules in their committed `.repository-quality-gates.local.json` file. RQG validates and reads that file but never copies it from or replaces it with the central template.
 

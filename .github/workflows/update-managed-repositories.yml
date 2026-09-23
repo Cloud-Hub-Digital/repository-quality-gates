@@ -60,20 +60,30 @@ jobs:
           RQG_APP_PRIVATE_KEY: ${{ secrets.RQG_APP_PRIVATE_KEY }}
         run: |
           $reportPath = Join-Path $env:GITHUB_WORKSPACE 'rollout-report.txt'
+          $maskedValues = [Collections.Generic.List[string]]::new()
+          function ConvertTo-SanitizedReportLine([string]$Line) {
+            foreach ($value in @($maskedValues | Sort-Object Length -Descending)) {
+              if ($value) { $Line = $Line.Replace($value, '***') }
+            }
+            return $Line
+          }
           try {
             ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply -AutoMerge *>&1 |
               ForEach-Object {
                 $line = [string]$_
                 Write-Host $line
-                if ($line -notmatch '^::add-mask::') {
-                  $line | Out-File -LiteralPath $reportPath -Encoding utf8 -Append
+                if ($line -match '^::add-mask::(?<value>.+)$') {
+                  $maskedValues.Add([string]$Matches.value)
+                }
+                else {
+                  (ConvertTo-SanitizedReportLine $line) | Out-File -LiteralPath $reportPath -Encoding utf8 -Append
                 }
               }
           }
           catch {
             $failure = $_ | Out-String
             Write-Host $failure
-            $failure | Out-File -LiteralPath $reportPath -Encoding utf8 -Append
+            (ConvertTo-SanitizedReportLine $failure) | Out-File -LiteralPath $reportPath -Encoding utf8 -Append
             exit 1
           }
 

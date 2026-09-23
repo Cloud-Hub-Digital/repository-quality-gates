@@ -1,15 +1,28 @@
 # Changelog
 
-## Unreleased
+## 1.5.1 - 2026-09-23
 
 ### Added
 
-- Allow downstream repository rules to provide validated OpenProject work-package references for automated RQG pull-request titles and bodies.
+- Added optional authenticated SMTP rollout reports containing the selected release, workflow link, outcome, and sanitized per-repository output.
+- Added validated OpenProject work-package references for automated RQG pull-request titles and bodies.
+
+### Changed
+
+- Increased the fleet rollout limit from 60 to 120 minutes, allows up to four minutes for the first downstream check to appear, and waits up to 45 minutes for reported checks to finish.
+- Merge update pull requests only after every reported downstream check succeeds, then remove the temporary branch without depending on repository-level auto-merge settings.
+- Read check-run status through the least-privilege Checks API and retain rollout report artifacts for one day.
 
 ### Fixed
 
-- Run RQG's central PowerShell regression suites only in repositories that contain those test files, while retaining PowerShell syntax validation for every downstream PowerShell repository.
+- Normalize an empty GitHub CLI pull-request lookup without a null-method failure.
+- Preserve per-repository failure diagnostics while continuing across accessible GitHub App installations.
+- Keep temporary branches available until running checks finish so branch cleanup cannot cause misleading checkout failures.
+- Run RQG central PowerShell regression suites only where those test files exist while retaining syntax validation for every downstream PowerShell repository.
 
+### Security
+
+- Exclude GitHub masking commands from retained report artifacts, replace every registered credential and private identifier before persistence, and keep SMTP credentials in GitHub Actions secrets.
 ## 1.5.0 - 2026-09-23
 
 ### Added
