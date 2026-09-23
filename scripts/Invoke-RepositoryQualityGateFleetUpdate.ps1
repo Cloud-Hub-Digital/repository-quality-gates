@@ -9,7 +9,8 @@ param(
     [switch]$Apply,
     [switch]$AutoMerge,
     [ValidateRange(1, 168)][int]$TemporaryBranchLifetimeHours = 24,
-    [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text'
+    [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text',
+    [string]$ResultPath
 )
 
 Set-StrictMode -Version Latest
@@ -371,6 +372,13 @@ $summary = [ordered]@{
     repositories = @($results)
     failed = @($results | Where-Object status -eq 'Failed').Count
 }
-if ($OutputFormat -eq 'Json') { $summary | ConvertTo-Json -Depth 6 }
+$summaryJson = $summary | ConvertTo-Json -Depth 6
+if (-not [string]::IsNullOrWhiteSpace($ResultPath)) {
+    $resolvedResultPath = [IO.Path]::GetFullPath($ResultPath)
+    $resultParent = Split-Path -Parent $resolvedResultPath
+    if (-not (Test-Path -LiteralPath $resultParent -PathType Container)) { throw 'The result-file parent directory does not exist.' }
+    [IO.File]::WriteAllText($resolvedResultPath, $summaryJson, [Text.UTF8Encoding]::new($false))
+}
+if ($OutputFormat -eq 'Json') { $summaryJson }
 else { $results | Format-Table repository, status, autoMerge, pullRequest, detail -AutoSize }
 if ($summary.failed -gt 0) { throw "$($summary.failed) managed repository update(s) failed." }

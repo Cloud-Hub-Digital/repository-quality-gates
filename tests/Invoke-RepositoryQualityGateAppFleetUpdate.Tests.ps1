@@ -25,15 +25,20 @@ try {
     $workflowText = Get-Content -LiteralPath $fleetWorkflow -Raw
     Assert-True ($workflowText.Contains('timeout-minutes: 120')) 'The complete fleet rollout should allow up to 120 minutes.'
     Assert-True ($workflowText.Contains('name: Email Fleet Rollout Report')) 'The fleet workflow should send its configured completion report.'
-    Assert-True ($workflowText.Contains('name: Preserve Fleet Rollout Report')) 'The updater should preserve its detailed report for the email job.'
-    Assert-True ($workflowText.Contains('name: Retrieve Fleet Rollout Report')) 'The email job should retrieve the detailed rollout report.'
+    Assert-True ($workflowText.Contains('name: Preserve Fleet Rollout Report')) 'The updater should preserve its sanitized diagnostic report.'
+    Assert-True (-not $workflowText.Contains('name: Retrieve Fleet Rollout Report')) 'The private email report must not pass through a downloadable artifact.'
     Assert-True (-not $workflowText.Contains('report_base64')) 'The detailed report should not use a secret-sensitive job output.'
     Assert-True ($workflowText.Contains("if (`$line -match '^::add-mask::(?<value>.+)`$')")) 'The report writer should recognize GitHub masking control lines.'
     Assert-True ($workflowText.Contains('$maskedValues.Add([string]$Matches.value)')) 'The report writer should retain every registered mask value in memory.'
     Assert-True ($workflowText.Contains("`$Line = `$Line.Replace(`$value, '***')")) 'The preserved report must replace masked credentials and private identifiers.'
     Assert-True ($workflowText.Contains('(ConvertTo-SanitizedReportLine $failure)')) 'Failure diagnostics must receive the same report sanitization.'
     Assert-True ($workflowText.Contains('actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4')) 'The report uploader should use the pinned Node.js 24 artifact action.'
-    Assert-True ($workflowText.Contains('actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0')) 'The report downloader should use the pinned Node.js 24 artifact action.'
+    Assert-True (-not $workflowText.Contains('actions/download-artifact@')) 'The email-only repository table must not be downloaded from an artifact.'
+    Assert-True ($workflowText.Contains('-PrivateReportPath $privateReportPath')) 'The App wrapper should receive a dedicated private report path.'
+    Assert-True ($workflowText.Contains('PRIVATE_REPORT_PATH: ${{ github.workspace }}/.rqg-private/email-report.json')) 'The email step should read the private local report directly.'
+    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left\">Repository</th>')) 'The HTML email should contain a Repository column.'
+    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left\">Status</th>')) 'The HTML email should contain a Status column.'
+    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left\">Comment</th>')) 'The HTML email should contain a Comment column.'
     Assert-True ($workflowText.Contains("vars.RQG_REPORT_EMAIL_ENABLED == 'true'")) 'Email reporting should remain controlled by the repository variable.'
     Assert-True ($workflowText.Contains("steps.rollout.outcome == 'failure'")) 'A reported rollout failure should still fail the workflow.'
 
@@ -58,8 +63,8 @@ try {
 
     New-Item -ItemType Directory -Path (Join-Path $testRoot 'scripts') -Force | Out-Null
     $recordPath = Join-Path $testRoot 'fleet-records.jsonl'
-    $fakeFleet = @'
-param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch]$Apply, [switch]$AutoMerge, [int]$TemporaryBranchLifetimeHours)
+$fakeFleet = @'
+param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch]$Apply, [switch]$AutoMerge, [int]$TemporaryBranchLifetimeHours, [string]$ResultPath)
 [pscustomobject]@{
     repositories = @($Repository)
     token = $env:GH_TOKEN
@@ -71,6 +76,18 @@ param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch
     autoMerge = [bool]$AutoMerge
     lifetime = $TemporaryBranchLifetimeHours
 } | ConvertTo-Json -Compress | Add-Content -LiteralPath $env:RQG_TEST_RECORD_PATH -Encoding utf8
+$status = if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-101') { 'Failed' } else { 'Current' }
+$summary = [ordered]@{
+    repositories = @($Repository | ForEach-Object { [pscustomobject]@{ repository = $_; status = $status; detail = "Synthetic $status result. Token=$env:GH_TOKEN" } })
+    failed = if ($status -eq 'Failed') { 1 } else { 0 }
+}
+if ($env:RQG_TEST_INVALID_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-101') {
+    [IO.File]::WriteAllText([IO.Path]::GetFullPath($ResultPath), '{', [Text.UTF8Encoding]::new($false))
+}
+else {
+    [IO.File]::WriteAllText([IO.Path]::GetFullPath($ResultPath), ($summary | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+}
+$summary | ConvertTo-Json -Depth 4
 if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-101') { throw 'Synthetic first-installation failure.' }
 '@
     [IO.File]::WriteAllText((Join-Path $testRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'), $fakeFleet, [Text.UTF8Encoding]::new($false))
@@ -113,8 +130,9 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
     $env:GIT_CONFIG_KEY_0 = 'test.original.key'
     $env:GIT_CONFIG_VALUE_0 = 'test-original-value'
     $env:RQG_TEST_RECORD_PATH = $recordPath
+    $privateReportPath = Join-Path $testRoot 'private-report.json'
     try {
-        Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -EnableAutoEnroll -EnableApply -EnableAutoMerge -BranchLifetimeHours 24
+        Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -EnableAutoEnroll -EnableApply -EnableAutoMerge -ResolvedPrivateReportPath $privateReportPath -BranchLifetimeHours 24
         $records = @(Get-Content -LiteralPath $recordPath | ForEach-Object { $_ | ConvertFrom-Json })
         Assert-True ($records.Count -eq 2) 'Every GitHub App installation should run the fleet updater once.'
         Assert-True ($records[0].repositories[0] -eq 'first-owner/one') 'The first installation should receive only its repository list.'
@@ -127,12 +145,17 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($records[0].autoEnroll -and $records[0].apply -and $records[0].autoMerge) 'The wrapper should forward the requested automation switches.'
         Assert-True ($records[0].lifetime -eq 24) 'The wrapper should forward the temporary branch lifetime.'
         Assert-True ($env:GIT_CONFIG_COUNT -eq '7' -and $env:GIT_CONFIG_KEY_0 -eq 'test.original.key' -and $env:GIT_CONFIG_VALUE_0 -eq 'test-original-value') 'The wrapper should restore the caller Git configuration environment.'
+        $privateRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
+        Assert-True ($privateRows.Count -eq 2) 'The private report should contain one row for each repository.'
+        Assert-True ($privateRows[0].PSObject.Properties.Name -contains 'repository' -and $privateRows[0].PSObject.Properties.Name -contains 'status' -and $privateRows[0].PSObject.Properties.Name -contains 'comment') 'The private report should contain only the requested table fields.'
+        Assert-True ($privateRows.repository -contains 'first-owner/one' -and $privateRows.repository -contains 'second-owner/two') 'The private report should retain repository names for the email table.'
+        Assert-True (-not ((Get-Content -LiteralPath $privateReportPath -Raw) -match 'installation-token-')) 'The private email report must redact installation credentials from comments.'
 
         Remove-Item -LiteralPath $recordPath -Force
         $env:RQG_TEST_FAIL_FIRST = '1'
         $aggregateFailure = $null
         try {
-            Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -EnableAutoEnroll -EnableApply -EnableAutoMerge -BranchLifetimeHours 24
+            Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -EnableAutoEnroll -EnableApply -EnableAutoMerge -ResolvedPrivateReportPath $privateReportPath -BranchLifetimeHours 24
         }
         catch { $aggregateFailure = $_ }
         $failureRecords = @(Get-Content -LiteralPath $recordPath | ForEach-Object { $_ | ConvertFrom-Json })
@@ -140,7 +163,26 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($aggregateFailure.Exception.Message -match '^1 GitHub App installation\(s\) failed after all accessible installations were processed\.') 'The final error should report the aggregate installation failure count.'
         Assert-True ($failureRecords.Count -eq 2) 'A failed installation must not prevent a later installation from running.'
         Assert-True ($failureRecords[1].repositories[0] -eq 'second-owner/two') 'The later installation should still receive its repository list after an earlier failure.'
+        $failureRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
+        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'Failed') 'The private report should retain a failed repository status.'
+        Assert-True (@($failureRows | Where-Object repository -eq 'second-owner/two')[0].status -eq 'Current') 'The private report should retain later successful installation results.'
         Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
+
+        Remove-Item -LiteralPath $recordPath -Force
+        $env:RQG_TEST_INVALID_FIRST = '1'
+        $invalidResultFailure = $null
+        try {
+            Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -EnableAutoEnroll -EnableApply -EnableAutoMerge -ResolvedPrivateReportPath $privateReportPath -BranchLifetimeHours 24
+        }
+        catch { $invalidResultFailure = $_ }
+        $invalidResultRecords = @(Get-Content -LiteralPath $recordPath | ForEach-Object { $_ | ConvertFrom-Json })
+        Assert-True ($invalidResultFailure.Exception.Message -match '^1 GitHub App installation\(s\) failed after all accessible installations were processed\.') 'An invalid structured result should produce an aggregate installation failure.'
+        Assert-True ($invalidResultRecords.Count -eq 2) 'An invalid structured result must not prevent a later installation from running.'
+        $invalidResultRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
+        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'Failed') 'An invalid structured result should create a failed repository row.'
+        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].comment -match '^The structured installation result could not be read:') 'The failed row should explain the structured-result error.'
+        Assert-True (@($invalidResultRows | Where-Object repository -eq 'second-owner/two')[0].status -eq 'Current') 'A later installation should still report its successful result.'
+        Remove-Item Env:\RQG_TEST_INVALID_FIRST -ErrorAction SilentlyContinue
     }
     finally {
         $testRsa.Dispose()
@@ -148,6 +190,7 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Remove-Item Function:\global:gh -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_RECORD_PATH -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
+        Remove-Item Env:\RQG_TEST_INVALID_FIRST -ErrorAction SilentlyContinue
         if ($null -eq $oldToken) { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue } else { $env:GH_TOKEN = $oldToken }
         if ($null -eq $oldGitConfigCount) { Remove-Item Env:\GIT_CONFIG_COUNT -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_COUNT = $oldGitConfigCount }
         if ($null -eq $oldGitConfigKey0) { Remove-Item Env:\GIT_CONFIG_KEY_0 -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_KEY_0 = $oldGitConfigKey0 }

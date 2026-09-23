@@ -60,6 +60,9 @@ jobs:
           RQG_APP_PRIVATE_KEY: ${{ secrets.RQG_APP_PRIVATE_KEY }}
         run: |
           $reportPath = Join-Path $env:GITHUB_WORKSPACE 'rollout-report.txt'
+          $privateReportDirectory = Join-Path $env:GITHUB_WORKSPACE '.rqg-private'
+          $privateReportPath = Join-Path $privateReportDirectory 'email-report.json'
+          New-Item -ItemType Directory -Path $privateReportDirectory -Force | Out-Null
           $maskedValues = [Collections.Generic.List[string]]::new()
           function ConvertTo-SanitizedReportLine([string]$Line) {
             foreach ($value in @($maskedValues | Sort-Object Length -Descending)) {
@@ -68,7 +71,7 @@ jobs:
             return $Line
           }
           try {
-            ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply -AutoMerge *>&1 |
+            ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply -AutoMerge -PrivateReportPath $privateReportPath *>&1 |
               ForEach-Object {
                 $line = [string]$_
                 Write-Host $line
@@ -96,29 +99,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
 
-      - name: Fail When Fleet Rollout Failed
-        if: ${{ always() && steps.rollout.outcome == 'failure' }}
-        shell: pwsh
-        run: throw 'The downstream fleet rollout failed. Review the emailed report and workflow log.'
-
-  report:
-    name: Email Fleet Rollout Report
-    needs: update
-    if: ${{ always() && vars.RQG_REPORT_EMAIL_ENABLED == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - name: Retrieve Fleet Rollout Report
-        continue-on-error: true
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        with:
-          name: fleet-rollout-report-${{ github.run_id }}
-          path: .rqg-report
-
-      - name: Send Fleet Rollout Report
+      - name: Email Fleet Rollout Report
+        if: ${{ always() && vars.RQG_REPORT_EMAIL_ENABLED == 'true' }}
+        shell: bash
         env:
-          ROLLOUT_OUTCOME: ${{ needs.update.result }}
-          RELEASE_TAG: ${{ needs.update.outputs.release_tag }}
+          ROLLOUT_OUTCOME: ${{ steps.rollout.outcome }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          PRIVATE_REPORT_PATH: ${{ github.workspace }}/.rqg-private/email-report.json
           SMTP_HOST: ${{ vars.RQG_REPORT_SMTP_HOST }}
           SMTP_PORT: ${{ vars.RQG_REPORT_SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.RQG_REPORT_SMTP_USERNAME }}
@@ -127,6 +114,8 @@ jobs:
           MESSAGE_TO: ${{ secrets.RQG_REPORT_TO }}
         run: |
           python - <<'PY'
+          import html
+          import json
           import os
           import smtplib
           import ssl
@@ -145,27 +134,80 @@ jobs:
           if missing:
               raise RuntimeError("Missing required GitHub Actions settings: " + ", ".join(missing))
 
-          report_path = os.path.join(".rqg-report", "rollout-report.txt")
+          report_path = os.environ["PRIVATE_REPORT_PATH"]
           if os.path.isfile(report_path):
-              with open(report_path, "r", encoding="utf-8", errors="replace") as report_file:
-                  report = report_file.read()
-              if len(report) > 200000:
-                  report = "[Earlier output omitted because the report exceeded 200,000 characters.]\n\n" + report[-200000:]
+              with open(report_path, "r", encoding="utf-8", errors="strict") as report_file:
+                  rows = json.load(report_file)
+              if not isinstance(rows, list):
+                  raise RuntimeError("The private rollout report is not a JSON array.")
           else:
-              report = "No detailed rollout output was available. The update job may have timed out or been cancelled."
+              rows = []
+
+          def clean_cell(value, limit):
+              text = " ".join(str(value or "").split())
+              return text if len(text) <= limit else text[:limit - 3] + "..."
+
+          normalized = []
+          for row in rows:
+              if not isinstance(row, dict):
+                  raise RuntimeError("The private rollout report contains an invalid row.")
+              normalized.append({
+                  "repository": clean_cell(row.get("repository") or "Unavailable", 300),
+                  "status": clean_cell(row.get("status") or "Unknown", 100),
+                  "comment": clean_cell(row.get("comment"), 4000),
+              })
+          if not normalized:
+              normalized.append({
+                  "repository": "Unavailable",
+                  "status": "Unknown",
+                  "comment": "No structured repository result was available. Review the sanitized workflow artifact.",
+              })
+
           outcome = os.environ.get("ROLLOUT_OUTCOME", "unknown").upper()
           release_tag = os.environ.get("RELEASE_TAG", "").strip() or "unresolved"
           run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          widths = {
+              key: max(len(title), *(len(row[key]) for row in normalized))
+              for key, title in (("repository", "Repository"), ("status", "Status"), ("comment", "Comment"))
+          }
+          header = f"{'Repository':<{widths['repository']}} | {'Status':<{widths['status']}} | Comment"
+          divider = f"{'-' * widths['repository']}-+-{'-' * widths['status']}-+-{'-' * widths['comment']}"
+          text_rows = [
+              f"{row['repository']:<{widths['repository']}} | {row['status']:<{widths['status']}} | {row['comment']}"
+              for row in normalized
+          ]
+          html_rows = "".join(
+              "<tr>"
+              f"<td>{html.escape(row['repository'])}</td>"
+              f"<td>{html.escape(row['status'])}</td>"
+              f"<td>{html.escape(row['comment'])}</td>"
+              "</tr>"
+              for row in normalized
+          )
+
           message = EmailMessage()
           message["Subject"] = f"[RQG] Fleet Rollout {outcome}: {release_tag}"
           message["From"] = os.environ["MESSAGE_FROM"]
           message["To"] = os.environ["MESSAGE_TO"]
           message.set_content(
-              f"Repository Quality Gates fleet rollout report\n\n"
+              "Repository Quality Gates fleet rollout report\n\n"
               f"Release: {release_tag}\n"
               f"Outcome: {outcome}\n"
               f"Workflow run: {run_url}\n\n"
-              f"Rollout output:\n{report}"
+              f"{header}\n{divider}\n" + "\n".join(text_rows)
+          )
+          message.add_alternative(
+              "<!doctype html><html><body>"
+              "<h1>Repository Quality Gates Fleet Rollout Report</h1>"
+              f"<p><strong>Release:</strong> {html.escape(release_tag)}<br>"
+              f"<strong>Outcome:</strong> {html.escape(outcome)}<br>"
+              f"<strong>Workflow Run:</strong> <a href=\"{html.escape(run_url, quote=True)}\">{html.escape(run_url)}</a></p>"
+              "<table style=\"border-collapse:collapse\"><thead><tr>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left\">Repository</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left\">Status</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left\">Comment</th>"
+              "</tr></thead><tbody>" + html_rows + "</tbody></table></body></html>",
+              subtype="html",
           )
 
           client = None
@@ -181,3 +223,8 @@ jobs:
                   with suppress(Exception):
                       client.quit()
           PY
+
+      - name: Fail When Fleet Rollout Failed
+        if: ${{ always() && steps.rollout.outcome == 'failure' }}
+        shell: pwsh
+        run: throw 'The downstream fleet rollout failed. Review the emailed report and workflow log.'

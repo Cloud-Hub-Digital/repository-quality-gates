@@ -6,6 +6,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $fleetTool = Join-Path $root 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'
 $workflowPath = Join-Path $root '.github\workflows\update-managed-repositories.yml'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('rqg-fleet-tests-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 $passed = 0
 
 function Assert-True([bool]$Condition, [string]$Message) {
@@ -14,12 +15,14 @@ function Assert-True([bool]$Condition, [string]$Message) {
 }
 
 function Invoke-Fleet([string[]]$Repositories, [switch]$AutoEnroll) {
+    $resultPath = Join-Path $testRoot ('result-' + [guid]::NewGuid().ToString('N') + '.json')
     $arguments = @{
         Owner = 'owner'
         Repository = $Repositories
         TemplateRoot = $root
         TargetVersion = '1.4.0'
         OutputFormat = 'Json'
+        ResultPath = $resultPath
     }
     if ($AutoEnroll) { $arguments.AutoEnroll = $true }
     $previousPreference = $ErrorActionPreference
@@ -31,7 +34,7 @@ function Invoke-Fleet([string[]]$Repositories, [switch]$AutoEnroll) {
     }
     catch { $output = @($output) + @($_); $exitCode = 1 }
     finally { $ErrorActionPreference = $previousPreference }
-    [pscustomobject]@{ ExitCode = $exitCode; Output = $output -join [Environment]::NewLine }
+    [pscustomobject]@{ ExitCode = $exitCode; Output = $output -join [Environment]::NewLine; ResultPath = $resultPath }
 }
 
 try {
@@ -80,6 +83,9 @@ try {
         $preview = Invoke-Fleet @('owner/enrol', 'owner/optout', 'owner/busy', 'owner/empty') -AutoEnroll
         Assert-True ($preview.ExitCode -eq 0) "Fleet enrolment preview should succeed. $($preview.Output)"
         $previewJson = $preview.Output | ConvertFrom-Json
+        $persistedPreview = Get-Content -LiteralPath $preview.ResultPath -Raw | ConvertFrom-Json
+        Assert-True ($persistedPreview.repositories.Count -eq $previewJson.repositories.Count) 'The result file should preserve the same repository rows as JSON output.'
+        Assert-True ($persistedPreview.failed -eq $previewJson.failed) 'The result file should preserve the same failure count as JSON output.'
         $enrol = @($previewJson.repositories | Where-Object repository -eq 'owner/enrol')[0]
         $optout = @($previewJson.repositories | Where-Object repository -eq 'owner/optout')[0]
         $busy = @($previewJson.repositories | Where-Object repository -eq 'owner/busy')[0]

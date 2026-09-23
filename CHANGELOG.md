@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Reworked rollout email reports as a three-column Repository, Status, and Comment table while keeping repository identities out of the downloadable workflow artifact.
+
+### Security
+
+- Generate and send the repository-named report within the rollout job, retain it only in the job workspace, and continue uploading only the separately sanitized one-day diagnostic artifact.
+
 ## 1.5.1 - 2026-09-23
 
 ### Added

@@ -7,6 +7,7 @@ param(
     [switch]$AutoEnroll,
     [switch]$Apply,
     [switch]$AutoMerge,
+    [string]$PrivateReportPath,
     [ValidateRange(1, 168)][int]$TemporaryBranchLifetimeHours = 24
 )
 
@@ -81,6 +82,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
         [switch]$EnableAutoEnroll,
         [switch]$EnableApply,
         [switch]$EnableAutoMerge,
+        [string]$ResolvedPrivateReportPath,
         [int]$BranchLifetimeHours
     )
 
@@ -97,9 +99,15 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
     $originalGitConfigKey0 = $env:GIT_CONFIG_KEY_0
     $originalGitConfigValue0 = $env:GIT_CONFIG_VALUE_0
     $installationFailureCount = 0
+    $privateReportRows = [Collections.Generic.List[object]]::new()
     try {
         foreach ($installation in $installations) {
             $token = $null
+            $repositories = @()
+            $installationResultPath = [IO.Path]::GetTempFileName()
+            $installationRowsAdded = 0
+            $installationFailureComment = $null
+            $installationFailed = $false
             try {
                 $token = New-GitHubAppInstallationToken $jwt ([long]$installation.id)
                 $env:GH_TOKEN = $token
@@ -124,6 +132,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                     TemplateRoot = $ResolvedTemplateRoot
                     TemporaryBranchLifetimeHours = $BranchLifetimeHours
                     OutputFormat = 'Json'
+                    ResultPath = $installationResultPath
                 }
                 if ($EnableAutoEnroll) { $fleetArguments.AutoEnroll = $true }
                 if ($EnableApply) { $fleetArguments.Apply = $true }
@@ -132,9 +141,58 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
             }
             catch {
                 $installationFailureCount++
+                $installationFailed = $true
+                $installationFailureComment = $_.Exception.Message
                 Write-Warning 'A GitHub App installation failed; processing will continue with the remaining installations.'
             }
             finally {
+                try {
+                    if (Test-Path -LiteralPath $installationResultPath -PathType Leaf) {
+                        $resultBytes = [IO.File]::ReadAllText($installationResultPath)
+                        if (-not [string]::IsNullOrWhiteSpace($resultBytes)) {
+                            $installationResult = $resultBytes | ConvertFrom-Json
+                            foreach ($repositoryResult in @($installationResult.repositories)) {
+                                $privateComment = [string]$repositoryResult.detail
+                                foreach ($secretValue in @($token, $authorizationHeader, $basicCredential)) {
+                                    if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
+                                        $privateComment = $privateComment.Replace([string]$secretValue, '***')
+                                    }
+                                }
+                                $privateReportRows.Add([pscustomobject][ordered]@{
+                                    repository = [string]$repositoryResult.repository
+                                    status = [string]$repositoryResult.status
+                                    comment = $privateComment
+                                })
+                                $installationRowsAdded++
+                            }
+                        }
+                    }
+                }
+                catch {
+                    if (-not $installationFailed) {
+                        $installationFailureCount++
+                        $installationFailed = $true
+                    }
+                    $installationFailureComment = "The structured installation result could not be read: $($_.Exception.Message)"
+                    Write-Warning 'A GitHub App installation produced an invalid structured result; processing will continue with the remaining installations.'
+                }
+                finally {
+                    Remove-Item -LiteralPath $installationResultPath -Force -ErrorAction SilentlyContinue
+                }
+                if ($installationFailureComment -and $installationRowsAdded -eq 0) {
+                    foreach ($secretValue in @($token, $authorizationHeader, $basicCredential)) {
+                        if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
+                            $installationFailureComment = $installationFailureComment.Replace([string]$secretValue, '***')
+                        }
+                    }
+                    foreach ($repositoryName in $repositories) {
+                        $privateReportRows.Add([pscustomobject][ordered]@{
+                            repository = [string]$repositoryName
+                            status = 'Failed'
+                            comment = [string]$installationFailureComment
+                        })
+                    }
+                }
                 if (-not [string]::IsNullOrWhiteSpace($token)) {
                     $env:GH_TOKEN = $token
                     $null = @(& gh api --method DELETE /installation/token 2>&1)
@@ -153,6 +211,13 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 Remove-Variable authorizationHeader -ErrorAction SilentlyContinue
             }
         }
+        if (-not [string]::IsNullOrWhiteSpace($ResolvedPrivateReportPath)) {
+            $resolvedReportPath = [IO.Path]::GetFullPath($ResolvedPrivateReportPath)
+            $reportParent = Split-Path -Parent $resolvedReportPath
+            if (-not (Test-Path -LiteralPath $reportParent -PathType Container)) { throw 'The private report parent directory does not exist.' }
+            $reportJson = ConvertTo-Json -InputObject @($privateReportRows | Sort-Object repository) -Depth 4
+            [IO.File]::WriteAllText($resolvedReportPath, $reportJson, [Text.UTF8Encoding]::new($false))
+        }
         if ($installationFailureCount) {
             throw "$installationFailureCount GitHub App installation(s) failed after all accessible installations were processed. Review the masked per-repository results above."
         }
@@ -170,5 +235,5 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId $AppId -PemPrivateKey $PrivateKey -ResolvedTemplateRoot $TemplateRoot -EnableAutoEnroll:$AutoEnroll -EnableApply:$Apply -EnableAutoMerge:$AutoMerge -BranchLifetimeHours $TemporaryBranchLifetimeHours
+    Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId $AppId -PemPrivateKey $PrivateKey -ResolvedTemplateRoot $TemplateRoot -EnableAutoEnroll:$AutoEnroll -EnableApply:$Apply -EnableAutoMerge:$AutoMerge -ResolvedPrivateReportPath $PrivateReportPath -BranchLifetimeHours $TemporaryBranchLifetimeHours
 }
