@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.0 - 2026-09-23
+
+### Added
+
+- Added opt-in Windows and Linux self-hosted runner routing through GitHub Actions configuration variables, with GitHub-hosted fallbacks.
+
+### Security
+
+- Forced pull requests from forks onto GitHub-hosted runners so untrusted fork code cannot execute on privately operated machines.
+- Forced public repositories onto GitHub-hosted runners even when a self-hosted routing variable is present.
+- Documented organization and personal-account runner boundaries, repository-specific label requirements, variable formats, and least-privilege operating guidance.
+
+### Fixed
+
+- Allowed managed-state refreshes on filesystems that represent the dot-prefixed state file with a hidden attribute, while preserving that attribute.
+- Treated repository locations as literal paths during layered secret scans so folder names containing wildcard characters remain supported.
+
 ## 1.4.1 - 2026-09-21
 
 ### Changed

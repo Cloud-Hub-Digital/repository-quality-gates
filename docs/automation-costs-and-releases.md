@@ -4,7 +4,7 @@ This note records the cost boundary and recommended rollout for automated builds
 
 ## Current Cost Boundary
 
-For public repositories, standard GitHub-hosted runners are free and unlimited. The template currently uses standard `ubuntu-latest` and `windows-2025` runners, so its existing checks do not consume paid Actions minutes when the repository is public.
+For public repositories, standard GitHub-hosted runners are free and unlimited. RQG defaults to standard `ubuntu-latest` and `windows-2025` runners when no self-hosted runner variables are configured, so public repositories can retain the free hosted path.
 
 For private repositories on GitHub Free, GitHub currently includes 2,000 Actions minutes per month, 500 MB of shared Actions artifact storage, and 10 GB of cache storage per repository. Usage beyond the included allowance is billed only when a valid payment method and spending allowance permit it; otherwise further workflow use is blocked.
 
@@ -53,6 +53,23 @@ The recommended sequence is therefore:
 - Avoid uploading intermediate artifacts unless another job needs them.
 - Set short retention periods for temporary artifacts.
 - Configure a GitHub Actions spending limit before enabling paid overage on private repositories.
+
+## Self-Hosted Runner Routing
+
+Managed workflows choose their runner before repository files are checked out. Runner routing therefore cannot be read from `.repository-quality-gates.local.json`. Use GitHub Actions configuration variables at the organization or repository level:
+
+| Variable | Hosted Default | Example Self-Hosted Value |
+|---|---|---|
+| `RQG_WINDOWS_RUNS_ON` | `["windows-2025"]` | `["self-hosted","Windows","X64","rqg","repository-slug"]` |
+| `RQG_LINUX_RUNS_ON` | `["ubuntu-latest"]` | `["self-hosted","Linux","X64","rqg","repository-slug"]` |
+
+Store each value as valid JSON. Organization variables apply only to repositories in that organization and only when their repository access includes the target repository. A runner registered to an organization cannot run jobs for a repository owned by a separate personal account. Personal-account repositories must either retain the hosted default, receive their own repository-level runner registration and matching variable, or move to the organization after a separate ownership decision.
+
+Replace `repository-slug` with the neutral repository-specific label applied to both of that private repository's runners. Include `rqg` and the repository-specific label in every configured value. This keeps jobs scoped to the intended runner pair even when an account owns several runners.
+
+Public repositories and pull requests from forks always use the matching GitHub-hosted runner, even if a self-hosted variable exists. This prevents public or untrusted fork code from executing on privately operated machines. Pushes, scheduled runs, manual runs, release runs, and pull requests whose branch belongs to the same private repository may use the configured self-hosted runner.
+
+Runner labels and GitHub-visible runner names must contain no machine name or internal infrastructure identifier. Keep repository runners scoped to one private repository, keep organization runner groups restricted to explicitly approved private repositories, run services with the least practical privilege, do not expose a host Docker socket to job containers, and keep finite job timeouts. Do not configure these variables for a public repository.
 
 ## Current Template Status
 

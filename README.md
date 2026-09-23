@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The prepared template version written to managed state is `1.4.1`. The automatic release workflow publishes the matching immutable [`v1.4.1`](https://github.com/Cloud-Hub-Digital/repository-quality-gates/releases/tag/v1.4.1) GitHub Release after the required checks pass for the release commit.
+The prepared template version written to managed state is `1.5.0`. The automatic release workflow publishes the matching immutable `v1.5.0` GitHub Release after the required checks pass for the release commit.
 
-Version `1.4.1` repairs downstream fleet reconciliation after the `1.4.0` rollout, while retaining the PowerShell 7 execution path and release-resolution corrections introduced in `1.4.0`. Empty repositories are deferred, absent pull requests are handled safely, later GitHub App installations continue after an earlier installation fails, and verified legacy secret-scanning files can migrate back to central management without replacing a repository-specific root `.gitleaks.toml`. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.5.0` adds guarded self-hosted runner routing for private repositories. Repository-scoped JSON variables select Windows and Linux runners by neutral labels, while public repositories and pull requests from forks always use GitHub-hosted runners. This release also preserves hidden managed-state files during refresh and treats repository paths literally during layered secret scans. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 ## Runtime Requirement
 
@@ -32,6 +32,8 @@ Every target repository receives the universal licensing, secret-scanning, and m
 See [Quality Gates](docs/quality-gates.md) for the exact selection rules, commands, runners, triggers, permissions, exclusions, and limitations for every module.
 
 See [Automation Costs And Release Strategy](docs/automation-costs-and-releases.md) for current GitHub Actions cost boundaries and the recommended staged approach to automated builds and releases.
+
+Workflow runner selection is configurable without changing managed workflow files. `RQG_WINDOWS_RUNS_ON` and `RQG_LINUX_RUNS_ON` may contain JSON runner-label arrays for private repositories. When either variable is absent, the matching GitHub-hosted runner remains the default. Public repositories and pull requests from forks always use GitHub-hosted runners, even when a self-hosted value is configured. Private values must include `rqg` and a neutral repository-specific label. See [Automation Costs And Release Strategy](docs/automation-costs-and-releases.md#self-hosted-runner-routing) for the exact values and account-boundary rules.
 
 ## Start Here
 

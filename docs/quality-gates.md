@@ -29,6 +29,8 @@ All deployed validation workflows except the privileged automatic-reconciliation
 - run on pushes, pull requests, and manual `workflow_dispatch` requests;
 - use finite job timeouts.
 
+Runner selection uses `RQG_WINDOWS_RUNS_ON` or `RQG_LINUX_RUNS_ON` when the applicable GitHub Actions configuration variable contains a valid JSON label array for a private repository. The hosted defaults are `["windows-2025"]` and `["ubuntu-latest"]`. Self-hosted values must include `rqg` and a neutral repository-specific label. Public repositories and pull requests from forks always use the hosted default so public or untrusted fork code cannot reach a self-hosted runner. Runner selection occurs before checkout, so this setting cannot come from `.repository-quality-gates.local.json`.
+
 Secret Scanning also runs every Monday at `07:23` UTC. The workflow uses `fetch-depth: 0` because a full-history scan requires complete history.
 
 The automatic-reconciliation job deliberately retains its checkout credential and receives job-scoped `contents: write` and `actions: write` permissions so it can commit a corrected module set and dispatch validation. Its separate controls are documented below.

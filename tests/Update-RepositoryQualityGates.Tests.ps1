@@ -65,7 +65,7 @@ try {
     Assert-True ($applyJson.status -eq 'Updated') 'Apply should report an updated repository.'
     Assert-True ($applyJson.changedPaths -contains '.repository-quality-gates.json') 'The update should refresh managed state.'
     $updatedState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    Assert-True ($updatedState.templateVersion -eq '1.4.1') 'Managed state should record the new template version.'
+    Assert-True ($updatedState.templateVersion -eq '1.5.0') 'Managed state should record the new template version.'
     Commit-All $managed 'update quality gates'
 
     $current = Invoke-Update $managed
@@ -113,7 +113,7 @@ try {
     $enrollmentApplyJson = $enrollmentApply.Output | ConvertFrom-Json
     Assert-True ($enrollmentApplyJson.status -eq 'Enrolled') 'Applied initial enrolment should report Enrolled.'
     $enrolledState = Get-Content -LiteralPath (Join-Path $unmanaged '.repository-quality-gates.json') -Raw | ConvertFrom-Json
-    Assert-True ($enrolledState.templateVersion -eq '1.4.1') 'Initial enrolment should record the current template version.'
+    Assert-True ($enrolledState.templateVersion -eq '1.5.0') 'Initial enrolment should record the current template version.'
     Assert-True (Test-Path -LiteralPath (Join-Path $unmanaged '.github\workflows\secret-scanning.yml')) 'Initial enrolment should deploy the selected quality-gate workflows.'
 
     $overlap = Join-Path $testRoot 'overlap'
@@ -203,7 +203,8 @@ path = "security/gitleaks-portable.toml"
     Commit-All $deceptiveLegacySecret 'simulate deceptive legacy root policy'
     $deceptiveLegacyUpdate = Invoke-Update $deceptiveLegacySecret -Apply
     Assert-True ($deceptiveLegacyUpdate.ExitCode -ne 0) 'A path key outside the extend section must not satisfy legacy portable-policy inheritance.'
-    Assert-True ($deceptiveLegacyUpdate.Output -match 'does not extend security/gitleaks-portable.toml') 'The deceptive legacy policy should fail with the inheritance error.'
+    $deceptiveNormalizedOutput = (($deceptiveLegacyUpdate.Output -replace '\x1B\[[0-?]*[ -/]*[@-~]', '') -replace '[\s|]+', ' ')
+    Assert-True ($deceptiveNormalizedOutput -match 'does not extend security/gitleaks-portable\.toml') 'The deceptive legacy policy should fail with the inheritance error.'
 
     $localRules = Join-Path $testRoot 'local-rules'
     New-Item -ItemType Directory -Path $localRules | Out-Null

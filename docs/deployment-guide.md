@@ -13,6 +13,8 @@ For GitHub-hosted repositories, version `1.4.0` supports unattended initial enro
 - Network access when the verified Gitleaks installer or Git remote is used.
 - A private publication-safety TOML file stored outside the target repository when local private-identifier scanning is required.
 
+Self-hosted execution is optional and limited to private repositories. Configure the repository Actions variables `RQG_WINDOWS_RUNS_ON` and `RQG_LINUX_RUNS_ON` with JSON runner-label arrays only after both corresponding runners are online. Each value must include `rqg` and the same neutral repository-specific label used by that runner pair. Repositories without those variables, all public repositories, and fork pull requests continue on GitHub-hosted runners. Organization runners do not extend to repositories owned by a separate personal account.
+
 Keep the Repository Quality Gates source checkout separate from the target repository. Run its deployment script directly; do not manually copy the `template` directory when using the automated deployment method.
 
 ## Define Reusable Paths

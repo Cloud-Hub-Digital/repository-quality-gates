@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "templateVersion": "1.4.1",
+  "templateVersion": "1.5.0",
   "modules": [
     "documentation",
     "licensing",
@@ -23,22 +23,22 @@
     {
       "path": ".github/workflows/quality-documentation.yml",
       "module": "documentation",
-      "sha256": "f05a230adf71b3867b3607c983653274b5f8bc336e4555fbaf5cdcb6f0de45c3"
+      "sha256": "580c77a7814bd00f8be4bb79cf0dcfbd89c886e38c5222ea6b0fd794a7eb7e28"
     },
     {
       "path": ".github/workflows/quality-module-drift.yml",
       "module": "module-drift",
-      "sha256": "6cce7009ddb70da8d02045c0bbbfec362ce93cd40f393f93bcd5b8aed142a050"
+      "sha256": "49e488326c8ce900dd27a3530baa1f7c100c7df5aedf1c6baddd1f59c272f4b7"
     },
     {
       "path": ".github/workflows/quality-powershell.yml",
       "module": "powershell",
-      "sha256": "ef8dd89a35180ca64ba687eb1eaeb29f0fea9557a089852eada62c8d5aefeba6"
+      "sha256": "164cc06599902520c458ce8d11d223692ac4e4d2a158ed48ab2a71cd2356f220"
     },
     {
       "path": ".github/workflows/secret-scanning.yml",
       "module": "secret-scanning",
-      "sha256": "1e3280a2276ba80730d9fad0c21981e65b7ae2ea10868545087a1f8d4a2fbe71"
+      "sha256": "2cb8f98a1ffcd23ffd677cdf0798814e360e7d150691ced6f0dbf5ae5394245b"
     },
     {
       "path": ".gitleaks.toml",
@@ -53,17 +53,17 @@
     {
       "path": ".rqg/template/modules/documentation/payload/.github/workflows/quality-documentation.yml",
       "module": "module-drift",
-      "sha256": "f05a230adf71b3867b3607c983653274b5f8bc336e4555fbaf5cdcb6f0de45c3"
+      "sha256": "580c77a7814bd00f8be4bb79cf0dcfbd89c886e38c5222ea6b0fd794a7eb7e28"
     },
     {
       "path": ".rqg/template/modules/dotnet/payload/.github/workflows/quality-dotnet.yml",
       "module": "module-drift",
-      "sha256": "24f27708460a355afe313badf9796efaaa2c696813c491f4d76ccb2da5efa46c"
+      "sha256": "05844adc66f22171caf8413c21efdc826a2b811ff10c259febf1722da3d20b96"
     },
     {
       "path": ".rqg/template/modules/go/payload/.github/workflows/quality-go.yml",
       "module": "module-drift",
-      "sha256": "2173a825a468b0617d62fb4a65f065788496de33a91268b04edfacee9fee558a"
+      "sha256": "9980cb36ce6b34898d40533230d138ea0584a31fd62a63d4fcfde8a8383d91a9"
     },
     {
       "path": ".rqg/template/modules/licensing/payload/LICENSES/Repository-Quality-Gates-MIT.txt",
@@ -73,7 +73,7 @@
     {
       "path": ".rqg/template/modules/module-drift/payload/.github/workflows/quality-module-drift.yml",
       "module": "module-drift",
-      "sha256": "6cce7009ddb70da8d02045c0bbbfec362ce93cd40f393f93bcd5b8aed142a050"
+      "sha256": "49e488326c8ce900dd27a3530baa1f7c100c7df5aedf1c6baddd1f59c272f4b7"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/scripts/Invoke-AutomaticQualityGateReconciliation.ps1",
@@ -93,37 +93,37 @@
     {
       "path": ".rqg/template/modules/node/payload/.github/workflows/quality-node.yml",
       "module": "module-drift",
-      "sha256": "d06aaa8ef6e78d10d33d72802772d590b9ea137200693d9b69db6fd53d8a7463"
+      "sha256": "3ef46f5be8b916ee827fa2080c8b3da18a81f0d1842694d1e055e7e756583ab6"
     },
     {
       "path": ".rqg/template/modules/php/payload/.github/workflows/quality-php.yml",
       "module": "module-drift",
-      "sha256": "7fa41f801246b5a44035964a1981bc8d4ecdc4c42cccbd584e8c032925e9621d"
+      "sha256": "f5e620be95d9608a8e4286598e22902aa4faa817f597365c7bf1169836591823"
     },
     {
       "path": ".rqg/template/modules/platformio/payload/.github/workflows/quality-platformio.yml",
       "module": "module-drift",
-      "sha256": "d14e86394ad10f2c0d20591f3a609a39d08cbea39a1397ef5babe51767f8e14b"
+      "sha256": "1dccc8ebbd65c80c18a24d44d40cf69b27827305e57106544c54bb2f39844eef"
     },
     {
       "path": ".rqg/template/modules/powershell/payload/.github/workflows/quality-powershell.yml",
       "module": "module-drift",
-      "sha256": "ef8dd89a35180ca64ba687eb1eaeb29f0fea9557a089852eada62c8d5aefeba6"
+      "sha256": "164cc06599902520c458ce8d11d223692ac4e4d2a158ed48ab2a71cd2356f220"
     },
     {
       "path": ".rqg/template/modules/python/payload/.github/workflows/quality-python.yml",
       "module": "module-drift",
-      "sha256": "e9df438f5d57246fa58d643e5fe9708ab07fe1dbbd77c64796255cf96ac881c2"
+      "sha256": "5b6a904664644c415d2cb9f82c553bb7b59485fa7a2f5ee6afb3085e410522da"
     },
     {
       "path": ".rqg/template/modules/shell/payload/.github/workflows/quality-shell.yml",
       "module": "module-drift",
-      "sha256": "099aae7215ca639911ab90de23e87b4652cab834b3c1ea2e16147361168a3803"
+      "sha256": "f044847abde688a648c4c49516894d4c44e0a2ff59b2ed6ab8c936b24e056ca8"
     },
     {
       "path": ".rqg/template/scripts/Invoke-RepositoryQualityGates.ps1",
       "module": "module-drift",
-      "sha256": "6d24249fda197d9bfb3ec84d5bef18527c7c1c2bf409d36cd67624a367913757"
+      "sha256": "ced88f3424b6c269de01027eaa61f15349674900f2848f3193cb8a8c392a03ac"
     },
     {
       "path": ".rqg/template/template/.githooks/pre-commit",
@@ -138,7 +138,7 @@
     {
       "path": ".rqg/template/template/.github/workflows/secret-scanning.yml",
       "module": "module-drift",
-      "sha256": "1e3280a2276ba80730d9fad0c21981e65b7ae2ea10868545087a1f8d4a2fbe71"
+      "sha256": "2cb8f98a1ffcd23ffd677cdf0798814e360e7d150691ced6f0dbf5ae5394245b"
     },
     {
       "path": ".rqg/template/template/.gitignore.secret-scanning.fragment",
@@ -183,7 +183,7 @@
     {
       "path": ".rqg/template/template/scripts/Test-Secrets.ps1",
       "module": "module-drift",
-      "sha256": "1f9c235dd1e37ca34436842f6db83a5f4424b4af9d580f699417b9b3dccf08d1"
+      "sha256": "6d6b63d84082859eebf18045ca6f9e8be0c53e5bd97bf17dbe03221604a0153e"
     },
     {
       "path": ".rqg/template/template/security/gitleaks-portable.toml",
@@ -248,7 +248,7 @@
     {
       "path": "scripts/Test-Secrets.ps1",
       "module": "secret-scanning",
-      "sha256": "1f9c235dd1e37ca34436842f6db83a5f4424b4af9d580f699417b9b3dccf08d1"
+      "sha256": "6d6b63d84082859eebf18045ca6f9e8be0c53e5bd97bf17dbe03221604a0153e"
     },
     {
       "path": "security/gitleaks-portable.toml",

@@ -114,9 +114,17 @@ try {
     $powerShellWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-powershell.yml'))
     Assert-True ($powerShellWorkflow.Contains('shell: pwsh')) 'The PowerShell workflow should run its script steps with PowerShell 7.'
     Assert-True (-not $powerShellWorkflow.Contains('shell: powershell')) 'The PowerShell workflow should not invoke Windows PowerShell 5.1.'
+    Assert-True ($powerShellWorkflow.Contains('vars.RQG_WINDOWS_RUNS_ON')) 'The PowerShell workflow should support configured self-hosted Windows runners.'
+    Assert-True ($powerShellWorkflow.Contains("github.event.pull_request.head.repo.full_name != github.repository")) 'The PowerShell workflow should keep fork pull requests off self-hosted runners.'
+    Assert-True ($powerShellWorkflow.Contains('!github.event.repository.private')) 'The PowerShell workflow should keep public repositories off self-hosted runners.'
     $secretWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\secret-scanning.yml'))
     Assert-True ($secretWorkflow.Contains('shell: pwsh')) 'The secret-scanning workflow should run its script steps with PowerShell 7.'
     Assert-True (-not $secretWorkflow.Contains('shell: powershell')) 'The secret-scanning workflow should not invoke Windows PowerShell 5.1.'
+    Assert-True ($secretWorkflow.Contains('vars.RQG_WINDOWS_RUNS_ON')) 'The secret-scanning workflow should support configured self-hosted Windows runners.'
+    $documentationWorkflow = [IO.File]::ReadAllText((Join-Path $projectRoot 'modules\documentation\payload\.github\workflows\quality-documentation.yml'))
+    Assert-True ($documentationWorkflow.Contains('vars.RQG_LINUX_RUNS_ON')) 'The documentation workflow should support configured self-hosted Linux runners.'
+    Assert-True ($documentationWorkflow.Contains("github.event.pull_request.head.repo.full_name != github.repository")) 'The documentation workflow should keep fork pull requests off self-hosted runners.'
+    Assert-True ($documentationWorkflow.Contains('!github.event.repository.private')) 'The documentation workflow should keep public repositories off self-hosted runners.'
     foreach ($hookName in @('pre-commit', 'pre-push')) {
         $hookText = [IO.File]::ReadAllText((Join-Path $mixed ".githooks\$hookName"))
         Assert-True ($hookText.Contains('exec pwsh ')) "The $hookName hook should invoke PowerShell 7."
@@ -182,6 +190,14 @@ try {
     $secondJson = $secondPreview.Output | ConvertFrom-Json
     Assert-True (@($secondJson.plan | Where-Object action -eq 'Conflict').Count -eq 0) 'A repeated preview should not conflict.'
     Assert-True (@($secondJson.plan | Where-Object action -notin @('Unchanged')).Count -eq 0) 'A repeated preview should be idempotent.'
+
+    $statePath = Join-Path $mixed '.repository-quality-gates.json'
+    $originalStateAttributes = [IO.File]::GetAttributes($statePath)
+    [IO.File]::SetAttributes($statePath, ($originalStateAttributes -bor [IO.FileAttributes]::Hidden))
+    $hiddenStateApply = Invoke-Tool $mixed @('-Apply', '-AllowDirtyWorkingTree', '-OutputFormat', 'Json')
+    Assert-True ($hiddenStateApply.ExitCode -eq 0) "Apply should refresh a hidden managed-state file. $($hiddenStateApply.Output)"
+    Assert-True (([IO.File]::GetAttributes($statePath) -band [IO.FileAttributes]::Hidden) -ne 0) 'Apply should restore the hidden attribute after refreshing managed state.'
+    [IO.File]::SetAttributes($statePath, $originalStateAttributes)
 
     Add-Content -LiteralPath (Join-Path $mixed '.github\workflows\quality-node.yml') -Value '# local change'
     $modified = Invoke-Tool $mixed @('-Apply', '-AllowDirtyWorkingTree', '-OutputFormat', 'Json')
@@ -423,7 +439,7 @@ try {
 
     $versionOutput = & pwsh -NoProfile -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.4.1')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 1.5.0')) 'The version interface should report the canonical version.'
     Assert-True (($versionOutput -join "`n").Contains('https://github.com/Cloud-Hub-Digital/repository-quality-gates')) 'The version interface should report the authoritative organization-owned repository.'
 
     Write-Host "$passed assertions passed."

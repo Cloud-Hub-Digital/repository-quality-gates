@@ -24,7 +24,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$productVersion = '1.4.1'
+$productVersion = '1.5.0'
 $productRepository = 'https://github.com/Cloud-Hub-Digital/repository-quality-gates'
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $detectionLibraryPath = Join-Path $toolRoot 'modules\module-drift\payload\scripts\RepositoryQualityGates.Detection.ps1'
@@ -568,7 +568,17 @@ $newState = [ordered]@{
     gitIgnoreLines = @($ignoreLines)
 }
 $stateJson = ($newState | ConvertTo-Json -Depth 6).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"
-[IO.File]::WriteAllText($statePath, $stateJson, [Text.UTF8Encoding]::new($false))
+$stateAttributes = if (Test-Path -LiteralPath $statePath -PathType Leaf) { [IO.File]::GetAttributes($statePath) } else { $null }
+try {
+    if ($null -ne $stateAttributes -and ($stateAttributes -band [IO.FileAttributes]::Hidden)) {
+        [IO.File]::SetAttributes($statePath, ($stateAttributes -band (-bnot [IO.FileAttributes]::Hidden)))
+    }
+    [IO.File]::WriteAllText($statePath, $stateJson, [Text.UTF8Encoding]::new($false))
+} finally {
+    if ($null -ne $stateAttributes -and (Test-Path -LiteralPath $statePath -PathType Leaf)) {
+        [IO.File]::SetAttributes($statePath, $stateAttributes)
+    }
+}
 
 if ($ConfigureLocalHooks) {
     & $helperHost -NoProfile -ExecutionPolicy Bypass -File (Join-Path $script:RepositoryRoot 'scripts\Configure-SecretScanning.ps1') -PrivateConfigPath $PrivateConfigPath
