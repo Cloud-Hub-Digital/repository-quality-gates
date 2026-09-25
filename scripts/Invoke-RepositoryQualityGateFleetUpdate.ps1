@@ -31,6 +31,24 @@ function Get-OpenPullRequests([string]$RepositoryName) {
     return @(($text | ConvertFrom-Json))
 }
 
+function Get-WorkflowRunnerNames([string]$RepositoryName, [object[]]$Checks) {
+    $runIds = [Collections.Generic.HashSet[long]]::new()
+    foreach ($check in @($Checks)) {
+        $detailsUrl = if ($check.PSObject.Properties['details_url']) { [string]$check.details_url } else { '' }
+        if ($detailsUrl -match '/actions/runs/(?<id>[1-9]\d*)(?:/|$)') { $null = $runIds.Add([long]$Matches.id) }
+    }
+
+    $runnerNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($runId in @($runIds | Sort-Object)) {
+        $output = @(& gh api --paginate -H 'Accept: application/vnd.github+json' "repos/$RepositoryName/actions/runs/$runId/jobs?per_page=100" --jq '.jobs[] | .runner_name // empty' 2>&1)
+        if ($LASTEXITCODE -ne 0) { throw "Unable to inspect workflow runner assignments: $($output -join [Environment]::NewLine)" }
+        foreach ($runnerName in @($output | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })) {
+            $null = $runnerNames.Add($runnerName)
+        }
+    }
+    return @($runnerNames | Sort-Object)
+}
+
 function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullRequestUrl) {
     if ($PullRequestUrl -notmatch '/pull/(?<number>\d+)(?:[/?#]|$)') { throw 'The pull-request URL does not contain a pull-request number.' }
     $pullRequestNumber = [int]$Matches.number
@@ -45,7 +63,7 @@ function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullReq
         # Read the Checks API directly. GitHub's GraphQL rollup also expands
         # workflow-run metadata, which requires broader Actions access even
         # though RQG only needs each check's name, status, and conclusion.
-        $output = @(& gh api --paginate -H 'Accept: application/vnd.github+json' "repos/$RepositoryName/commits/$headSha/check-runs?per_page=100" --jq '.check_runs[] | {name,status,conclusion}' 2>&1)
+        $output = @(& gh api --paginate -H 'Accept: application/vnd.github+json' "repos/$RepositoryName/commits/$headSha/check-runs?per_page=100" --jq '.check_runs[] | {name,status,conclusion,details_url}' 2>&1)
         if ($LASTEXITCODE -ne 0) { throw "Unable to inspect pull-request quality checks: $($output -join [Environment]::NewLine)" }
         $text = ($output -join [Environment]::NewLine).Trim()
         try { $checks = @($output | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json }) }
@@ -67,8 +85,13 @@ function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullReq
         # running. A workflow that is checking out that branch would then fail
         # for the wrong reason and hide the original result.
         if ($pending.Count) { Start-Sleep -Seconds 10; continue }
-        if ($failed.Count) { throw "Pull-request quality checks failed: $($failed -join ', ')" }
-        return $checks.Count
+        $runnerNames = @(Get-WorkflowRunnerNames -RepositoryName $RepositoryName -Checks $checks)
+        if ($failed.Count) {
+            $exception = [InvalidOperationException]::new("Pull-request quality checks failed: $($failed -join ', ')")
+            $exception.Data['RunnerNames'] = $runnerNames
+            throw $exception
+        }
+        return [pscustomobject]@{ checkCount = $checks.Count; runnerNames = $runnerNames }
     }
     throw 'Timed out waiting for pull-request quality checks to complete.'
 }
@@ -179,7 +202,7 @@ New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 try {
     foreach ($fullName in @($Repository | Sort-Object -Unique)) {
-        $entry = [ordered]@{ repository = $fullName; status = 'Skipped'; enrolment = $false; pullRequest = $null; autoMerge = $false; blockingPullRequests = @(); cleanedPullRequests = @(); detail = $null }
+        $entry = [ordered]@{ repository = $fullName; status = 'Skipped'; enrolment = $false; pullRequest = $null; autoMerge = $false; runners = @(); blockingPullRequests = @(); cleanedPullRequests = @(); detail = $null }
         $clonePath = $null
         $pushedUpdateBranch = $false
         $failureStage = 'Repository metadata and eligibility inspection'
@@ -383,7 +406,9 @@ if ($Apply -and $AutoMerge) {
             $repositoryName = [string]$entry.repository
             $pullRequestUrl = [string]$entry.pullRequest
             $failureStage = 'Pull-request quality-check discovery and completion'
-            $checkCount = Wait-PullRequestQualityChecks $repositoryName $pullRequestUrl
+            $checkResult = Wait-PullRequestQualityChecks $repositoryName $pullRequestUrl
+            $checkCount = [int]$checkResult.checkCount
+            $entry.runners = @($checkResult.runnerNames)
             if ($pullRequestUrl -notmatch '/pull/(?<number>[1-9]\d*)/?$') { throw 'The update pull-request URL does not contain a valid pull-request number.' }
             $pullRequestNumber = [int]$Matches.number
             $failureStage = 'Verified pull-request merge'
@@ -406,6 +431,7 @@ if ($Apply -and $AutoMerge) {
         }
         catch {
             $failureCause = $_.Exception.Message
+            if ($_.Exception.Data.Contains('RunnerNames')) { $entry.runners = @($_.Exception.Data['RunnerNames']) }
             $cleanupOutput = @(& gh pr close ([string]$entry.pullRequest) --repo ([string]$entry.repository) --delete-branch 2>&1)
             $cleanupDetail = if ($LASTEXITCODE -eq 0) { 'The failed temporary RQG pull request and branch were removed.' } else { "Temporary RQG pull-request cleanup failed: $($cleanupOutput -join [Environment]::NewLine)" }
             $entry.autoMerge = $false

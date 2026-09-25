@@ -96,13 +96,14 @@ Use these repository permissions:
 
 | Permission | Access | Purpose |
 |---|---:|---|
+| Actions | Read | Read workflow jobs so rollout reports can identify the repository-specific self-hosted runners actually used |
 | Contents | Read And Write | Read managed state and push the update branch |
 | Pull Requests | Read And Write | Find or create the update pull request |
 | Workflows | Read And Write | Add and update the GitHub Actions workflow files deployed by RQG |
 | Checks | Read | Wait for and inspect every downstream pull-request quality check before merging |
 | Metadata | Read | Required GitHub App repository metadata |
 
-The app does not need issue, administration, secrets, Actions administration, deployment, package, or organization permissions. GitHub reports pull-request check-rollup data through the Checks permission, so omitting that read-only permission prevents the updater from verifying private-repository checks.
+The app does not need issue, administration, secrets, Actions write, deployment, package, or organization permissions. Checks read access verifies private-repository quality results. Actions read access is limited to workflow-run and job metadata used to name the actual downstream runners in the private rollout report; it does not grant access to Actions secrets or permit workflow administration.
 
 Install the App only on repositories that Repository Quality Gates may manage. The combined installations form the outer fleet allow-list. Within that scope, an existing managed-state file authorizes updates and an unmanaged repository is automatically eligible unless its committed repository rules opt out. The workflow discovers installations at runtime, so no owner names or repository inventory need to be stored in source, variables, or secrets.
 

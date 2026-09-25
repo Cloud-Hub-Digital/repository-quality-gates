@@ -161,6 +161,16 @@ function ConvertTo-RqgEmailComment([string]$Status, [string]$Detail) {
     }
 }
 
+function Get-RqgRunnerDisplay([object]$RepositoryResult) {
+    [string[]]$runnerNames = @()
+    if ($RepositoryResult.PSObject.Properties['runners']) {
+        $runnerNames = @($RepositoryResult.runners | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+    }
+    if ($runnerNames.Count) { return $runnerNames -join ', ' }
+    if ([string]$RepositoryResult.status -in @('Current', 'EmptyRepository', 'EnrollmentOptOut', 'DeferredOpenPullRequests', 'EnrollmentAvailable', 'Available')) { return 'Not Used' }
+    return 'Unavailable'
+}
+
 function Invoke-RepositoryQualityGateAppFleetUpdate {
     param(
         [string]$ApplicationId,
@@ -242,7 +252,13 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 $installationFailureCount++
                 $installationFailed = $true
                 $installationFailureComment = New-RqgInstallationFailureComment -Stage $installationStage -Cause $_.Exception.Message
-                Write-Warning 'A GitHub App installation failed; processing will continue with the remaining installations.'
+                $maskedInstallationFailureComment = $installationFailureComment
+                foreach ($secretValue in @($token, $authorizationHeader, $basicCredential)) {
+                    if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
+                        $maskedInstallationFailureComment = $maskedInstallationFailureComment.Replace([string]$secretValue, '***')
+                    }
+                }
+                Write-Warning "A GitHub App installation failed: $maskedInstallationFailureComment Processing will continue with the remaining installations."
             }
             finally {
                 try {
@@ -260,7 +276,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                                 $privateReportRows.Add([pscustomobject][ordered]@{
                                     repository = [string]$repositoryResult.repository
                                     visibility = [string]$repositoryMetadata[[string]$repositoryResult.repository].visibility
-                                    runner = if ($env:RUNNER_NAME) { [string]$env:RUNNER_NAME } else { 'Unavailable' }
+                                    runner = Get-RqgRunnerDisplay $repositoryResult
                                     status = [string]$repositoryResult.status
                                     comment = ConvertTo-RqgEmailComment -Status ([string]$repositoryResult.status) -Detail $privateDetail
                                     detail = $privateDetail
@@ -276,7 +292,13 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                         $installationFailed = $true
                     }
                     $installationFailureComment = New-RqgInstallationFailureComment -Stage 'Structured result processing' -Cause $_.Exception.Message
-                    Write-Warning 'A GitHub App installation produced an invalid structured result; processing will continue with the remaining installations.'
+                    $maskedInstallationFailureComment = $installationFailureComment
+                    foreach ($secretValue in @($token, $authorizationHeader, $basicCredential)) {
+                        if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
+                            $maskedInstallationFailureComment = $maskedInstallationFailureComment.Replace([string]$secretValue, '***')
+                        }
+                    }
+                    Write-Warning "A GitHub App installation produced an invalid structured result: $maskedInstallationFailureComment Processing will continue with the remaining installations."
                 }
                 finally {
                     Remove-Item -LiteralPath $installationResultPath -Force -ErrorAction SilentlyContinue
@@ -291,7 +313,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                         $privateReportRows.Add([pscustomobject][ordered]@{
                             repository = [string]$repositoryName
                             visibility = [string]$repositoryMetadata[[string]$repositoryName].visibility
-                            runner = if ($env:RUNNER_NAME) { [string]$env:RUNNER_NAME } else { 'Unavailable' }
+                            runner = 'Not Used'
                             status = 'Failed'
                             comment = ConvertTo-RqgEmailComment -Status 'Failed' -Detail ([string]$installationFailureComment)
                             detail = [string]$installationFailureComment

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 1.5.6 - 2026-09-25
+
+### Changed
+
+- Changed the fleet email Runner column to list the repository-specific self-hosted runner names recorded by downstream workflow jobs instead of the central orchestration runner.
+- Added read-only GitHub App Actions permission documentation for workflow-run and job metadata; no Actions write or secret access is required.
+- Preserved downstream runner names when pull-request quality checks fail, while using `Not Used` or `Unavailable` when no runner assignment exists.
+- Added sanitized installation-stage failure details to workflow warnings so authentication, repository-discovery, and structured-result failures are immediately distinguishable.
+- Added regression coverage for runner-name reporting, failure-path preservation, and actionable installation diagnostics.
+
 ## 1.5.5 - 2026-09-25
 
 ### Changed
