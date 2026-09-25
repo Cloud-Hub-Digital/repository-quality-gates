@@ -165,6 +165,7 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($failureRecords[1].repositories[0] -eq 'second-owner/two') 'The later installation should still receive its repository list after an earlier failure.'
         $failureRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
         Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'Failed') 'The private report should retain a failed repository status.'
+        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].comment -eq 'Synthetic Failed result. Token=***') 'A structured repository failure should retain its detailed sanitized comment.'
         Assert-True (@($failureRows | Where-Object repository -eq 'second-owner/two')[0].status -eq 'Current') 'The private report should retain later successful installation results.'
         Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
 
@@ -180,7 +181,8 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($invalidResultRecords.Count -eq 2) 'An invalid structured result must not prevent a later installation from running.'
         $invalidResultRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
         Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'Failed') 'An invalid structured result should create a failed repository row.'
-        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].comment -match '^The structured installation result could not be read:') 'The failed row should explain the structured-result error.'
+        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].comment -match '^Stage: Structured result processing\. Cause:') 'The failed row should identify the structured-result stage and cause.'
+        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].comment -match 'Investigation: Inspect the sanitized workflow artifact') 'The failed row should provide an actionable structured-result investigation step.'
         Assert-True (@($invalidResultRows | Where-Object repository -eq 'second-owner/two')[0].status -eq 'Current') 'A later installation should still report its successful result.'
         Remove-Item Env:\RQG_TEST_INVALID_FIRST -ErrorAction SilentlyContinue
     }

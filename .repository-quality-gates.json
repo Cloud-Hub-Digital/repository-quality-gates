@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "templateVersion": "1.5.1",
+  "templateVersion": "1.5.2",
   "modules": [
     "documentation",
     "licensing",
@@ -123,7 +123,7 @@
     {
       "path": ".rqg/template/scripts/Invoke-RepositoryQualityGates.ps1",
       "module": "module-drift",
-      "sha256": "4df01a27277d8a29bf2c0f82455257c9a77acf8249e0b9f98cc509e5aff7864d"
+      "sha256": "d7ead78be95a986fcb99fab2a863914c9fb1ea9b4f684ca9e1c73aeb9efc90bd"
     },
     {
       "path": ".rqg/template/template/.githooks/pre-commit",

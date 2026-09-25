@@ -74,6 +74,17 @@ function New-GitHubAppInstallationToken([string]$Jwt, [long]$InstallationId) {
     return [string]$response.token
 }
 
+function New-RqgInstallationFailureComment([string]$Stage, [string]$Cause) {
+    $action = switch -Regex ($Stage) {
+        '^Installation authentication' { 'Verify the GitHub App ID, private-key secret, installation state, and permission grants, then rerun the fleet workflow.' }
+        '^Repository discovery' { 'Verify the GitHub App installation can list its selected repositories and that repository access has not been suspended or removed, then rerun.' }
+        '^Fleet execution' { 'Review the per-repository rows in this email first. For any repository without a structured row, inspect the sanitized workflow artifact and the fleet job log for the earliest reported failure.' }
+        '^Structured result processing' { 'Inspect the sanitized workflow artifact for the installation-level error, confirm the fleet result file is valid JSON, and rerun after correcting the producer failure.' }
+        default { 'Inspect the sanitized workflow artifact and the fleet job log, correct the installation-level blocker, and rerun the workflow.' }
+    }
+    return "Stage: $Stage. Cause: $Cause Investigation: $action"
+}
+
 function Invoke-RepositoryQualityGateAppFleetUpdate {
     param(
         [string]$ApplicationId,
@@ -108,6 +119,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
             $installationRowsAdded = 0
             $installationFailureComment = $null
             $installationFailed = $false
+            $installationStage = 'Installation authentication'
             try {
                 $token = New-GitHubAppInstallationToken $jwt ([long]$installation.id)
                 $env:GH_TOKEN = $token
@@ -118,6 +130,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 $env:GIT_CONFIG_COUNT = '1'
                 $env:GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader'
                 $env:GIT_CONFIG_VALUE_0 = $authorizationHeader
+                $installationStage = 'Repository discovery'
                 $repositories = @(& gh api --paginate /installation/repositories --jq '.repositories[].full_name' 2>$null | Where-Object { $_ } | Sort-Object -Unique)
                 if ($LASTEXITCODE -ne 0) { throw 'Unable to enumerate repositories for a GitHub App installation.' }
                 foreach ($repositoryName in $repositories) {
@@ -137,12 +150,13 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 if ($EnableAutoEnroll) { $fleetArguments.AutoEnroll = $true }
                 if ($EnableApply) { $fleetArguments.Apply = $true }
                 if ($EnableAutoMerge) { $fleetArguments.AutoMerge = $true }
+                $installationStage = 'Fleet execution'
                 & $fleetTool @fleetArguments
             }
             catch {
                 $installationFailureCount++
                 $installationFailed = $true
-                $installationFailureComment = $_.Exception.Message
+                $installationFailureComment = New-RqgInstallationFailureComment -Stage $installationStage -Cause $_.Exception.Message
                 Write-Warning 'A GitHub App installation failed; processing will continue with the remaining installations.'
             }
             finally {
@@ -173,7 +187,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                         $installationFailureCount++
                         $installationFailed = $true
                     }
-                    $installationFailureComment = "The structured installation result could not be read: $($_.Exception.Message)"
+                    $installationFailureComment = New-RqgInstallationFailureComment -Stage 'Structured result processing' -Cause $_.Exception.Message
                     Write-Warning 'A GitHub App installation produced an invalid structured result; processing will continue with the remaining installations.'
                 }
                 finally {

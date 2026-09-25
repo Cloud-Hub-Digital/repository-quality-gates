@@ -123,6 +123,42 @@ function Get-PullRequestReferences([string]$RepositoryPath) {
     return @($references)
 }
 
+function Get-RqgInvestigationAction([string]$Stage) {
+    switch -Regex ($Stage) {
+        '^Repository metadata' { return 'Confirm the repository has a readable default branch and that the GitHub App has Metadata and Contents read access.' }
+        '^Managed-state inspection' { return 'Inspect .repository-quality-gates.json and .repository-quality-gates.local.json on the default branch, correct invalid JSON or unsupported values, then rerun the rollout.' }
+        '^Open pull-request inspection' { return 'Review the repository pull-request list, merge or close blocking work, and rerun the rollout after the repository is clear.' }
+        '^Repository clone' { return 'Confirm the default branch exists and the GitHub App can read repository contents, then retry the clone with the App installation permissions.' }
+        '^Managed-file update' { return 'Run the RQG updater in preview mode for this repository, review every reported managed-path conflict or repository-owned override, resolve the conflict deliberately, and rerun the rollout.' }
+        '^Publication-safety scan' { return 'Inspect the staged secret-scan finding without copying sensitive values into logs or email, remove or explicitly govern the offending content, and rerun the rollout.' }
+        '^Update commit' { return 'Inspect the staged RQG changes and local Git error, correct the repository-specific commit blocker, and rerun the rollout.' }
+        '^Update branch push' { return 'Verify Contents write access, branch rules, and any existing RQG update branch; remove an obsolete branch only after confirming it is RQG-owned, then rerun.' }
+        '^Update pull-request creation' { return 'Verify Pull requests write access and branch-policy requirements, inspect any existing RQG pull request, and rerun after resolving the conflict.' }
+        '^Pull-request quality-check discovery' { return 'Open the update pull request and its Checks tab, confirm the expected workflows are enabled and triggered for the update branch, then rerun after check runs appear.' }
+        '^Pull-request quality checks' { return 'Open the update pull request Checks tab, inspect each named failing check and its job log, correct the downstream repository failure, then rerun the rollout.' }
+        '^Verified pull-request merge' { return 'Inspect branch protection, required reviews, mergeability, and the GitHub App Pull requests and Contents permissions; resolve the reported merge blocker and rerun.' }
+        '^Temporary branch cleanup' { return 'The update merged. Remove the identified RQG-owned temporary branch after confirming the merge, then verify the repository reports the target RQG version.' }
+        default { return 'Review the reported cause and the repository Actions and pull-request history, correct the repository-specific blocker, and rerun the rollout.' }
+    }
+}
+
+function New-RqgFailureComment {
+    param(
+        [Parameter(Mandatory)][string]$Stage,
+        [Parameter(Mandatory)][string]$Cause,
+        [Parameter(Mandatory)][string]$Version,
+        [string]$PullRequestUrl,
+        [string]$UpdateBranch,
+        [string]$Cleanup
+    )
+
+    $context = "Target RQG version: $Version."
+    if (-not [string]::IsNullOrWhiteSpace($PullRequestUrl)) { $context += " Pull request: $PullRequestUrl." }
+    if (-not [string]::IsNullOrWhiteSpace($UpdateBranch)) { $context += " Update branch: $UpdateBranch." }
+    $cleanupText = if ([string]::IsNullOrWhiteSpace($Cleanup)) { 'Cleanup: No temporary RQG resource required cleanup.' } else { "Cleanup: $Cleanup" }
+    return "Stage: $Stage. Cause: $Cause Context: $context $cleanupText Investigation: $(Get-RqgInvestigationAction $Stage)"
+}
+
 if (-not $TargetVersion) {
     $versionOutput = @(& $deploymentTool -Version)
     $TargetVersion = ([string]$versionOutput[0] -replace '^Repository Quality Gates\s+', '').Trim()
@@ -146,11 +182,13 @@ try {
         $entry = [ordered]@{ repository = $fullName; status = 'Skipped'; enrolment = $false; pullRequest = $null; autoMerge = $false; blockingPullRequests = @(); cleanedPullRequests = @(); detail = $null }
         $clonePath = $null
         $pushedUpdateBranch = $false
+        $failureStage = 'Repository metadata and eligibility inspection'
         try {
             if ($sourceName -and $fullName -ieq $sourceName) { $entry.detail = 'Central template repository.'; $results.Add([pscustomobject]$entry); continue }
             if ($fullName -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Invalid repository name: $fullName" }
             if ($Owner -and ($fullName -split '/')[0] -ine $Owner) { $entry.detail = 'Repository is outside the selected owner.'; $results.Add([pscustomobject]$entry); continue }
 
+            $failureStage = 'Repository metadata inspection'
             $metadataText = @(& gh api "repos/$fullName" --jq '{defaultBranch:.default_branch,size:.size}' 2>$null) -join [Environment]::NewLine
             if ($LASTEXITCODE -ne 0 -or -not $metadataText) { throw 'Unable to read repository metadata.' }
             try { $metadata = $metadataText | ConvertFrom-Json }
@@ -163,6 +201,7 @@ try {
                 continue
             }
             if (-not $defaultBranch) { throw 'The repository does not identify a default branch.' }
+            $failureStage = 'Managed-state inspection'
             $stateFile = Get-RemoteTextFile $fullName $defaultBranch '.repository-quality-gates.json'
             $isManaged = [bool]$stateFile.exists
             $remoteState = $null
@@ -181,6 +220,7 @@ try {
                 $entry.enrolment = $true
             }
 
+            $failureStage = 'Open pull-request inspection'
             $openPullRequests = @(Get-OpenPullRequests $fullName)
             if ($Apply -and $openPullRequests.Count) {
                 $expiry = [DateTimeOffset]::UtcNow.AddHours(-$TemporaryBranchLifetimeHours)
@@ -215,6 +255,7 @@ try {
                 continue
             }
 
+            $failureStage = 'Repository clone'
             $clonePath = Join-Path $tempRoot (($fullName -replace '/', '-') + '-' + [guid]::NewGuid().ToString('N'))
             $null = @(& gh repo clone $fullName $clonePath -- --branch $defaultBranch --single-branch 2>&1)
             if ($LASTEXITCODE -ne 0) { throw 'Unable to clone the repository.' }
@@ -229,6 +270,7 @@ try {
                 OutputFormat = 'Json'
             }
             if ($entry.enrolment) { $updateArguments.Enroll = $true }
+            $failureStage = 'Managed-file update'
             $updateText = @(& $updateScript @updateArguments) -join [Environment]::NewLine
             $update = $updateText | ConvertFrom-Json
             if ($update.status -notin @('Updated', 'Enrolled')) { $entry.status = [string]$update.status; $results.Add([pscustomobject]$entry); continue }
@@ -237,14 +279,17 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Unable to stage the update.' }
             $stagedPaths = @(& git -C $clonePath diff --cached --name-only --diff-filter=ACDMRTUXB | Where-Object { $_ })
             if (-not $stagedPaths.Count) { $entry.status = 'Current'; $results.Add([pscustomobject]$entry); continue }
+            $failureStage = 'Publication-safety scan'
             $null = @(& pwsh -NoLogo -NoProfile -File (Join-Path $clonePath 'scripts\Test-Secrets.ps1') -Mode Staged -Repository $clonePath 2>&1)
             if ($LASTEXITCODE -ne 0) { throw 'The staged publication-safety scan failed.' }
             & git -C $clonePath config user.name 'github-actions[bot]'
             & git -C $clonePath config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             $commitMessage = if ($entry.enrolment) { "chore: enrol in Repository Quality Gates $TargetVersion" } else { "chore: update Repository Quality Gates to $TargetVersion" }
+            $failureStage = 'Update commit'
             & git -C $clonePath commit -m $commitMessage | Out-Null
             if ($LASTEXITCODE -ne 0) { throw 'Unable to commit the update.' }
 
+            $failureStage = 'Open pull-request inspection after update preparation'
             $lateOpenPullRequests = @(Get-OpenPullRequests $fullName)
             if ($lateOpenPullRequests.Count) {
                 $entry.status = 'DeferredOpenPullRequests'
@@ -263,6 +308,7 @@ try {
                 continue
             }
 
+            $failureStage = 'Update branch push'
             & git -C $clonePath fetch origin "+refs/heads/$branchName`:refs/remotes/origin/$branchName" 2>$null
             $remoteUpdate = (& git -C $clonePath rev-parse --verify "refs/remotes/origin/$branchName" 2>$null)
             if ($LASTEXITCODE -eq 0 -and $remoteUpdate) {
@@ -273,6 +319,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Unable to push the update branch.' }
             $pushedUpdateBranch = $true
 
+            $failureStage = 'Update pull-request creation'
             $existingPrOutput = @(& gh pr list --repo $fullName --state open --head $branchName --base $defaultBranch --json number,url --jq '.[0].url // empty')
             $existingPr = ($existingPrOutput -join [Environment]::NewLine).Trim()
             if ($LASTEXITCODE -ne 0) { throw 'Unable to check for an existing update pull request.' }
@@ -300,27 +347,28 @@ try {
             $entry.detail = "$($stagedPaths.Count) managed path(s) changed."
         }
         catch {
-            $failureMessage = $_.Exception.Message
+            $failureCause = $_.Exception.Message
+            $cleanupDetail = $null
             if ($Apply -and $entry.pullRequest) {
                 $cleanupOutput = @(& gh pr close ([string]$entry.pullRequest) --repo $fullName --delete-branch 2>&1)
                 if ($LASTEXITCODE -eq 0) {
                     $pushedUpdateBranch = $false
-                    $failureMessage += ' The failed temporary RQG pull request and branch were removed.'
+                    $cleanupDetail = 'The failed temporary RQG pull request and branch were removed.'
                 } else {
-                    $failureMessage += " Temporary RQG cleanup also failed: $($cleanupOutput -join [Environment]::NewLine)"
+                    $cleanupDetail = "Temporary RQG pull-request cleanup failed: $($cleanupOutput -join [Environment]::NewLine)"
                 }
             } elseif ($Apply -and $pushedUpdateBranch -and $clonePath) {
                 $cleanupOutput = @(& git -C $clonePath push origin --delete $branchName 2>&1)
                 if ($LASTEXITCODE -eq 0) {
                     $pushedUpdateBranch = $false
-                    $failureMessage += ' The failed temporary RQG branch was removed.'
+                    $cleanupDetail = 'The failed temporary RQG branch was removed.'
                 } else {
-                    $failureMessage += " Temporary RQG branch cleanup also failed: $($cleanupOutput -join [Environment]::NewLine)"
+                    $cleanupDetail = "Temporary RQG branch cleanup failed: $($cleanupOutput -join [Environment]::NewLine)"
                 }
             }
             $entry.status = 'Failed'
-            $entry.detail = $failureMessage
-            Write-Warning "Repository Quality Gates update failed for '$fullName': $failureMessage"
+            $entry.detail = New-RqgFailureComment -Stage $failureStage -Cause $failureCause -Version $TargetVersion -PullRequestUrl ([string]$entry.pullRequest) -UpdateBranch $branchName -Cleanup $cleanupDetail
+            Write-Warning "Repository Quality Gates update failed for '$fullName': $($entry.detail)"
         }
         $results.Add([pscustomobject]$entry)
     }
@@ -334,14 +382,17 @@ if ($Apply -and $AutoMerge) {
         try {
             $repositoryName = [string]$entry.repository
             $pullRequestUrl = [string]$entry.pullRequest
+            $failureStage = 'Pull-request quality-check discovery and completion'
             $checkCount = Wait-PullRequestQualityChecks $repositoryName $pullRequestUrl
             if ($pullRequestUrl -notmatch '/pull/(?<number>[1-9]\d*)/?$') { throw 'The update pull-request URL does not contain a valid pull-request number.' }
             $pullRequestNumber = [int]$Matches.number
+            $failureStage = 'Verified pull-request merge'
             $mergeOutput = @(& gh api --method PUT "repos/$repositoryName/pulls/$pullRequestNumber/merge" -f merge_method=squash 2>&1)
             if ($LASTEXITCODE -ne 0) { throw "Unable to merge the verified update pull request: $($mergeOutput -join [Environment]::NewLine)" }
             try { $mergeResponse = (($mergeOutput -join [Environment]::NewLine) | ConvertFrom-Json) }
             catch { throw 'GitHub returned invalid pull-request merge data.' }
             if ($mergeResponse.merged -ne $true) { throw "GitHub did not merge the verified update pull request: $([string]$mergeResponse.message)" }
+            $failureStage = 'Temporary branch cleanup after verified merge'
             $deleteOutput = @(& gh api --method DELETE "repos/$repositoryName/git/refs/heads/$branchName" 2>&1)
             if ($LASTEXITCODE -ne 0) {
                 $entry.detail += " $checkCount reported quality check(s) passed and the pull request merged, but the temporary branch could not be removed: $($deleteOutput -join [Environment]::NewLine)"
@@ -354,14 +405,15 @@ if ($Apply -and $AutoMerge) {
             $entry.detail += " $checkCount reported quality check(s) passed before merge."
         }
         catch {
-            $failureMessage = $_.Exception.Message
+            $failureCause = $_.Exception.Message
             $cleanupOutput = @(& gh pr close ([string]$entry.pullRequest) --repo ([string]$entry.repository) --delete-branch 2>&1)
-            if ($LASTEXITCODE -eq 0) { $failureMessage += ' The failed temporary RQG pull request and branch were removed.' }
-            else { $failureMessage += " Temporary RQG cleanup also failed: $($cleanupOutput -join [Environment]::NewLine)" }
+            $cleanupDetail = if ($LASTEXITCODE -eq 0) { 'The failed temporary RQG pull request and branch were removed.' } else { "Temporary RQG pull-request cleanup failed: $($cleanupOutput -join [Environment]::NewLine)" }
             $entry.autoMerge = $false
             $entry.status = 'Failed'
-            $entry.detail = $failureMessage
-            Write-Warning "Repository Quality Gates completion failed for '$($entry.repository)': $failureMessage"
+            if ($failureCause -match '^No quality checks were reported|^Timed out waiting') { $failureStage = 'Pull-request quality-check discovery' }
+            elseif ($failureCause -match '^Pull-request quality checks failed') { $failureStage = 'Pull-request quality checks' }
+            $entry.detail = New-RqgFailureComment -Stage $failureStage -Cause $failureCause -Version $TargetVersion -PullRequestUrl ([string]$entry.pullRequest) -UpdateBranch $branchName -Cleanup $cleanupDetail
+            Write-Warning "Repository Quality Gates completion failed for '$($entry.repository)': $($entry.detail)"
         }
     }
 }

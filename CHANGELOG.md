@@ -2,9 +2,12 @@
 
 ## Unreleased
 
+## 1.5.2 - 2026-09-25
+
 ### Changed
 
 - Reworked rollout email reports as a three-column Repository, Status, and Comment table while keeping repository identities out of the downloadable workflow artifact.
+- Expanded every failed repository comment with the failing stage, exact captured cause, target version, pull request and temporary branch context when available, cleanup outcome, and a stage-specific investigation action.
 
 ### Security
 
