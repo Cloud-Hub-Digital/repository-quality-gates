@@ -178,9 +178,9 @@ jobs:
           ]
           html_rows = "".join(
               "<tr>"
-              f"<td>{html.escape(row['repository'])}</td>"
-              f"<td>{html.escape(row['status'])}</td>"
-              f"<td>{html.escape(row['comment'])}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">{html.escape(row['repository'])}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">{html.escape(row['status'])}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">{html.escape(row['comment'])}</td>"
               "</tr>"
               for row in normalized
           )
@@ -202,10 +202,10 @@ jobs:
               f"<p><strong>Release:</strong> {html.escape(release_tag)}<br>"
               f"<strong>Outcome:</strong> {html.escape(outcome)}<br>"
               f"<strong>Workflow Run:</strong> <a href=\"{html.escape(run_url, quote=True)}\">{html.escape(run_url)}</a></p>"
-              "<table style=\"border-collapse:collapse\"><thead><tr>"
-              "<th style=\"border:1px solid #999;padding:6px;text-align:left\">Repository</th>"
-              "<th style=\"border:1px solid #999;padding:6px;text-align:left\">Status</th>"
-              "<th style=\"border:1px solid #999;padding:6px;text-align:left\">Comment</th>"
+              "<table style=\"border-collapse:collapse;border:1px solid #999;width:100%\"><thead><tr>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Repository</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Status</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Comment</th>"
               "</tr></thead><tbody>" + html_rows + "</tbody></table></body></html>",
               subtype="html",
           )

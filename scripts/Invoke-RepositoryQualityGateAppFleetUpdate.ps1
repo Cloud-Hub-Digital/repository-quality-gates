@@ -85,6 +85,65 @@ function New-RqgInstallationFailureComment([string]$Stage, [string]$Cause) {
     return "Stage: $Stage. Cause: $Cause Investigation: $action"
 }
 
+function ConvertTo-RqgEmailComment([string]$Status, [string]$Detail) {
+    $cleanDetail = [regex]::Replace(([string]$Detail).Trim(), '\s+', ' ')
+
+    switch ($Status) {
+        'Current' { return 'Already current.' }
+        'EmptyRepository' { return 'Skipped: repository has no commits.' }
+        'EnrollmentOptOut' { return 'Skipped: automatic enrolment is disabled.' }
+        'ChecksPending' { return 'Update pull request created; checks pending.' }
+        'PullRequest' { return 'Update pull request created.' }
+        'EnrollmentAvailable' { return 'Automatic enrolment is available.' }
+        'Available' { return 'Update is available.' }
+        'MergedCleanupRequired' { return 'Update merged; temporary branch cleanup failed.' }
+        'MergedAfterChecks' {
+            if ($cleanDetail -match '(?<count>[0-9]+) reported quality check\(s\) passed') {
+                return "$($Matches.count) quality checks passed; update merged."
+            }
+            return 'Quality checks passed; update merged.'
+        }
+        'DeferredOpenPullRequests' {
+            if ($cleanDetail -match '^(?<count>[0-9]+) (?:open )?pull request\(s\)') {
+                return "Deferred: $($Matches.count) open pull requests."
+            }
+            return 'Deferred: open pull requests require attention.'
+        }
+        'Failed' {
+            $summary = $null
+            if ($cleanDetail -match '^Stage:\s*(?<stage>.+?)\.\s+Cause:\s*(?<cause>.+?)(?:\s+Context:|\s+Cleanup:|\s+Investigation:|$)') {
+                $stage = [string]$Matches.stage
+                $cause = [string]$Matches.cause
+                if ($cause -match '^Pull-request quality checks failed:\s*(?<checks>.+)$') {
+                    $checkNames = [Collections.Generic.List[string]]::new()
+                    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+                    foreach ($match in [regex]::Matches([string]$Matches.checks, '(?<name>.*?)(?:\s+\([^)]+\))(?:,\s*|$)')) {
+                        $name = ([string]$match.Groups['name'].Value).Trim()
+                        if ($name -and $seen.Add($name)) { $checkNames.Add($name) }
+                    }
+                    if ($checkNames.Count) {
+                        $shown = @($checkNames | Select-Object -First 4)
+                        $remaining = $checkNames.Count - $shown.Count
+                        $suffix = if ($remaining -gt 0) { "; +$remaining more" } else { '' }
+                        $summary = "PR checks failed: $($shown -join '; ')$suffix."
+                    }
+                }
+                if (-not $summary) { $summary = "$stage failed: $cause" }
+            }
+            elseif ($cleanDetail) { $summary = "Failed: $cleanDetail" }
+            else { $summary = 'Failed: no diagnostic summary was available.' }
+
+            if ($summary.Length -gt 240) { return $summary.Substring(0, 237).TrimEnd() + '...' }
+            return $summary
+        }
+        default {
+            if (-not $cleanDetail) { return $Status }
+            if ($cleanDetail.Length -gt 240) { return $cleanDetail.Substring(0, 237).TrimEnd() + '...' }
+            return $cleanDetail
+        }
+    }
+}
+
 function Invoke-RepositoryQualityGateAppFleetUpdate {
     param(
         [string]$ApplicationId,
@@ -168,16 +227,17 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                         if (-not [string]::IsNullOrWhiteSpace($resultBytes)) {
                             $installationResult = $resultBytes | ConvertFrom-Json
                             foreach ($repositoryResult in @($installationResult.repositories)) {
-                                $privateComment = [string]$repositoryResult.detail
+                                $privateDetail = [string]$repositoryResult.detail
                                 foreach ($secretValue in @($token, $authorizationHeader, $basicCredential)) {
                                     if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
-                                        $privateComment = $privateComment.Replace([string]$secretValue, '***')
+                                        $privateDetail = $privateDetail.Replace([string]$secretValue, '***')
                                     }
                                 }
                                 $privateReportRows.Add([pscustomobject][ordered]@{
                                     repository = [string]$repositoryResult.repository
                                     status = [string]$repositoryResult.status
-                                    comment = $privateComment
+                                    comment = ConvertTo-RqgEmailComment -Status ([string]$repositoryResult.status) -Detail $privateDetail
+                                    detail = $privateDetail
                                 })
                                 $installationRowsAdded++
                             }
@@ -205,7 +265,8 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                         $privateReportRows.Add([pscustomobject][ordered]@{
                             repository = [string]$repositoryName
                             status = 'Failed'
-                            comment = [string]$installationFailureComment
+                            comment = ConvertTo-RqgEmailComment -Status 'Failed' -Detail ([string]$installationFailureComment)
+                            detail = [string]$installationFailureComment
                         })
                     }
                 }

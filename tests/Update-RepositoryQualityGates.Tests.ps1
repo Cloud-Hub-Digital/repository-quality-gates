@@ -65,7 +65,7 @@ try {
     Assert-True ($applyJson.status -eq 'Updated') 'Apply should report an updated repository.'
     Assert-True ($applyJson.changedPaths -contains '.repository-quality-gates.json') 'The update should refresh managed state.'
     $updatedState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    Assert-True ($updatedState.templateVersion -eq '1.5.3') 'Managed state should record the new template version.'
+    Assert-True ($updatedState.templateVersion -eq '1.5.4') 'Managed state should record the new template version.'
     Commit-All $managed 'update quality gates'
 
     $current = Invoke-Update $managed
@@ -113,7 +113,7 @@ try {
     $enrollmentApplyJson = $enrollmentApply.Output | ConvertFrom-Json
     Assert-True ($enrollmentApplyJson.status -eq 'Enrolled') 'Applied initial enrolment should report Enrolled.'
     $enrolledState = Get-Content -LiteralPath (Join-Path $unmanaged '.repository-quality-gates.json') -Raw | ConvertFrom-Json
-    Assert-True ($enrolledState.templateVersion -eq '1.5.3') 'Initial enrolment should record the current template version.'
+    Assert-True ($enrolledState.templateVersion -eq '1.5.4') 'Initial enrolment should record the current template version.'
     Assert-True (Test-Path -LiteralPath (Join-Path $unmanaged '.github\workflows\secret-scanning.yml')) 'Initial enrolment should deploy the selected quality-gate workflows.'
 
     $overlap = Join-Path $testRoot 'overlap'

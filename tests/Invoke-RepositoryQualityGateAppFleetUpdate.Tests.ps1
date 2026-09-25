@@ -36,11 +36,22 @@ try {
     Assert-True (-not $workflowText.Contains('actions/download-artifact@')) 'The email-only repository table must not be downloaded from an artifact.'
     Assert-True ($workflowText.Contains('-PrivateReportPath $privateReportPath')) 'The App wrapper should receive a dedicated private report path.'
     Assert-True ($workflowText.Contains('PRIVATE_REPORT_PATH: ${{ github.workspace }}/.rqg-private/email-report.json')) 'The email step should read the private local report directly.'
-    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left\">Repository</th>')) 'The HTML email should contain a Repository column.'
-    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left\">Status</th>')) 'The HTML email should contain a Status column.'
-    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left\">Comment</th>')) 'The HTML email should contain a Comment column.'
+    Assert-True ($workflowText.Contains('<table style=\"border-collapse:collapse;border:1px solid #999;width:100%\">')) 'The HTML email should outline the complete table.'
+    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Repository</th>')) 'The HTML email should contain a bordered Repository header.'
+    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Status</th>')) 'The HTML email should contain a bordered Status header.'
+    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Comment</th>')) 'The HTML email should contain a bordered Comment header.'
+    Assert-True ($workflowText.Contains('<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">')) 'Every HTML email data cell should have a visible border.'
     Assert-True ($workflowText.Contains("vars.RQG_REPORT_EMAIL_ENABLED == 'true'")) 'Email reporting should remain controlled by the repository variable.'
     Assert-True ($workflowText.Contains("steps.rollout.outcome == 'failure'")) 'A reported rollout failure should still fail the workflow.'
+
+    Assert-True ((ConvertTo-RqgEmailComment -Status 'Current' -Detail '') -eq 'Already current.') 'Current repositories should use a short factual email comment.'
+    Assert-True ((ConvertTo-RqgEmailComment -Status 'EmptyRepository' -Detail 'Long internal detail.') -eq 'Skipped: repository has no commits.') 'Empty repositories should use a short factual email comment.'
+    Assert-True ((ConvertTo-RqgEmailComment -Status 'MergedCleanupRequired' -Detail 'Long cleanup detail.') -eq 'Update merged; temporary branch cleanup failed.') 'Cleanup failures should use a short factual email comment.'
+    $checkFailureDetail = 'Stage: Pull-request quality checks. Cause: Pull-request quality checks failed: Build (failure), Build (failure), Require OP reference (failure) Context: Target RQG version: 1.5.4. Cleanup: Removed. Investigation: Review checks.'
+    Assert-True ((ConvertTo-RqgEmailComment -Status 'Failed' -Detail $checkFailureDetail) -eq 'PR checks failed: Build; Require OP reference.') 'Failed check comments should be concise and deduplicate check names.'
+    $generalFailureComment = ConvertTo-RqgEmailComment -Status 'Failed' -Detail 'Stage: Repository clone. Cause: Unable to clone the repository. Context: Target RQG version: 1.5.4. Cleanup: None. Investigation: Verify access.'
+    Assert-True ($generalFailureComment -eq 'Repository clone failed: Unable to clone the repository.') 'Other failed comments should state only the failing stage and cause.'
+    Assert-True ($generalFailureComment.Length -le 240) 'Email comments should remain concise.'
 
     $rsa = [Security.Cryptography.RSA]::Create(2048)
     try {
@@ -148,7 +159,7 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($env:GIT_CONFIG_COUNT -eq '7' -and $env:GIT_CONFIG_KEY_0 -eq 'test.original.key' -and $env:GIT_CONFIG_VALUE_0 -eq 'test-original-value') 'The wrapper should restore the caller Git configuration environment.'
         $privateRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
         Assert-True ($privateRows.Count -eq 2) 'The private report should contain one row for each repository.'
-        Assert-True ($privateRows[0].PSObject.Properties.Name -contains 'repository' -and $privateRows[0].PSObject.Properties.Name -contains 'status' -and $privateRows[0].PSObject.Properties.Name -contains 'comment') 'The private report should contain only the requested table fields.'
+        Assert-True ($privateRows[0].PSObject.Properties.Name -contains 'repository' -and $privateRows[0].PSObject.Properties.Name -contains 'status' -and $privateRows[0].PSObject.Properties.Name -contains 'comment' -and $privateRows[0].PSObject.Properties.Name -contains 'detail') 'The private report should contain the email fields and retained diagnostic detail.'
         Assert-True ($privateRows.repository -contains 'first-owner/one' -and $privateRows.repository -contains 'second-owner/two') 'The private report should retain repository names for the email table.'
         Assert-True (-not ((Get-Content -LiteralPath $privateReportPath -Raw) -match 'installation-token-')) 'The private email report must redact installation credentials from comments.'
 
@@ -166,7 +177,8 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($failureRecords[1].repositories[0] -eq 'second-owner/two') 'The later installation should still receive its repository list after an earlier failure.'
         $failureRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
         Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'Failed') 'The private report should retain a failed repository status.'
-        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].comment -eq 'Synthetic Failed result. Token=***') 'A structured repository failure should retain its detailed sanitized comment.'
+        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].comment -eq 'Failed: Synthetic Failed result. Token=***') 'A structured repository failure should provide a concise sanitized email comment.'
+        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].detail -eq 'Synthetic Failed result. Token=***') 'A structured repository failure should retain its complete sanitized diagnostic detail.'
         Assert-True (@($failureRows | Where-Object repository -eq 'second-owner/two')[0].status -eq 'Current') 'The private report should retain later successful installation results.'
         Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
 
@@ -182,8 +194,8 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($invalidResultRecords.Count -eq 2) 'An invalid structured result must not prevent a later installation from running.'
         $invalidResultRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
         Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'Failed') 'An invalid structured result should create a failed repository row.'
-        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].comment -match '^Stage: Structured result processing\. Cause:') 'The failed row should identify the structured-result stage and cause.'
-        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].comment -match 'Investigation: Inspect the sanitized workflow artifact') 'The failed row should provide an actionable structured-result investigation step.'
+        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].comment -match '^Structured result processing failed:') 'The failed row should provide a concise structured-result summary.'
+        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].detail -match 'Investigation: Inspect the sanitized workflow artifact') 'The failed row should retain its actionable structured-result investigation detail.'
         Assert-True (@($invalidResultRows | Where-Object repository -eq 'second-owner/two')[0].status -eq 'Current') 'A later installation should still report its successful result.'
         Remove-Item Env:\RQG_TEST_INVALID_FIRST -ErrorAction SilentlyContinue
 

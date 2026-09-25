@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.5.4 - 2026-09-25
+
+### Changed
+
+- Applied borders to the complete HTML rollout table, including every data cell, and added a subtle header background for clearer row and column boundaries.
+- Shortened email comments to factual status summaries while retaining the complete sanitized diagnostic record in the private workspace report.
+
 ## 1.5.3 - 2026-09-25
 
 ### Fixed

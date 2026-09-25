@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The prepared template version written to managed state is `1.5.3`. The automatic release workflow publishes the matching immutable `v1.5.3` GitHub Release after the required checks pass for the release commit.
+The prepared template version written to managed state is `1.5.4`. The automatic release workflow publishes the matching immutable `v1.5.4` GitHub Release after the required checks pass for the release commit.
 
-Version `1.5.3` emails a Repository, Status, and Comment table after each fleet rollout. Failed rows identify the failing stage, captured cause, target version, pull request and temporary branch context when available, cleanup outcome, and a focused investigation action. Installation authentication failures are isolated so later installations are still processed. The downloadable one-day diagnostic artifact remains separately sanitized and excludes repository identities. Public repositories and pull requests from forks continue to use GitHub-hosted runners. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.5.4` emails a fully bordered Repository, Status, and Comment table after each fleet rollout. Comments are short factual summaries; complete sanitized diagnostics remain in the private workspace report used to produce the email. Installation authentication failures are isolated so later installations are still processed. The downloadable one-day diagnostic artifact remains separately sanitized and excludes repository identities. Public repositories and pull requests from forks continue to use GitHub-hosted runners. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 Downstream repositories can keep repository-specific module, path, secret-policy, enrolment, and OpenProject pull-request rules in their committed `.repository-quality-gates.local.json` file. RQG validates and reads that file but never copies it from or replaces it with the central template.
 
@@ -74,7 +74,7 @@ The deployment guide includes complete commands for preview, JSON review, apply-
 - Push fetches the remote, rejects a branch that is behind, scans the exact outgoing commit range, and never force-pushes.
 - Private identifier policies stay outside every repository and are referenced only through local Git configuration.
 - Each GitHub App installation is enumerated independently and receives its own short-lived token; owner and full repository names are masked before downstream processing writes to the public workflow log.
-- The fleet workflow allows up to 120 minutes for a complete run and can send an authenticated SMTP success or failure report with the selected release, workflow link, and a Repository, Status, and Comment table. Repository names exist only in the email-only workspace report; the downloadable one-day diagnostic artifact remains sanitized.
+- The fleet workflow allows up to 120 minutes for a complete run and can send an authenticated SMTP success or failure report with the selected release, workflow link, and a fully bordered Repository, Status, and Comment table. Comments are concise factual summaries; complete sanitized diagnostics remain in the private workspace report. Repository names exist only in that email-only report; the downloadable one-day diagnostic artifact remains sanitized.
 
 See [Module System](docs/module-system.md) for state tracking, file classification, conflict behavior, recovery copies, preservation, pruning, and push safeguards.
 
