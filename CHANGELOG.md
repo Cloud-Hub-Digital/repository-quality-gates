@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.5.3 - 2026-09-25
+
+### Fixed
+
+- Initialized per-installation temporary credential variables before GitHub App token issuance so an authentication failure cannot trigger a strict-mode cleanup error or prevent later installations from being processed and reported.
+
 ## 1.5.2 - 2026-09-25
 
 ### Changed

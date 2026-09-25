@@ -101,6 +101,7 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
             return
         }
         if ($Method -eq 'Post' -and $Uri -match '/app/installations/(?<id>\d+)/access_tokens$') {
+            if ($env:RQG_TEST_TOKEN_FAIL_FIRST -eq '1' -and $Matches.id -eq '101') { throw 'Synthetic token issuance failure.' }
             return [pscustomobject]@{ token = "installation-token-$($Matches.id)" }
         }
         throw "Unexpected Invoke-RestMethod request: $Method $Uri"
@@ -185,6 +186,19 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].comment -match 'Investigation: Inspect the sanitized workflow artifact') 'The failed row should provide an actionable structured-result investigation step.'
         Assert-True (@($invalidResultRows | Where-Object repository -eq 'second-owner/two')[0].status -eq 'Current') 'A later installation should still report its successful result.'
         Remove-Item Env:\RQG_TEST_INVALID_FIRST -ErrorAction SilentlyContinue
+
+        Remove-Item -LiteralPath $recordPath -Force
+        $env:RQG_TEST_TOKEN_FAIL_FIRST = '1'
+        $tokenFailure = $null
+        try {
+            Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -EnableAutoEnroll -EnableApply -EnableAutoMerge -ResolvedPrivateReportPath $privateReportPath -BranchLifetimeHours 24
+        }
+        catch { $tokenFailure = $_ }
+        $tokenFailureRecords = @(Get-Content -LiteralPath $recordPath | ForEach-Object { $_ | ConvertFrom-Json })
+        Assert-True ($tokenFailure.Exception.Message -match '^1 GitHub App installation\(s\) failed after all accessible installations were processed\.') 'A token-issuance failure should produce the aggregate installation failure without a strict-mode cleanup error.'
+        Assert-True ($tokenFailureRecords.Count -eq 1) 'A token-issuance failure must not prevent the later installation from running.'
+        Assert-True ($tokenFailureRecords[0].repositories[0] -eq 'second-owner/two') 'The later installation should still be processed after an earlier token-issuance failure.'
+        Remove-Item Env:\RQG_TEST_TOKEN_FAIL_FIRST -ErrorAction SilentlyContinue
     }
     finally {
         $testRsa.Dispose()
@@ -193,6 +207,7 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Remove-Item Env:\RQG_TEST_RECORD_PATH -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_INVALID_FIRST -ErrorAction SilentlyContinue
+        Remove-Item Env:\RQG_TEST_TOKEN_FAIL_FIRST -ErrorAction SilentlyContinue
         if ($null -eq $oldToken) { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue } else { $env:GH_TOKEN = $oldToken }
         if ($null -eq $oldGitConfigCount) { Remove-Item Env:\GIT_CONFIG_COUNT -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_COUNT = $oldGitConfigCount }
         if ($null -eq $oldGitConfigKey0) { Remove-Item Env:\GIT_CONFIG_KEY_0 -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_KEY_0 = $oldGitConfigKey0 }

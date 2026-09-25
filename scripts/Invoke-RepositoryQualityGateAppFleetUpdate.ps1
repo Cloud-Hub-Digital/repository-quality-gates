@@ -114,6 +114,8 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
     try {
         foreach ($installation in $installations) {
             $token = $null
+            $basicCredential = $null
+            $authorizationHeader = $null
             $repositories = @()
             $installationResultPath = [IO.Path]::GetTempFileName()
             $installationRowsAdded = 0

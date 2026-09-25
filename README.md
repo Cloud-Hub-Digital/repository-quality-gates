@@ -2,9 +2,9 @@
 
 Repository Quality Gates is a preview-first PowerShell deployment tool for adding a consistent validation baseline to Git repositories. It inspects a target repository, selects only the applicable modules, reports every proposed file operation, and can then apply, validate, commit, and push the reviewed result in separate controlled stages.
 
-The prepared template version written to managed state is `1.5.2`. The automatic release workflow publishes the matching immutable `v1.5.2` GitHub Release after the required checks pass for the release commit.
+The prepared template version written to managed state is `1.5.3`. The automatic release workflow publishes the matching immutable `v1.5.3` GitHub Release after the required checks pass for the release commit.
 
-Version `1.5.2` emails a Repository, Status, and Comment table after each fleet rollout. Failed rows identify the failing stage, captured cause, target version, pull request and temporary branch context when available, cleanup outcome, and a focused investigation action. The downloadable one-day diagnostic artifact remains separately sanitized and excludes repository identities. Public repositories and pull requests from forks continue to use GitHub-hosted runners. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `1.5.3` emails a Repository, Status, and Comment table after each fleet rollout. Failed rows identify the failing stage, captured cause, target version, pull request and temporary branch context when available, cleanup outcome, and a focused investigation action. Installation authentication failures are isolated so later installations are still processed. The downloadable one-day diagnostic artifact remains separately sanitized and excludes repository identities. Public repositories and pull requests from forks continue to use GitHub-hosted runners. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 Downstream repositories can keep repository-specific module, path, secret-policy, enrolment, and OpenProject pull-request rules in their committed `.repository-quality-gates.local.json` file. RQG validates and reads that file but never copies it from or replaces it with the central template.
 
