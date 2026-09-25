@@ -38,9 +38,14 @@ try {
     Assert-True ($workflowText.Contains('PRIVATE_REPORT_PATH: ${{ github.workspace }}/.rqg-private/email-report.json')) 'The email step should read the private local report directly.'
     Assert-True ($workflowText.Contains('<table style=\"border-collapse:collapse;border:1px solid #999;width:100%\">')) 'The HTML email should outline the complete table.'
     Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Repository</th>')) 'The HTML email should contain a bordered Repository header.'
+    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Visibility</th>')) 'The HTML email should contain a bordered Visibility header.'
+    Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Runner</th>')) 'The HTML email should contain a bordered Runner header.'
     Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Status</th>')) 'The HTML email should contain a bordered Status header.'
     Assert-True ($workflowText.Contains('<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Comment</th>')) 'The HTML email should contain a bordered Comment header.'
     Assert-True ($workflowText.Contains('<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">')) 'Every HTML email data cell should have a visible border.'
+    Assert-True ($workflowText.Contains('<h2>Status Summary</h2>')) 'The HTML email should include a status-count summary above the repository table.'
+    Assert-True ($workflowText.Contains('Cloud Hub GitHub Repository Quality Gates')) 'The email should use the approved sender display name.'
+    Assert-True ($workflowText.Contains('formataddr(("Terry Rogers", to_address))')) 'The email should use the approved recipient display name.'
     Assert-True ($workflowText.Contains("vars.RQG_REPORT_EMAIL_ENABLED == 'true'")) 'Email reporting should remain controlled by the repository variable.'
     Assert-True ($workflowText.Contains("steps.rollout.outcome == 'failure'")) 'A reported rollout failure should still fail the workflow.'
 
@@ -108,24 +113,30 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         if ($Method -eq 'Get' -and $Uri -match '/app/installations\?') {
             # Match Invoke-RestMethod's real treatment of a top-level JSON array:
             # one non-enumerated response object containing both installations.
-            Write-Output -NoEnumerate @([pscustomobject]@{ id = 101 }, [pscustomobject]@{ id = 202 })
+            Write-Output -NoEnumerate @(
+                [pscustomobject]@{ id = 101; account = [pscustomobject]@{ login = 'first-owner' } },
+                [pscustomobject]@{ id = 202; account = [pscustomobject]@{ login = 'second-owner' } }
+            )
             return
         }
         if ($Method -eq 'Post' -and $Uri -match '/app/installations/(?<id>\d+)/access_tokens$') {
             if ($env:RQG_TEST_TOKEN_FAIL_FIRST -eq '1' -and $Matches.id -eq '101') { throw 'Synthetic token issuance failure.' }
             return [pscustomobject]@{ token = "installation-token-$($Matches.id)" }
         }
+        if ($Method -eq 'Get' -and $Uri -match '/installation/repositories\?') {
+            $token = ([string]$Headers.Authorization) -replace '^Bearer\s+', ''
+            if ($token -eq 'installation-token-101') {
+                return [pscustomobject]@{ repositories = @([pscustomobject]@{ full_name = 'first-owner/one'; private = $true }) }
+            }
+            if ($token -eq 'installation-token-202') {
+                return [pscustomobject]@{ repositories = @([pscustomobject]@{ full_name = 'second-owner/two'; private = $false }) }
+            }
+            throw 'The installation token was not selected before repository discovery.'
+        }
         throw "Unexpected Invoke-RestMethod request: $Method $Uri"
     }
     function global:gh {
         $joined = $args -join ' '
-        if ($joined -match '^api --paginate /installation/repositories') {
-            if ($env:GH_TOKEN -eq 'installation-token-101') { 'first-owner/one' }
-            elseif ($env:GH_TOKEN -eq 'installation-token-202') { 'second-owner/two' }
-            else { throw 'The installation token was not selected before repository discovery.' }
-            $global:LASTEXITCODE = 0
-            return
-        }
         if ($joined -eq 'api --method DELETE /installation/token') {
             $global:LASTEXITCODE = 0
             return
@@ -141,6 +152,8 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
     $env:GIT_CONFIG_COUNT = '7'
     $env:GIT_CONFIG_KEY_0 = 'test.original.key'
     $env:GIT_CONFIG_VALUE_0 = 'test-original-value'
+    $oldRunnerName = $env:RUNNER_NAME
+    $env:RUNNER_NAME = 'rqg-win-test'
     $env:RQG_TEST_RECORD_PATH = $recordPath
     $privateReportPath = Join-Path $testRoot 'private-report.json'
     try {
@@ -159,8 +172,11 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($env:GIT_CONFIG_COUNT -eq '7' -and $env:GIT_CONFIG_KEY_0 -eq 'test.original.key' -and $env:GIT_CONFIG_VALUE_0 -eq 'test-original-value') 'The wrapper should restore the caller Git configuration environment.'
         $privateRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
         Assert-True ($privateRows.Count -eq 2) 'The private report should contain one row for each repository.'
-        Assert-True ($privateRows[0].PSObject.Properties.Name -contains 'repository' -and $privateRows[0].PSObject.Properties.Name -contains 'status' -and $privateRows[0].PSObject.Properties.Name -contains 'comment' -and $privateRows[0].PSObject.Properties.Name -contains 'detail') 'The private report should contain the email fields and retained diagnostic detail.'
+        Assert-True ($privateRows[0].PSObject.Properties.Name -contains 'repository' -and $privateRows[0].PSObject.Properties.Name -contains 'visibility' -and $privateRows[0].PSObject.Properties.Name -contains 'runner' -and $privateRows[0].PSObject.Properties.Name -contains 'status' -and $privateRows[0].PSObject.Properties.Name -contains 'comment' -and $privateRows[0].PSObject.Properties.Name -contains 'detail') 'The private report should contain the email fields and retained diagnostic detail.'
         Assert-True ($privateRows.repository -contains 'first-owner/one' -and $privateRows.repository -contains 'second-owner/two') 'The private report should retain repository names for the email table.'
+        Assert-True (@($privateRows | Where-Object repository -eq 'first-owner/one')[0].visibility -eq 'Private') 'The private report should identify private repositories.'
+        Assert-True (@($privateRows | Where-Object repository -eq 'second-owner/two')[0].visibility -eq 'Public') 'The private report should identify public repositories.'
+        Assert-True (@($privateRows | Where-Object runner -ne 'rqg-win-test').Count -eq 0) 'The private report should identify the runner that executed the rollout.'
         Assert-True (-not ((Get-Content -LiteralPath $privateReportPath -Raw) -match 'installation-token-')) 'The private email report must redact installation credentials from comments.'
 
         Remove-Item -LiteralPath $recordPath -Force
@@ -220,6 +236,7 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_INVALID_FIRST -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_TOKEN_FAIL_FIRST -ErrorAction SilentlyContinue
+        if ($null -eq $oldRunnerName) { Remove-Item Env:\RUNNER_NAME -ErrorAction SilentlyContinue } else { $env:RUNNER_NAME = $oldRunnerName }
         if ($null -eq $oldToken) { Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue } else { $env:GH_TOKEN = $oldToken }
         if ($null -eq $oldGitConfigCount) { Remove-Item Env:\GIT_CONFIG_COUNT -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_COUNT = $oldGitConfigCount }
         if ($null -eq $oldGitConfigKey0) { Remove-Item Env:\GIT_CONFIG_KEY_0 -ErrorAction SilentlyContinue } else { $env:GIT_CONFIG_KEY_0 = $oldGitConfigKey0 }

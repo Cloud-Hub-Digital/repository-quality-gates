@@ -74,6 +74,23 @@ function New-GitHubAppInstallationToken([string]$Jwt, [long]$InstallationId) {
     return [string]$response.token
 }
 
+function Get-GitHubAppInstallationRepositories([string]$Token) {
+    if ([string]::IsNullOrWhiteSpace($Token)) { throw 'The GitHub App installation token is empty.' }
+    $headers = @{
+        Accept = 'application/vnd.github+json'
+        Authorization = "Bearer $Token"
+        'X-GitHub-Api-Version' = '2022-11-28'
+    }
+    $all = [Collections.Generic.List[object]]::new()
+    for ($page = 1; ; $page++) {
+        $response = Invoke-RestMethod -Method Get -Uri "https://api.github.com/installation/repositories?per_page=100&page=$page" -Headers $headers
+        $batch = @($response.repositories)
+        foreach ($repository in $batch) { $all.Add($repository) }
+        if ($batch.Count -lt 100) { break }
+    }
+    return @($all)
+}
+
 function New-RqgInstallationFailureComment([string]$Stage, [string]$Cause) {
     $action = switch -Regex ($Stage) {
         '^Installation authentication' { 'Verify the GitHub App ID, private-key secret, installation state, and permission grants, then rerun the fleet workflow.' }
@@ -176,12 +193,15 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
             $basicCredential = $null
             $authorizationHeader = $null
             $repositories = @()
+            $repositoryMetadata = @{}
             $installationResultPath = [IO.Path]::GetTempFileName()
             $installationRowsAdded = 0
             $installationFailureComment = $null
             $installationFailed = $false
             $installationStage = 'Installation authentication'
             try {
+                $installationOwner = [string]$installation.account.login
+                if ($installationOwner) { Write-Host "::add-mask::$installationOwner" }
                 $token = New-GitHubAppInstallationToken $jwt ([long]$installation.id)
                 $env:GH_TOKEN = $token
                 $basicCredential = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$token"))
@@ -192,13 +212,17 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 $env:GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader'
                 $env:GIT_CONFIG_VALUE_0 = $authorizationHeader
                 $installationStage = 'Repository discovery'
-                $repositories = @(& gh api --paginate /installation/repositories --jq '.repositories[].full_name' 2>$null | Where-Object { $_ } | Sort-Object -Unique)
-                if ($LASTEXITCODE -ne 0) { throw 'Unable to enumerate repositories for a GitHub App installation.' }
-                foreach ($repositoryName in $repositories) {
+                $discoveredRepositories = @(Get-GitHubAppInstallationRepositories $token)
+                foreach ($repository in $discoveredRepositories) {
+                    $repositoryName = [string]$repository.full_name
                     if ($repositoryName -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'GitHub returned an invalid repository name.' }
+                    $repositoryMetadata[$repositoryName] = [pscustomobject]@{
+                        visibility = if ([bool]$repository.private) { 'Private' } else { 'Public' }
+                    }
                     Write-Host "::add-mask::$repositoryName"
                     Write-Host "::add-mask::$($repositoryName.Split('/')[0])"
                 }
+                $repositories = @($repositoryMetadata.Keys | Sort-Object -Unique)
                 if (-not $repositories.Count) { continue }
 
                 $fleetArguments = @{
@@ -235,6 +259,8 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                                 }
                                 $privateReportRows.Add([pscustomobject][ordered]@{
                                     repository = [string]$repositoryResult.repository
+                                    visibility = [string]$repositoryMetadata[[string]$repositoryResult.repository].visibility
+                                    runner = if ($env:RUNNER_NAME) { [string]$env:RUNNER_NAME } else { 'Unavailable' }
                                     status = [string]$repositoryResult.status
                                     comment = ConvertTo-RqgEmailComment -Status ([string]$repositoryResult.status) -Detail $privateDetail
                                     detail = $privateDetail
@@ -264,6 +290,8 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                     foreach ($repositoryName in $repositories) {
                         $privateReportRows.Add([pscustomobject][ordered]@{
                             repository = [string]$repositoryName
+                            visibility = [string]$repositoryMetadata[[string]$repositoryName].visibility
+                            runner = if ($env:RUNNER_NAME) { [string]$env:RUNNER_NAME } else { 'Unavailable' }
                             status = 'Failed'
                             comment = ConvertTo-RqgEmailComment -Status 'Failed' -Detail ([string]$installationFailureComment)
                             detail = [string]$installationFailureComment

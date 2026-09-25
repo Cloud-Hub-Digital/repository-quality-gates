@@ -119,8 +119,10 @@ jobs:
           import os
           import smtplib
           import ssl
+          from collections import Counter
           from contextlib import suppress
           from email.message import EmailMessage
+          from email.utils import formataddr, parseaddr
 
           required = (
               "SMTP_HOST",
@@ -153,12 +155,16 @@ jobs:
                   raise RuntimeError("The private rollout report contains an invalid row.")
               normalized.append({
                   "repository": clean_cell(row.get("repository") or "Unavailable", 300),
+                  "visibility": clean_cell(row.get("visibility") or "Unavailable", 20),
+                  "runner": clean_cell(row.get("runner") or "Unavailable", 300),
                   "status": clean_cell(row.get("status") or "Unknown", 100),
                   "comment": clean_cell(row.get("comment"), 4000),
               })
           if not normalized:
               normalized.append({
                   "repository": "Unavailable",
+                  "visibility": "Unavailable",
+                  "runner": clean_cell(os.environ.get("RUNNER_NAME") or "Unavailable", 300),
                   "status": "Unknown",
                   "comment": "No structured repository result was available. Review the sanitized workflow artifact.",
               })
@@ -166,19 +172,30 @@ jobs:
           outcome = os.environ.get("ROLLOUT_OUTCOME", "unknown").upper()
           release_tag = os.environ.get("RELEASE_TAG", "").strip() or "unresolved"
           run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          status_counts = sorted(Counter(row["status"] for row in normalized).items())
           widths = {
               key: max(len(title), *(len(row[key]) for row in normalized))
-              for key, title in (("repository", "Repository"), ("status", "Status"), ("comment", "Comment"))
+              for key, title in (("repository", "Repository"), ("visibility", "Visibility"), ("runner", "Runner"), ("status", "Status"), ("comment", "Comment"))
           }
-          header = f"{'Repository':<{widths['repository']}} | {'Status':<{widths['status']}} | Comment"
-          divider = f"{'-' * widths['repository']}-+-{'-' * widths['status']}-+-{'-' * widths['comment']}"
+          header = f"{'Repository':<{widths['repository']}} | {'Visibility':<{widths['visibility']}} | {'Runner':<{widths['runner']}} | {'Status':<{widths['status']}} | Comment"
+          divider = f"{'-' * widths['repository']}-+-{'-' * widths['visibility']}-+-{'-' * widths['runner']}-+-{'-' * widths['status']}-+-{'-' * widths['comment']}"
           text_rows = [
-              f"{row['repository']:<{widths['repository']}} | {row['status']:<{widths['status']}} | {row['comment']}"
+              f"{row['repository']:<{widths['repository']}} | {row['visibility']:<{widths['visibility']}} | {row['runner']:<{widths['runner']}} | {row['status']:<{widths['status']}} | {row['comment']}"
               for row in normalized
           ]
+          text_summary = "\n".join(f"{status}: {quantity}" for status, quantity in status_counts)
+          html_summary_rows = "".join(
+              "<tr>"
+              f"<td style=\"border:1px solid #999;padding:6px\">{html.escape(status)}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;text-align:right\">{quantity}</td>"
+              "</tr>"
+              for status, quantity in status_counts
+          )
           html_rows = "".join(
               "<tr>"
               f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">{html.escape(row['repository'])}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">{html.escape(row['visibility'])}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">{html.escape(row['runner'])}</td>"
               f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">{html.escape(row['status'])}</td>"
               f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top\">{html.escape(row['comment'])}</td>"
               "</tr>"
@@ -187,13 +204,18 @@ jobs:
 
           message = EmailMessage()
           message["Subject"] = f"[RQG] Fleet Rollout {outcome}: {release_tag}"
-          message["From"] = os.environ["MESSAGE_FROM"]
-          message["To"] = os.environ["MESSAGE_TO"]
+          from_address = parseaddr(os.environ["MESSAGE_FROM"])[1]
+          to_address = parseaddr(os.environ["MESSAGE_TO"])[1]
+          if not from_address or not to_address:
+              raise RuntimeError("The configured report sender or recipient address is invalid.")
+          message["From"] = formataddr(("Cloud Hub GitHub Repository Quality Gates", from_address))
+          message["To"] = formataddr(("Terry Rogers", to_address))
           message.set_content(
               "Repository Quality Gates fleet rollout report\n\n"
               f"Release: {release_tag}\n"
               f"Outcome: {outcome}\n"
               f"Workflow run: {run_url}\n\n"
+              f"Status Summary\n{text_summary}\n\n"
               f"{header}\n{divider}\n" + "\n".join(text_rows)
           )
           message.add_alternative(
@@ -202,8 +224,16 @@ jobs:
               f"<p><strong>Release:</strong> {html.escape(release_tag)}<br>"
               f"<strong>Outcome:</strong> {html.escape(outcome)}<br>"
               f"<strong>Workflow Run:</strong> <a href=\"{html.escape(run_url, quote=True)}\">{html.escape(run_url)}</a></p>"
+              "<h2>Status Summary</h2>"
+              "<table style=\"border-collapse:collapse;border:1px solid #999\"><thead><tr>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Status</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:right;background:#f2f2f2\">Qty</th>"
+              "</tr></thead><tbody>" + html_summary_rows + "</tbody></table>"
+              "<h2>Repository Details</h2>"
               "<table style=\"border-collapse:collapse;border:1px solid #999;width:100%\"><thead><tr>"
               "<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Repository</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Visibility</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Runner</th>"
               "<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Status</th>"
               "<th style=\"border:1px solid #999;padding:6px;text-align:left;background:#f2f2f2\">Comment</th>"
               "</tr></thead><tbody>" + html_rows + "</tbody></table></body></html>",
