@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.5.7 - 2026-09-25
+
+### Fixed
+
+- Refreshed the GitHub App JWT before requesting each installation token so long-running fleet updates can authenticate every installation after earlier installations take more than ten minutes.
+- Added regression coverage proving that every installation token request uses a newly generated App JWT.
+
 ## 1.5.6 - 2026-09-25
 
 ### Changed

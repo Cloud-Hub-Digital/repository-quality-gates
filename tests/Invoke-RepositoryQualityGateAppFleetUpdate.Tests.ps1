@@ -78,6 +78,13 @@ try {
     }
     finally { $rsa.Dispose() }
 
+    $script:jwtSequence = 0
+    function New-GitHubAppJwt([string]$ApplicationId, [string]$PemPrivateKey) {
+        $script:jwtSequence++
+        return "synthetic-jwt-$script:jwtSequence"
+    }
+    $script:installationTokenJwtHeaders = [Collections.Generic.List[string]]::new()
+
     New-Item -ItemType Directory -Path (Join-Path $testRoot 'scripts') -Force | Out-Null
     $recordPath = Join-Path $testRoot 'fleet-records.jsonl'
 $fakeFleet = @'
@@ -121,6 +128,7 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
             return
         }
         if ($Method -eq 'Post' -and $Uri -match '/app/installations/(?<id>\d+)/access_tokens$') {
+            $script:installationTokenJwtHeaders.Add([string]$Headers.Authorization)
             if ($env:RQG_TEST_TOKEN_FAIL_FIRST -eq '1' -and $Matches.id -eq '101') { throw 'Synthetic token issuance failure.' }
             return [pscustomobject]@{ token = "installation-token-$($Matches.id)" }
         }
@@ -169,6 +177,8 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($records[0].repositories[0] -eq 'first-owner/one') 'The first installation should receive only its repository list.'
         Assert-True ($records[1].repositories[0] -eq 'second-owner/two') 'The second installation should receive only its repository list.'
         Assert-True ($records[0].token -eq 'installation-token-101' -and $records[1].token -eq 'installation-token-202') 'Each installation should use its own short-lived token.'
+        Assert-True ($script:installationTokenJwtHeaders.Count -eq 2) 'Each installation should request its own installation token.'
+        Assert-True ($script:installationTokenJwtHeaders[0] -ne $script:installationTokenJwtHeaders[1]) 'Each installation token request should use a freshly generated GitHub App JWT.'
         Assert-True ($records[0].gitConfigCount -eq '1' -and $records[1].gitConfigCount -eq '1') 'Git should receive one temporary authentication configuration entry.'
         Assert-True ($records[0].gitConfigKey -eq 'http.https://github.com/.extraheader') 'Git authentication should be scoped to HTTPS requests for github.com.'
         $expectedHeader = 'AUTHORIZATION: basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('x-access-token:installation-token-101'))

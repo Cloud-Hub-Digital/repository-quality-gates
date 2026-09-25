@@ -187,8 +187,10 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
     $fleetTool = Join-Path ([IO.Path]::GetFullPath($ResolvedTemplateRoot)) 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'
     if (-not (Test-Path -LiteralPath $fleetTool -PathType Leaf)) { throw 'The fleet updater is missing.' }
 
-    $jwt = New-GitHubAppJwt $ApplicationId $PemPrivateKey
-    $installations = @(Get-GitHubAppInstallations $jwt)
+    $discoveryJwt = New-GitHubAppJwt $ApplicationId $PemPrivateKey
+    Write-Host "::add-mask::$discoveryJwt"
+    $installations = @(Get-GitHubAppInstallations $discoveryJwt)
+    Remove-Variable discoveryJwt -ErrorAction SilentlyContinue
     if (-not $installations.Count) { throw 'The GitHub App has no accessible installations.' }
 
     $originalToken = $env:GH_TOKEN
@@ -199,6 +201,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
     $privateReportRows = [Collections.Generic.List[object]]::new()
     try {
         foreach ($installation in $installations) {
+            $installationJwt = $null
             $token = $null
             $basicCredential = $null
             $authorizationHeader = $null
@@ -212,7 +215,12 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
             try {
                 $installationOwner = [string]$installation.account.login
                 if ($installationOwner) { Write-Host "::add-mask::$installationOwner" }
-                $token = New-GitHubAppInstallationToken $jwt ([long]$installation.id)
+                # GitHub App JWTs are valid for at most ten minutes. A fleet can
+                # spend hours processing one installation, so create a fresh JWT
+                # immediately before requesting each installation token.
+                $installationJwt = New-GitHubAppJwt $ApplicationId $PemPrivateKey
+                Write-Host "::add-mask::$installationJwt"
+                $token = New-GitHubAppInstallationToken $installationJwt ([long]$installation.id)
                 $env:GH_TOKEN = $token
                 $basicCredential = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("x-access-token:$token"))
                 $authorizationHeader = "AUTHORIZATION: basic $basicCredential"
@@ -253,7 +261,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 $installationFailed = $true
                 $installationFailureComment = New-RqgInstallationFailureComment -Stage $installationStage -Cause $_.Exception.Message
                 $maskedInstallationFailureComment = $installationFailureComment
-                foreach ($secretValue in @($token, $authorizationHeader, $basicCredential)) {
+                foreach ($secretValue in @($installationJwt, $token, $authorizationHeader, $basicCredential)) {
                     if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
                         $maskedInstallationFailureComment = $maskedInstallationFailureComment.Replace([string]$secretValue, '***')
                     }
@@ -268,7 +276,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                             $installationResult = $resultBytes | ConvertFrom-Json
                             foreach ($repositoryResult in @($installationResult.repositories)) {
                                 $privateDetail = [string]$repositoryResult.detail
-                                foreach ($secretValue in @($token, $authorizationHeader, $basicCredential)) {
+                                foreach ($secretValue in @($installationJwt, $token, $authorizationHeader, $basicCredential)) {
                                     if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
                                         $privateDetail = $privateDetail.Replace([string]$secretValue, '***')
                                     }
@@ -293,7 +301,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                     }
                     $installationFailureComment = New-RqgInstallationFailureComment -Stage 'Structured result processing' -Cause $_.Exception.Message
                     $maskedInstallationFailureComment = $installationFailureComment
-                    foreach ($secretValue in @($token, $authorizationHeader, $basicCredential)) {
+                    foreach ($secretValue in @($installationJwt, $token, $authorizationHeader, $basicCredential)) {
                         if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
                             $maskedInstallationFailureComment = $maskedInstallationFailureComment.Replace([string]$secretValue, '***')
                         }
@@ -304,7 +312,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                     Remove-Item -LiteralPath $installationResultPath -Force -ErrorAction SilentlyContinue
                 }
                 if ($installationFailureComment -and $installationRowsAdded -eq 0) {
-                    foreach ($secretValue in @($token, $authorizationHeader, $basicCredential)) {
+                    foreach ($secretValue in @($installationJwt, $token, $authorizationHeader, $basicCredential)) {
                         if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
                             $installationFailureComment = $installationFailureComment.Replace([string]$secretValue, '***')
                         }
@@ -334,6 +342,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 if ($null -eq $originalGitConfigValue0) { Remove-Item Env:\GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue }
                 else { $env:GIT_CONFIG_VALUE_0 = $originalGitConfigValue0 }
                 Remove-Variable token -ErrorAction SilentlyContinue
+                Remove-Variable installationJwt -ErrorAction SilentlyContinue
                 Remove-Variable basicCredential -ErrorAction SilentlyContinue
                 Remove-Variable authorizationHeader -ErrorAction SilentlyContinue
             }
