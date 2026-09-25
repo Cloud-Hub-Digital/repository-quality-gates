@@ -46,7 +46,11 @@ function Get-WorkflowRunnerNames([string]$RepositoryName, [object[]]$Checks) {
             $null = $runnerNames.Add($runnerName)
         }
     }
-    return @($runnerNames | Sort-Object)
+    $sortedRunnerNames = @($runnerNames | Sort-Object)
+    foreach ($runnerName in $sortedRunnerNames) {
+        Write-Host "::add-mask::$runnerName"
+    }
+    return $sortedRunnerNames
 }
 
 function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullRequestUrl) {

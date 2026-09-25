@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "templateVersion": "1.5.7",
+  "templateVersion": "1.5.8",
   "modules": [
     "documentation",
     "licensing",

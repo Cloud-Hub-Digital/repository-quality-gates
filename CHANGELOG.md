@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.5.8 - 2026-09-25
+
+### Fixed
+
+- Registered every discovered workflow runner name with GitHub Actions masking before writing retained rollout output, so the public diagnostic artifact excludes both private self-hosted and GitHub-hosted runner identities while the private email keeps the actual names.
+- Added regression coverage for runner-name masking in retained workflow output.
+
 ## 1.5.7 - 2026-09-25
 
 ### Fixed

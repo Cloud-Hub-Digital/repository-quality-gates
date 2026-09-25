@@ -119,6 +119,7 @@ try {
         Assert-True ($fleetText.Contains('commits/$headSha/check-runs?per_page=100')) 'Automatic updates should read check results through the least-privilege Checks API.'
         Assert-True ($fleetText.Contains(".check_runs[] | {name,status,conclusion,details_url}")) 'Automatic updates should retain each check-run URL needed to identify its workflow run.'
         Assert-True ($fleetText.Contains('actions/runs/$runId/jobs?per_page=100')) 'Automatic updates should inspect workflow jobs to identify the downstream self-hosted runners actually used.'
+        Assert-True ($fleetText.Contains('Write-Host "::add-mask::$runnerName"')) 'Every discovered runner name should be registered for masking before public workflow output is retained.'
         Assert-True ($fleetText.Contains("`$exception.Data['RunnerNames'] = `$runnerNames")) 'Failed checks should preserve their runner assignments for the private email report.'
         Assert-True (-not $fleetText.Contains('statusCheckRollup')) 'Automatic updates should not request broader workflow-run metadata through GraphQL.'
         Assert-True ($fleetText.Contains("status = 'MergedAfterChecks'")) 'Automatic updates should report only a verified post-check merge as merged.'
