@@ -10,6 +10,8 @@
 - Added Visibility and Runner columns between Repository and Status in the fully bordered report table.
 - Set the report sender name to `Cloud Hub GitHub Repository Quality Gates` and the recipient name to `Terry Rogers` while continuing to source addresses from protected GitHub settings.
 - Replaced GitHub CLI repository discovery with the authenticated GitHub App installation API so organization repositories, visibility, and complete structured report rows are retained consistently.
+- Synchronized the embedded deployment engine with the canonical 1.5.5 version so central module reconciliation cannot downgrade release metadata before publication.
+- Corrected stale automatic-release handling so a main-branch change always produces a valid empty workflow-result document and exits as a deliberate skip.
 
 ## 1.5.4 - 2026-09-25
 

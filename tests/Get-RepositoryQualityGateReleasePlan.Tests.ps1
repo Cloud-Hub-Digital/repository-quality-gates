@@ -51,6 +51,9 @@ function Invoke-Plan([string]$Fixture, [hashtable]$Extra = @{}) {
 }
 
 try {
+    $workflowText = Get-Content -LiteralPath (Join-Path $root '.github\workflows\automatic-release.yml') -Raw
+    Assert-True ($workflowText.Contains('ConvertTo-Json -InputObject @()')) 'A stale release run should write a valid empty workflow-result document.'
+
     $fixture = Write-Fixture -IncludeChangelog
     $result = Invoke-Plan $fixture
     Assert-True $result.Succeeded 'A valid stable release plan should succeed.'

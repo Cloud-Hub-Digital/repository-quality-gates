@@ -56,7 +56,7 @@ jobs:
             $mainSha = (gh api "repos/$env:GITHUB_REPOSITORY/commits/main" --jq .sha).Trim()
             if ($LASTEXITCODE -ne 0) { throw 'Unable to confirm the current main commit.' }
             if ($mainSha -ne $env:SOURCE_SHA) {
-              @() | ConvertTo-Json | Set-Content -LiteralPath checks.json -Encoding utf8
+              ConvertTo-Json -InputObject @() | Set-Content -LiteralPath checks.json -Encoding utf8
               $mainSha | Set-Content -LiteralPath remote-main.txt -Encoding ascii
               exit 0
             }
