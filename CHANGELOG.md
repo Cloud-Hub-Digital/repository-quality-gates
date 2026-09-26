@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.5.9 - 2026-09-26
+
+### Fixed
+
+- Reconciled exact GitHub-hosted `runs-on` selectors in repository-owned workflows so trusted events in private repositories use their configured Windows or Linux self-hosted runner labels.
+- Preserved the workflow's original GitHub-hosted selector for public repositories and pull requests from forks.
+- Added regression coverage for Linux and Windows repository-owned workflow routing during managed updates.
+
 ## 1.5.8 - 2026-09-25
 
 ### Fixed

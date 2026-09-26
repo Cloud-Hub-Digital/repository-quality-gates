@@ -65,7 +65,7 @@ try {
     Assert-True ($applyJson.status -eq 'Updated') 'Apply should report an updated repository.'
     Assert-True ($applyJson.changedPaths -contains '.repository-quality-gates.json') 'The update should refresh managed state.'
     $updatedState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    Assert-True ($updatedState.templateVersion -eq '1.5.8') 'Managed state should record the new template version.'
+    Assert-True ($updatedState.templateVersion -eq '1.5.9') 'Managed state should record the new template version.'
     Commit-All $managed 'update quality gates'
 
     $current = Invoke-Update $managed
@@ -113,7 +113,7 @@ try {
     $enrollmentApplyJson = $enrollmentApply.Output | ConvertFrom-Json
     Assert-True ($enrollmentApplyJson.status -eq 'Enrolled') 'Applied initial enrolment should report Enrolled.'
     $enrolledState = Get-Content -LiteralPath (Join-Path $unmanaged '.repository-quality-gates.json') -Raw | ConvertFrom-Json
-    Assert-True ($enrolledState.templateVersion -eq '1.5.8') 'Initial enrolment should record the current template version.'
+    Assert-True ($enrolledState.templateVersion -eq '1.5.9') 'Initial enrolment should record the current template version.'
     Assert-True (Test-Path -LiteralPath (Join-Path $unmanaged '.github\workflows\secret-scanning.yml')) 'Initial enrolment should deploy the selected quality-gate workflows.'
 
     $overlap = Join-Path $testRoot 'overlap'
@@ -133,7 +133,8 @@ try {
     & git -C $legacyPreserved config user.name 'Fixture'
     & git -C $legacyPreserved config user.email 'fixture@example.invalid'
     New-Item -ItemType Directory -Path (Join-Path $legacyPreserved '.github\workflows') -Force | Out-Null
-    "name: Existing Documentation Check`nsteps:`n  - run: markdownlint README.md" | Set-Content -LiteralPath (Join-Path $legacyPreserved '.github\workflows\ci.yml') -Encoding utf8
+    "name: Existing Documentation Check`non:`n  push:`njobs:`n  docs:`n    runs-on: ubuntu-latest`n    steps:`n      - run: markdownlint README.md" | Set-Content -LiteralPath (Join-Path $legacyPreserved '.github\workflows\ci.yml') -Encoding utf8
+    "name: Existing Windows Check`non:`n  push:`njobs:`n  validate:`n    runs-on: windows-latest`n    steps:`n      - run: echo ok" | Set-Content -LiteralPath (Join-Path $legacyPreserved '.github\workflows\windows-custom.yml') -Encoding utf8
     '# Legacy Preservation Fixture' | Set-Content -LiteralPath (Join-Path $legacyPreserved 'README.md') -Encoding utf8
     Commit-All $legacyPreserved 'initial legacy preservation fixture'
     $null = @(& pwsh -NoProfile -File $deploymentTool -RepositoryPath $legacyPreserved -Apply -PreserveExistingModule documentation -OutputFormat Json 2>&1)
@@ -152,6 +153,12 @@ try {
     Assert-True ($migratedRules.modules.repositoryOwned -contains 'documentation') 'The migrated rules file should retain the repository-owned module decision.'
     $migratedState = Get-Content -LiteralPath $legacyStatePath -Raw | ConvertFrom-Json
     Assert-True (@($migratedState.files | Where-Object path -eq '.repository-quality-gates.local.json').Count -eq 0) 'The migrated downstream rules file must remain outside managed state.'
+    $repositoryOwnedLinuxWorkflow = Get-Content -LiteralPath (Join-Path $legacyPreserved '.github\workflows\ci.yml') -Raw
+    $repositoryOwnedWindowsWorkflow = Get-Content -LiteralPath (Join-Path $legacyPreserved '.github\workflows\windows-custom.yml') -Raw
+    Assert-True ($repositoryOwnedLinuxWorkflow.Contains('vars.RQG_LINUX_RUNS_ON')) 'A repository-owned Linux workflow should route private events through the configured Linux runner.'
+    Assert-True ($repositoryOwnedLinuxWorkflow.Contains('!github.event.repository.private')) 'A repository-owned Linux workflow should retain GitHub-hosted routing for public repositories.'
+    Assert-True ($repositoryOwnedWindowsWorkflow.Contains('vars.RQG_WINDOWS_RUNS_ON')) 'A repository-owned Windows workflow should route private events through the configured Windows runner.'
+    Assert-True ($repositoryOwnedWindowsWorkflow.Contains('["windows-latest"]')) 'A repository-owned Windows workflow should preserve its original hosted fallback.'
 
     $legacySecret = Join-Path $testRoot 'legacy-secret-preservation'
     New-Item -ItemType Directory -Path $legacySecret | Out-Null

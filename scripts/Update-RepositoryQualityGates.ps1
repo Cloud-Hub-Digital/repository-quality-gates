@@ -43,6 +43,33 @@ function Write-Result([Collections.IDictionary]$Result) {
     }
 }
 
+function Update-WorkflowRunnerRouting([string]$RepositoryRoot) {
+    $workflowDirectory = Join-Path $RepositoryRoot '.github\workflows'
+    if (-not (Test-Path -LiteralPath $workflowDirectory -PathType Container)) { return }
+
+    $linuxExpression = '${{ fromJSON(((github.event_name == ''pull_request'' && github.event.pull_request.head.repo.full_name != github.repository) || !github.event.repository.private) && ''["ubuntu-latest"]'' || (vars.RQG_LINUX_RUNS_ON || ''["ubuntu-latest"]'')) }}'
+    $windowsLatestExpression = '${{ fromJSON(((github.event_name == ''pull_request'' && github.event.pull_request.head.repo.full_name != github.repository) || !github.event.repository.private) && ''["windows-latest"]'' || (vars.RQG_WINDOWS_RUNS_ON || ''["windows-latest"]'')) }}'
+    $windows2025Expression = '${{ fromJSON(((github.event_name == ''pull_request'' && github.event.pull_request.head.repo.full_name != github.repository) || !github.event.repository.private) && ''["windows-2025"]'' || (vars.RQG_WINDOWS_RUNS_ON || ''["windows-2025"]'')) }}'
+    $selectorPattern = '(?m)^(?<indent>[ \t]*)runs-on:[ \t]*(?<quote>["'']?)(?<label>ubuntu-latest|windows-latest|windows-2025)\k<quote>(?<suffix>[ \t]*(?:#.*)?)$'
+
+    foreach ($workflow in @(Get-ChildItem -LiteralPath $workflowDirectory -File | Where-Object { $_.Extension -in @('.yml', '.yaml') })) {
+        $original = [IO.File]::ReadAllText($workflow.FullName)
+        $updated = [regex]::Replace($original, $selectorPattern, {
+            param($match)
+            $expression = switch ([string]$match.Groups['label'].Value) {
+                'ubuntu-latest' { $linuxExpression }
+                'windows-latest' { $windowsLatestExpression }
+                'windows-2025' { $windows2025Expression }
+                default { throw "Unsupported hosted runner selector: $($match.Groups['label'].Value)" }
+            }
+            return $match.Groups['indent'].Value + 'runs-on: ' + $expression + $match.Groups['suffix'].Value
+        })
+        if ($updated -cne $original) {
+            [IO.File]::WriteAllText($workflow.FullName, $updated, [Text.UTF8Encoding]::new($false))
+        }
+    }
+}
+
 $inputPath = [IO.Path]::GetFullPath($RepositoryPath)
 $rootOutput = @(& git -C $inputPath rev-parse --show-toplevel 2>&1)
 if ($LASTEXITCODE -ne 0) { throw 'The target is not inside a Git repository.' }
@@ -174,6 +201,12 @@ if ($migrateRepositoryRules) {
     $rulesJson = ($rules | ConvertTo-Json -Depth 6).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"
     [IO.File]::WriteAllText($rulesPath, $rulesJson, [Text.UTF8Encoding]::new($false))
 }
+
+# Repository-owned workflows remain outside RQG module management, but their
+# runner selection must still follow the repository visibility policy. Exact
+# GitHub-hosted selectors stay the public and fork-pull-request fallback while
+# trusted private events use the repository's configured runner labels.
+Update-WorkflowRunnerRouting -RepositoryRoot $repositoryRoot
 
 $powerShellHost = Get-Command pwsh -ErrorAction SilentlyContinue
 if (-not $powerShellHost) { throw 'PowerShell 7 (pwsh) is required to update Repository Quality Gates.' }
