@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "profile": "downstream",
+  "account": "Cloud-Hub-Digital",
+  "centralRepository": "https://github.com/Cloud-Hub-Digital/.github",
+  "licence": "MIT",
+  "supportRoute": "github-discussions",
+  "conductRoute": "confidential-email"
+}

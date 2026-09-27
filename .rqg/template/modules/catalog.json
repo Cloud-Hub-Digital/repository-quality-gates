@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "modules": [
+    {
+      "id": "licensing",
+      "description": "Universal attribution for Repository Quality Gates components.",
+      "always": true,
+      "source": "modules/licensing/payload",
+      "overlapPatterns": []
+    },
+    {
+      "id": "secret-scanning",
+      "description": "Universal local and GitHub secret scanning.",
+      "always": true,
+      "source": "template",
+      "exclude": [".gitignore.secret-scanning.fragment"],
+      "gitignoreFragment": "template/.gitignore.secret-scanning.fragment",
+      "overlapPatterns": ["gitleaks", "secret scan", "secret scanning"]
+    },
+    {
+      "id": "module-drift",
+      "description": "Automatic reconciliation of newly required and obsolete quality-gate modules.",
+      "always": true,
+      "source": "modules/module-drift/payload",
+      "overlapPatterns": ["quality gate module drift", "Test-QualityGateModuleDrift"]
+    },
+    {
+      "id": "powershell",
+      "description": "PowerShell parser validation.",
+      "source": "modules/powershell/payload",
+      "detect": { "extensions": [".ps1", ".psm1", ".psd1"] },
+      "overlapPatterns": ["powershell syntax", "psscriptanalyzer", "parser]::parsefile"]
+    },
+    {
+      "id": "dotnet",
+      "description": ".NET restore, build, and headless test validation.",
+      "source": "modules/dotnet/payload",
+      "detect": { "extensions": [".sln", ".slnx", ".csproj", ".fsproj", ".vbproj"] },
+      "overlapPatterns": ["dotnet test", "dotnet build"]
+    },
+    {
+      "id": "node",
+      "description": "JavaScript syntax plus Node package or dependency-free test validation.",
+      "source": "modules/node/payload",
+      "detect": { "fileNames": ["package.json"], "extensions": [".js", ".mjs", ".cjs"] },
+      "overlapPatterns": ["node --check", "npm ci", "npm test", "pnpm", "yarn"]
+    },
+    {
+      "id": "python",
+      "description": "Python compilation and project test validation.",
+      "source": "modules/python/payload",
+      "detect": {
+        "fileNames": ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "requirements-dev.txt", "Pipfile"],
+        "extensions": [".py"]
+      },
+      "overlapPatterns": ["pytest", "compileall", "ruff", "python -m"]
+    },
+    {
+      "id": "php",
+      "description": "PHP syntax validation plus Composer installation and tests when configured.",
+      "source": "modules/php/payload",
+      "detect": { "fileNames": ["composer.json"], "extensions": [".php"] },
+      "overlapPatterns": ["php -l", "composer validate", "composer install", "phpunit"]
+    },
+    {
+      "id": "shell",
+      "description": "Shell script syntax validation.",
+      "source": "modules/shell/payload",
+      "detect": { "extensions": [".sh", ".bash"] },
+      "overlapPatterns": ["bash -n", "shellcheck"]
+    },
+    {
+      "id": "platformio",
+      "description": "PlatformIO firmware builds.",
+      "source": "modules/platformio/payload",
+      "detect": { "fileNames": ["platformio.ini"] },
+      "overlapPatterns": ["platformio", "pio run"]
+    },
+    {
+      "id": "go",
+      "description": "Go formatting, vetting, testing, and build validation.",
+      "source": "modules/go/payload",
+      "detect": { "fileNames": ["go.mod", "go.work"] },
+      "overlapPatterns": ["setup-go", "go vet", "go test", "go build"]
+    },
+    {
+      "id": "documentation",
+      "description": "Basic Markdown hygiene checks.",
+      "source": "modules/documentation/payload",
+      "detect": { "extensions": [".md", ".markdown"] },
+      "overlapPatterns": ["markdownlint", "markdown check"]
+    }
+  ]
+}
