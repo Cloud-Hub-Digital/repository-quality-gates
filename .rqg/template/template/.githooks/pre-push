@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+exec pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/Test-Secrets.ps1 -Mode Push

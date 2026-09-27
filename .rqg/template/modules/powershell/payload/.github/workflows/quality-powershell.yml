@@ -1,0 +1,41 @@
+name: PowerShell Quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    name: PowerShell And Regression Tests
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) || !github.event.repository.private) && '["windows-2025"]' || (vars.RQG_WINDOWS_RUNS_ON || '["windows-2025"]')) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Parse PowerShell Files
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem -Recurse -File | Where-Object {
+            $_.Extension.ToLowerInvariant() -in @('.ps1', '.psm1', '.psd1') -and
+            $_.FullName -notmatch '[\\/](\.git|node_modules|vendor|bin|obj)[\\/]'
+          } | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors) { $errors += $parseErrors }
+          }
+          if ($errors) { $errors | Format-List | Out-String | Write-Error; exit 1 }
+      - name: Run Synthetic Deployment Tests
+        if: ${{ hashFiles('tests/Invoke-RepositoryQualityGates.Tests.ps1') != '' }}
+        shell: pwsh
+        run: ./tests/Invoke-RepositoryQualityGates.Tests.ps1
+      - name: Run Automatic Update Tests
+        if: ${{ hashFiles('tests/Update-RepositoryQualityGates.Tests.ps1') != '' }}
+        shell: pwsh
+        run: ./tests/Update-RepositoryQualityGates.Tests.ps1

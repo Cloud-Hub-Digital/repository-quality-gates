@@ -1,0 +1,298 @@
+name: Update Managed Repositories
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Exact stable release tag to deploy; leave empty to use the latest release.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-quality-gates-fleet-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update Downstream Repository Quality Gates
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) || !github.event.repository.private) && '["windows-2025"]' || (vars.RQG_WINDOWS_RUNS_ON || '["windows-2025"]')) }}
+    timeout-minutes: 120
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Resolve Stable Release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_RELEASE_TAG: ${{ inputs.release_tag }}
+          PUBLISHED_RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          $tag = ([string]$env:REQUESTED_RELEASE_TAG).Trim()
+          if (-not $tag) { $tag = ([string]$env:PUBLISHED_RELEASE_TAG).Trim() }
+          if (-not $tag) {
+            $tag = (gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $tag) { throw 'Unable to resolve the latest stable Repository Quality Gates release.' }
+          }
+          if ($tag -notmatch '^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$') { throw 'The requested Repository Quality Gates release tag is not a stable semantic version.' }
+          $release = gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $release.tagName -ne $tag -or $release.isDraft -or $release.isPrerelease) { throw 'The requested Repository Quality Gates release is not a published stable release.' }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          persist-credentials: false
+
+      - name: Update Installed Repository Fleets
+        id: rollout
+        continue-on-error: true
+        shell: pwsh
+        env:
+          RQG_APP_ID: ${{ vars.RQG_APP_ID }}
+          RQG_APP_PRIVATE_KEY: ${{ secrets.RQG_APP_PRIVATE_KEY }}
+        run: |
+          $reportPath = Join-Path $env:GITHUB_WORKSPACE 'rollout-report.txt'
+          $privateReportDirectory = Join-Path $env:GITHUB_WORKSPACE '.rqg-private'
+          $privateReportPath = Join-Path $privateReportDirectory 'email-report.json'
+          New-Item -ItemType Directory -Path $privateReportDirectory -Force | Out-Null
+          $maskedValues = [Collections.Generic.List[string]]::new()
+          function ConvertTo-SanitizedReportLine([string]$Line) {
+            foreach ($value in @($maskedValues | Sort-Object Length -Descending)) {
+              if ($value) { $Line = $Line.Replace($value, '***') }
+            }
+            return $Line
+          }
+          try {
+            ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply -AutoMerge -PrivateReportPath $privateReportPath *>&1 |
+              ForEach-Object {
+                $line = [string]$_
+                Write-Host $line
+                if ($line -match '^::add-mask::(?<value>.+)$') {
+                  $maskedValues.Add([string]$Matches.value)
+                }
+                else {
+                  (ConvertTo-SanitizedReportLine $line) | Out-File -LiteralPath $reportPath -Encoding utf8 -Append
+                }
+              }
+          }
+          catch {
+            $failure = $_ | Out-String
+            Write-Host $failure
+            (ConvertTo-SanitizedReportLine $failure) | Out-File -LiteralPath $reportPath -Encoding utf8 -Append
+            exit 1
+          }
+
+      - name: Preserve Fleet Rollout Report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: fleet-rollout-report-${{ github.run_id }}
+          path: rollout-report.txt
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Email Fleet Rollout Report
+        if: ${{ always() && vars.RQG_REPORT_EMAIL_ENABLED == 'true' }}
+        shell: bash
+        env:
+          ROLLOUT_OUTCOME: ${{ steps.rollout.outcome }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          PRIVATE_REPORT_PATH: ${{ github.workspace }}/.rqg-private/email-report.json
+          SMTP_HOST: ${{ vars.RQG_REPORT_SMTP_HOST }}
+          SMTP_PORT: ${{ vars.RQG_REPORT_SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.RQG_REPORT_SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.RQG_REPORT_SMTP_PASSWORD }}
+          MESSAGE_FROM: ${{ secrets.RQG_REPORT_FROM }}
+          MESSAGE_TO: ${{ secrets.RQG_REPORT_TO }}
+        run: |
+          python - <<'PY'
+          import html
+          import json
+          import os
+          import smtplib
+          import ssl
+          from collections import Counter
+          from contextlib import suppress
+          from email.message import EmailMessage
+          from email.utils import formataddr, parseaddr
+
+          required = (
+              "SMTP_HOST",
+              "SMTP_PORT",
+              "SMTP_USERNAME",
+              "SMTP_PASSWORD",
+              "MESSAGE_FROM",
+              "MESSAGE_TO",
+          )
+          missing = [name for name in required if not os.environ.get(name, "").strip()]
+          if missing:
+              raise RuntimeError("Missing required GitHub Actions settings: " + ", ".join(missing))
+
+          report_path = os.environ["PRIVATE_REPORT_PATH"]
+          if os.path.isfile(report_path):
+              with open(report_path, "r", encoding="utf-8", errors="strict") as report_file:
+                  rows = json.load(report_file)
+              if not isinstance(rows, list):
+                  raise RuntimeError("The private rollout report is not a JSON array.")
+          else:
+              rows = []
+
+          def clean_cell(value, limit):
+              text = " ".join(str(value or "").split())
+              return text if len(text) <= limit else text[:limit - 3] + "..."
+
+          def clean_multiline_cell(value, limit):
+              lines = [
+                  " ".join(line.split())
+                  for line in str(value or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+                  if line.strip()
+              ]
+              text = "\n".join(lines)
+              return text if len(text) <= limit else text[:limit - 3].rstrip() + "..."
+
+          normalized = []
+          for row in rows:
+              if not isinstance(row, dict):
+                  raise RuntimeError("The private rollout report contains an invalid row.")
+              normalized.append({
+                  "repository": clean_cell(row.get("repository") or "Unavailable", 300),
+                  "visibility": clean_cell(row.get("visibility") or "Unavailable", 20),
+                  "runner": clean_multiline_cell(row.get("runner") or "Unavailable", 300),
+                  "status": clean_cell(row.get("status") or "Unknown", 100),
+                  "comment": clean_cell(row.get("comment"), 4000),
+              })
+          if not normalized:
+              normalized.append({
+                  "repository": "Unavailable",
+                  "visibility": "Unavailable",
+                  "runner": clean_multiline_cell(os.environ.get("RUNNER_NAME") or "Unavailable", 300),
+                  "status": "Unknown",
+                  "comment": "No structured repository result was available. Review the sanitized workflow artifact.",
+              })
+
+          outcome = os.environ.get("ROLLOUT_OUTCOME", "unknown").upper()
+          release_tag = os.environ.get("RELEASE_TAG", "").strip() or "unresolved"
+          run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          status_counts = sorted(Counter(row["status"] for row in normalized).items())
+          status_descriptions = {
+              "UpdatedSuccessfully": "All required pull-request checks passed and the update was merged.",
+              "Failed": "The update was not merged because a required operation or check failed.",
+              "EmptyRepository": "The repository has no commits, so no update could be applied.",
+              "Skipped": "The repository was intentionally excluded from this rollout.",
+          }
+          status_labels = {
+              "UpdatedSuccessfully": "Updated Successfully",
+              "Failed": "Failed",
+              "EmptyRepository": "Empty Repository",
+              "Skipped": "Skipped",
+          }
+          text_rows = [
+              "\n".join((
+                  f"Repository: {row['repository']}",
+                  f"Visibility: {row['visibility']}",
+                  "Runner:\n  " + row["runner"].replace("\n", "\n  "),
+                  f"Status: {status_labels.get(row['status'], row['status'])}",
+                  f"Comment: {row['comment']}",
+              ))
+              for row in normalized
+          ]
+          text_summary = "\n".join(
+              f"{status_labels.get(status, status)}: {quantity}"
+              for status, quantity in status_counts
+          )
+          text_status_guide = "\n".join(
+              f"{status_labels.get(status, status)}: {status_descriptions[status]}"
+              for status, _ in status_counts
+              if status in status_descriptions
+          )
+          html_summary_rows = "".join(
+              "<tr>"
+              f"<td style=\"border:1px solid #999;padding:6px\">{html.escape(status_labels.get(status, status))}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;text-align:right\">{quantity}</td>"
+              "</tr>"
+              for status, quantity in status_counts
+          )
+          html_rows = "".join(
+              "<tr>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top;overflow-wrap:anywhere\">{html.escape(row['repository'])}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top;overflow-wrap:anywhere\">{html.escape(row['visibility'])}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top;overflow-wrap:anywhere\">{html.escape(row['runner']).replace(chr(10), '<br>')}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top;overflow-wrap:anywhere\">{html.escape(status_labels.get(row['status'], row['status']))}</td>"
+              f"<td style=\"border:1px solid #999;padding:6px;vertical-align:top;overflow-wrap:anywhere\">{html.escape(row['comment'])}</td>"
+              "</tr>"
+              for row in normalized
+          )
+
+          message = EmailMessage()
+          message["Subject"] = f"[RQG] Fleet Rollout {outcome}: {release_tag}"
+          from_address = parseaddr(os.environ["MESSAGE_FROM"])[1]
+          to_address = parseaddr(os.environ["MESSAGE_TO"])[1]
+          if not from_address or not to_address:
+              raise RuntimeError("The configured report sender or recipient address is invalid.")
+          message["From"] = formataddr(("Cloud Hub GitHub Repository Quality Gates", from_address))
+          message["To"] = formataddr(("Terry Rogers", to_address))
+          message.set_content(
+              "Repository Quality Gates fleet rollout report\n\n"
+              f"Release: {release_tag}\n"
+              f"Outcome: {outcome}\n"
+              f"Workflow run: {run_url}\n\n"
+              f"Status Summary\n{text_summary}\n\n"
+              f"Status Guide\n{text_status_guide}\n\n"
+              "Repository Details\n\n" + "\n\n".join(text_rows)
+          )
+          message.add_alternative(
+              "<!doctype html><html><body>"
+              "<h1>Repository Quality Gates Fleet Rollout Report</h1>"
+              f"<p><strong>Release:</strong> {html.escape(release_tag)}<br>"
+              f"<strong>Outcome:</strong> {html.escape(outcome)}<br>"
+              f"<strong>Workflow Run:</strong> <a href=\"{html.escape(run_url, quote=True)}\">{html.escape(run_url)}</a></p>"
+              "<h2>Status Summary</h2>"
+              "<table style=\"border-collapse:collapse;border:1px solid #999\"><thead><tr>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background-color:#e6e6e6!important;color:#111111!important;font-weight:bold;white-space:nowrap\">Status</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:right;background-color:#e6e6e6!important;color:#111111!important;font-weight:bold;white-space:nowrap\">Qty</th>"
+              "</tr></thead><tbody>" + html_summary_rows + "</tbody></table>"
+              "<h2>Status Guide</h2><ul>"
+              + "".join(
+                  f"<li><strong>{html.escape(status_labels.get(status, status))}:</strong> {html.escape(status_descriptions[status])}</li>"
+                  for status, _ in status_counts
+                  if status in status_descriptions
+              )
+              + "</ul>"
+              "<h2>Repository Details</h2>"
+              "<table style=\"border-collapse:collapse;border:1px solid #999;width:100%;table-layout:fixed\">"
+              "<colgroup><col style=\"width:24%\"><col style=\"width:12%\"><col style=\"width:24%\"><col style=\"width:16%\"><col style=\"width:24%\"></colgroup><thead><tr>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background-color:#e6e6e6!important;color:#111111!important;font-weight:bold;white-space:nowrap\">Repository</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background-color:#e6e6e6!important;color:#111111!important;font-weight:bold;white-space:nowrap\">Visibility</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background-color:#e6e6e6!important;color:#111111!important;font-weight:bold;white-space:nowrap\">Runner</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background-color:#e6e6e6!important;color:#111111!important;font-weight:bold;white-space:nowrap\">Status</th>"
+              "<th style=\"border:1px solid #999;padding:6px;text-align:left;background-color:#e6e6e6!important;color:#111111!important;font-weight:bold;white-space:nowrap\">Comment</th>"
+              "</tr></thead><tbody>" + html_rows + "</tbody></table></body></html>",
+              subtype="html",
+          )
+
+          client = None
+          try:
+              client = smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ["SMTP_PORT"]), timeout=30)
+              client.ehlo()
+              client.starttls(context=ssl.create_default_context())
+              client.ehlo()
+              client.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
+              client.send_message(message)
+          finally:
+              if client is not None:
+                  with suppress(Exception):
+                      client.quit()
+          PY
+
+      - name: Fail When Fleet Rollout Failed
+        if: ${{ always() && steps.rollout.outcome == 'failure' }}
+        shell: pwsh
+        run: throw 'The downstream fleet rollout failed. Review the emailed report and workflow log.'
