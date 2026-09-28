@@ -233,7 +233,7 @@
     {
       "path": "scripts/rqg-module-catalog.json",
       "module": "module-drift",
-      "sha256": "22eb72dd2a794e4a7352ed1152f02292f5ca15b4fcee1a37b45cd76f59a0b15a"
+      "sha256": "ade2b2580b9ef56b750a7c821e4d85a12a9c8263eacab5a0a94bfab523eb385d"
     },
     {
       "path": "scripts/Test-DetectionPolicy.ps1",
@@ -248,7 +248,7 @@
     {
       "path": "scripts/Test-QualityGateModuleDrift.ps1",
       "module": "module-drift",
-      "sha256": "7b88d6eec651f864430e5faede33dea1189db9ab9f9d16a4650a4581317d3b86"
+      "sha256": "10e1661140f2206239d291d0d27f84d5d3047efa1ea2a2b3c79ba1ea71a0b48c"
     },
     {
       "path": "scripts/Test-RepositoryStandards.ps1",

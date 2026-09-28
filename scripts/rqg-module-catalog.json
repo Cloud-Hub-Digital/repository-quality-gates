@@ -85,9 +85,9 @@
     },
     {
       "id": "documentation",
-      "description": "Universal repository-standard enforcement and Markdown hygiene checks.",
-      "always": true,
+      "description": "Basic Markdown hygiene checks.",
       "source": "modules/documentation/payload",
+      "detect": { "extensions": [".md", ".markdown"] },
       "overlapPatterns": ["markdownlint", "markdown check"]
     }
   ]
