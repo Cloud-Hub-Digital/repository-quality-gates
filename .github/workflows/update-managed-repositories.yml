@@ -110,8 +110,10 @@ jobs:
           SMTP_PORT: ${{ vars.RQG_REPORT_SMTP_PORT }}
           SMTP_USERNAME: ${{ secrets.RQG_REPORT_SMTP_USERNAME }}
           SMTP_PASSWORD: ${{ secrets.RQG_REPORT_SMTP_PASSWORD }}
-          MESSAGE_FROM: ${{ secrets.RQG_REPORT_FROM }}
-          MESSAGE_TO: ${{ secrets.RQG_REPORT_TO }}
+          MESSAGE_FROM_EMAIL: ${{ secrets.RQG_REPORT_FROM_EMAIL }}
+          MESSAGE_FROM_NAME: ${{ secrets.RQG_REPORT_FROM_NAME }}
+          MESSAGE_TO_EMAIL: ${{ secrets.RQG_REPORT_TO_EMAIL }}
+          MESSAGE_TO_NAME: ${{ secrets.RQG_REPORT_TO_NAME }}
         run: |
           python - <<'PY'
           import html
@@ -129,8 +131,8 @@ jobs:
               "SMTP_PORT",
               "SMTP_USERNAME",
               "SMTP_PASSWORD",
-              "MESSAGE_FROM",
-              "MESSAGE_TO",
+              "MESSAGE_FROM_EMAIL",
+              "MESSAGE_TO_EMAIL",
           )
           missing = [name for name in required if not os.environ.get(name, "").strip()]
           if missing:
@@ -233,12 +235,14 @@ jobs:
 
           message = EmailMessage()
           message["Subject"] = f"[RQG] Fleet Rollout {outcome}: {release_tag}"
-          from_address = parseaddr(os.environ["MESSAGE_FROM"])[1]
-          to_address = parseaddr(os.environ["MESSAGE_TO"])[1]
+          from_address = parseaddr(os.environ["MESSAGE_FROM_EMAIL"])[1]
+          to_address = parseaddr(os.environ["MESSAGE_TO_EMAIL"])[1]
           if not from_address or not to_address:
               raise RuntimeError("The configured report sender or recipient address is invalid.")
-          message["From"] = formataddr(("Cloud Hub GitHub Repository Quality Gates", from_address))
-          message["To"] = formataddr(("Terry Rogers", to_address))
+          from_name = os.environ.get("MESSAGE_FROM_NAME", "").strip() or from_address
+          to_name = os.environ.get("MESSAGE_TO_NAME", "").strip() or to_address
+          message["From"] = formataddr((from_name, from_address))
+          message["To"] = formataddr((to_name, to_address))
           message.set_content(
               "Repository Quality Gates fleet rollout report\n\n"
               f"Release: {release_tag}\n"

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.1 - 2026-09-28
+
+### Fixed
+
+- Renamed the protected rollout-report mailbox settings to `RQG_REPORT_FROM_EMAIL` and `RQG_REPORT_TO_EMAIL`.
+- Read optional sender and recipient display names from `RQG_REPORT_FROM_NAME` and `RQG_REPORT_TO_NAME`, falling back independently to the corresponding email address when a name is absent or empty.
+
 ## 2.0.0 - 2026-09-27
 
 ### Changed

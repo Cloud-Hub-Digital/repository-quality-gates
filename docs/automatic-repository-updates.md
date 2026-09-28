@@ -114,7 +114,7 @@ In the central `repository-quality-gates` repository:
 1. Open **Settings** → **Secrets And Variables** → **Actions**.
 2. Under **Variables**, create `RQG_APP_ID` containing the GitHub App ID.
 3. Under **Secrets**, create `RQG_APP_PRIVATE_KEY` containing the complete private key generated for the app.
-4. To receive a report after every rollout, create the `RQG_REPORT_EMAIL_ENABLED` variable with value `true`, the `RQG_REPORT_SMTP_HOST` and `RQG_REPORT_SMTP_PORT` variables, and the `RQG_REPORT_SMTP_USERNAME`, `RQG_REPORT_SMTP_PASSWORD`, `RQG_REPORT_FROM`, and `RQG_REPORT_TO` secrets.
+4. To receive a report after every rollout, create the `RQG_REPORT_EMAIL_ENABLED` variable with value `true`, the `RQG_REPORT_SMTP_HOST` and `RQG_REPORT_SMTP_PORT` variables, and the `RQG_REPORT_SMTP_USERNAME`, `RQG_REPORT_SMTP_PASSWORD`, `RQG_REPORT_FROM_EMAIL`, and `RQG_REPORT_TO_EMAIL` secrets. The optional `RQG_REPORT_FROM_NAME` and `RQG_REPORT_TO_NAME` secrets set the corresponding display names; when either is absent or empty, the workflow uses that mailbox's email address as its display name.
 5. Keep the private key and email credentials out of files, commits, workflow logs, and pull-request content.
 
 The workflow exchanges these values for a short-lived App JWT, then creates a separate short-lived installation token for each installation. It never reuses one installation's token for another installation, copies no token or private key into a managed repository, masks discovered owner and full repository names before downstream log output, and requests revocation of each installation token when processing finishes.
