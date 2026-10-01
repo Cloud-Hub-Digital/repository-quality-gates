@@ -5,6 +5,7 @@ Set-StrictMode -Version Latest
 $root = Split-Path -Parent $PSScriptRoot
 $appFleetTool = Join-Path $root 'scripts\Invoke-RepositoryQualityGateAppFleetUpdate.ps1'
 $fleetWorkflow = Join-Path $root '.github\workflows\update-managed-repositories.yml'
+$cloneProbeWorkflow = Join-Path $root '.github\workflows\github-app-clone-probe.yml'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('rqg-app-fleet-tests-' + [guid]::NewGuid().ToString('N'))
 $passed = 0
 
@@ -24,6 +25,11 @@ try {
 
     $appFleetText = Get-Content -LiteralPath $appFleetTool -Raw
     $workflowText = Get-Content -LiteralPath $fleetWorkflow -Raw
+    $cloneProbeWorkflowText = Get-Content -LiteralPath $cloneProbeWorkflow -Raw
+    Assert-True ($cloneProbeWorkflowText.Contains('name: GitHub App Clone Probe')) 'A separate read-only GitHub App clone-probe workflow should exist.'
+    Assert-True ($cloneProbeWorkflowText.Contains('repository_sha256:')) 'The clone probe should accept only a repository-name digest.'
+    Assert-True (-not $cloneProbeWorkflowText.Contains('AutoEnroll') -and -not $cloneProbeWorkflowText.Contains('AutoMerge') -and -not $cloneProbeWorkflowText.Contains(' -Apply')) 'The clone-probe workflow must not enable fleet mutation.'
+    Assert-True ($cloneProbeWorkflowText.Contains('-CloneProbeRepositorySha256 $env:RQG_CLONE_PROBE_REPOSITORY_SHA256')) 'The clone-probe workflow should pass the protected digest to the App wrapper.'
     Assert-True ($workflowText.Contains('timeout-minutes: 120')) 'The complete fleet rollout should allow up to 120 minutes.'
     Assert-True ($workflowText.Contains('name: Email Fleet Rollout Report')) 'The fleet workflow should send its configured completion report.'
     Assert-True ($workflowText.Contains('name: Preserve Fleet Rollout Report')) 'The updater should preserve its sanitized diagnostic report.'
@@ -44,6 +50,11 @@ try {
     Assert-True ($workflowText.Contains('<h2>Status Summary</h2>')) 'The HTML email should include a status-count summary above the repository table.'
     Assert-True ($workflowText.Contains('<h2>Status Guide</h2>')) 'The HTML email should explain the rollout status names.'
     Assert-True ($workflowText.Contains('"UpdatedSuccessfully": "Updated Successfully"')) 'The email should render the successful update status consistently.'
+    Assert-True ($workflowText.Contains('"RequiresLicenceDecision": "Requires Licence Decision"')) 'The email should render licence-decision failures explicitly.'
+    Assert-True ($workflowText.Contains('"ManagedFileConflict": "Managed File Conflict"')) 'The email should render managed-file conflicts explicitly.'
+    Assert-True ($workflowText.Contains('"RequiredChecksNotEnforced": "Required Checks Not Enforced"')) 'The email should render missing required-check enforcement explicitly.'
+    Assert-True ($workflowText.Contains('"FailedChecks": "Failed Checks"')) 'The email should render required-check failures explicitly.'
+    Assert-True ($workflowText.Contains('"CloneFailed": "Clone Failed"')) 'The email should render clone failures explicitly.'
     Assert-True ($workflowText.Contains("html.escape(row['runner']).replace(chr(10), '<br>')")) 'The HTML email should render each downstream runner on its own line.'
     Assert-True ($workflowText.Contains('MESSAGE_FROM_EMAIL: ${{ secrets.RQG_REPORT_FROM_EMAIL }}')) 'The sender address should use the renamed protected email secret.'
     Assert-True ($workflowText.Contains('MESSAGE_TO_EMAIL: ${{ secrets.RQG_REPORT_TO_EMAIL }}')) 'The recipient address should use the renamed protected email secret.'
@@ -61,11 +72,19 @@ try {
     Assert-True ((ConvertTo-RqgEmailComment -Status 'Current' -Detail '') -eq 'Already current.') 'Current repositories should use a short factual email comment.'
     Assert-True ((ConvertTo-RqgEmailComment -Status 'EmptyRepository' -Detail 'Long internal detail.') -eq 'Skipped: repository has no commits.') 'Empty repositories should use a short factual email comment.'
     Assert-True ((ConvertTo-RqgEmailComment -Status 'MergedCleanupRequired' -Detail 'Long cleanup detail.') -eq 'Update merged; temporary branch cleanup failed.') 'Cleanup failures should use a short factual email comment.'
+    Assert-True ((ConvertTo-RqgEmailComment -Status 'RequiresLicenceDecision' -Detail 'Long internal detail.') -eq 'Licence decision requires approval or correction.') 'Licence-decision failures should use a short actionable comment.'
+    Assert-True ((ConvertTo-RqgEmailComment -Status 'ManagedFileConflict' -Detail 'Long internal detail.') -eq 'Managed-file conflict requires review.') 'Managed-file conflicts should use a short actionable comment.'
     $checkFailureDetail = 'Stage: Pull-request quality checks. Cause: Pull-request quality checks failed: Build (failure), Build (failure), Require OP reference (failure) Context: Target RQG version: 1.5.4. Cleanup: Removed. Investigation: Review checks.'
-    Assert-True ((ConvertTo-RqgEmailComment -Status 'Failed' -Detail $checkFailureDetail) -eq 'PR checks failed: Build; Require OP reference.') 'Failed check comments should be concise and deduplicate check names.'
-    $generalFailureComment = ConvertTo-RqgEmailComment -Status 'Failed' -Detail 'Stage: Repository clone. Cause: Unable to clone the repository. Context: Target RQG version: 1.5.4. Cleanup: None. Investigation: Verify access.'
+    Assert-True ((ConvertTo-RqgEmailComment -Status 'FailedChecks' -Detail $checkFailureDetail) -eq 'PR checks failed: Build; Require OP reference.') 'Failed check comments should be concise and deduplicate check names.'
+    Assert-True ((ConvertTo-RqgEmailComment -Status 'MergedWithFailedChecks' -Detail $checkFailureDetail) -eq 'Update merged with failed checks: Build; Require OP reference.') 'Merged check failures should remain explicit and concise.'
+    $generalFailureComment = ConvertTo-RqgEmailComment -Status 'CloneFailed' -Detail 'Stage: Repository clone. Cause: Unable to clone the repository. Context: Target RQG version: 1.5.4. Cleanup: None. Investigation: Verify access.'
     Assert-True ($generalFailureComment -eq 'Repository clone failed: Unable to clone the repository.') 'Other failed comments should state only the failing stage and cause.'
     Assert-True ($generalFailureComment.Length -le 240) 'Email comments should remain concise.'
+    Assert-True ((Get-RqgInstallationFailureStatus 'Installation authentication') -eq 'InstallationAuthenticationFailed') 'Installation authentication failures should be classified precisely.'
+    Assert-True ((Get-RqgInstallationFailureStatus 'Repository discovery') -eq 'RepositoryDiscoveryFailed') 'Repository discovery failures should be classified precisely.'
+    Assert-True ((Get-RqgInstallationFailureStatus 'Structured result processing') -eq 'ResultProcessingFailed') 'Structured result failures should be classified precisely.'
+    Assert-True ((Get-RqgInstallationFailureStatus 'Fleet execution') -eq 'FleetExecutionFailed') 'Fleet execution failures should be classified precisely.'
+    Assert-True (-not $appFleetText.Contains("status = 'Failed'")) 'Installation-level rows should not collapse distinct failures into a broad Failed status.'
 
     $rsa = [Security.Cryptography.RSA]::Create(2048)
     try {
@@ -108,10 +127,10 @@ param([string[]]$Repository, [string]$TemplateRoot, [switch]$AutoEnroll, [switch
     autoMerge = [bool]$AutoMerge
     lifetime = $TemporaryBranchLifetimeHours
 } | ConvertTo-Json -Compress | Add-Content -LiteralPath $env:RQG_TEST_RECORD_PATH -Encoding utf8
-$status = if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-101') { 'Failed' } else { 'Current' }
+$status = if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-101') { 'FailedChecks' } else { 'Current' }
 $summary = [ordered]@{
-    repositories = @($Repository | ForEach-Object { [pscustomobject]@{ repository = $_; status = $status; runners = if ($status -eq 'Failed') { @('rqg-win-one', 'rqg-linux-one') } else { @() }; detail = "Synthetic $status result. Token=$env:GH_TOKEN" } })
-    failed = if ($status -eq 'Failed') { 1 } else { 0 }
+    repositories = @($Repository | ForEach-Object { [pscustomobject]@{ repository = $_; status = $status; runners = if ($status -eq 'FailedChecks') { @('rqg-win-one', 'rqg-linux-one') } else { @() }; detail = "Synthetic $status result. Token=$env:GH_TOKEN" } })
+    failed = if ($status -eq 'FailedChecks') { 1 } else { 0 }
 }
 if ($env:RQG_TEST_INVALID_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-101') {
     [IO.File]::WriteAllText([IO.Path]::GetFullPath($ResultPath), '{', [Text.UTF8Encoding]::new($false))
@@ -160,9 +179,14 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         }
         throw "Unexpected gh invocation: $joined"
     }
-    Assert-True ((Get-RqgRunnerDisplay ([pscustomobject]@{ status = 'Failed'; runners = @('rqg-win-test', 'rqg-linux-test') })) -eq "rqg-linux-test$([Environment]::NewLine)rqg-win-test") 'The email runner cell should list each downstream runner on its own line.'
+    $script:cloneProbeRepositories = [Collections.Generic.List[string]]::new()
+    function Invoke-RqgGitHubAppCloneProbe([string]$RepositoryName, [string]$Destination) {
+        $script:cloneProbeRepositories.Add($RepositoryName)
+        return '0123456789abcdef0123456789abcdef01234567'
+    }
+    Assert-True ((Get-RqgRunnerDisplay ([pscustomobject]@{ status = 'FailedChecks'; runners = @('rqg-win-test', 'rqg-linux-test') })) -eq "rqg-linux-test$([Environment]::NewLine)rqg-win-test") 'The email runner cell should list each downstream runner on its own line.'
     Assert-True ((Get-RqgRunnerDisplay ([pscustomobject]@{ status = 'Current' })) -eq 'Not Used') 'A result without executed checks should identify that no runner was used.'
-    Assert-True ((Get-RqgRunnerDisplay ([pscustomobject]@{ status = 'Failed' })) -eq 'Unavailable') 'A failed result without runner metadata should remain explicit.'
+    Assert-True ((Get-RqgRunnerDisplay ([pscustomobject]@{ status = 'FailedChecks' })) -eq 'Unavailable') 'A failed result without runner metadata should remain explicit.'
     Assert-True ($appFleetText.Contains('A GitHub App installation failed: $maskedInstallationFailureComment')) 'Installation failures should retain their sanitized stage and cause in the workflow log.'
     Assert-True ($appFleetText.Contains('A GitHub App installation produced an invalid structured result: $maskedInstallationFailureComment')) 'Structured-result failures should retain their actionable sanitized diagnostic detail.'
 
@@ -217,10 +241,10 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($failureRecords.Count -eq 2) 'A failed installation must not prevent a later installation from running.'
         Assert-True ($failureRecords[1].repositories[0] -eq 'second-owner/two') 'The later installation should still receive its repository list after an earlier failure.'
         $failureRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
-        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'Failed') 'The private report should retain a failed repository status.'
+        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'FailedChecks') 'The private report should retain a precise repository failure status.'
         Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].runner -eq "rqg-linux-one$([Environment]::NewLine)rqg-win-one") 'The private report should identify every downstream self-hosted runner on its own line.'
-        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].comment -eq 'Failed: Synthetic Failed result. Token=***') 'A structured repository failure should provide a concise sanitized email comment.'
-        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].detail -eq 'Synthetic Failed result. Token=***') 'A structured repository failure should retain its complete sanitized diagnostic detail.'
+        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].comment -eq 'Synthetic FailedChecks result. Token=***') 'A structured repository failure should provide a concise sanitized email comment.'
+        Assert-True (@($failureRows | Where-Object repository -eq 'first-owner/one')[0].detail -eq 'Synthetic FailedChecks result. Token=***') 'A structured repository failure should retain its complete sanitized diagnostic detail.'
         Assert-True (@($failureRows | Where-Object repository -eq 'second-owner/two')[0].status -eq 'Current') 'The private report should retain later successful installation results.'
         Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
 
@@ -235,7 +259,7 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($invalidResultFailure.Exception.Message -match '^1 GitHub App installation\(s\) failed after all accessible installations were processed\.') 'An invalid structured result should produce an aggregate installation failure.'
         Assert-True ($invalidResultRecords.Count -eq 2) 'An invalid structured result must not prevent a later installation from running.'
         $invalidResultRows = @(Get-Content -LiteralPath $privateReportPath -Raw | ConvertFrom-Json)
-        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'Failed') 'An invalid structured result should create a failed repository row.'
+        Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].status -eq 'ResultProcessingFailed') 'An invalid structured result should create a precise failed repository row.'
         Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].comment -match '^Structured result processing failed:') 'The failed row should provide a concise structured-result summary.'
         Assert-True (@($invalidResultRows | Where-Object repository -eq 'first-owner/one')[0].detail -match 'Investigation: Inspect the sanitized workflow artifact') 'The failed row should retain its actionable structured-result investigation detail.'
         Assert-True (@($invalidResultRows | Where-Object repository -eq 'second-owner/two')[0].status -eq 'Current') 'A later installation should still report its successful result.'
@@ -253,11 +277,25 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True ($tokenFailureRecords.Count -eq 1) 'A token-issuance failure must not prevent the later installation from running.'
         Assert-True ($tokenFailureRecords[0].repositories[0] -eq 'second-owner/two') 'The later installation should still be processed after an earlier token-issuance failure.'
         Remove-Item Env:\RQG_TEST_TOKEN_FAIL_FIRST -ErrorAction SilentlyContinue
+
+        Remove-Item -LiteralPath $recordPath -Force
+        $probeDigest = Get-RqgRepositoryNameSha256 'first-owner/one'
+        Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -RepositoryCloneProbeSha256 $probeDigest -BranchLifetimeHours 24
+        Assert-True ($script:cloneProbeRepositories.Count -eq 1 -and $script:cloneProbeRepositories[0] -eq 'first-owner/one') 'The clone probe should select exactly the repository matching the supplied digest.'
+        Assert-True (-not (Test-Path -LiteralPath $recordPath)) 'The clone probe must not invoke the mutating fleet updater.'
+
+        $missingProbeFailure = $null
+        try {
+            Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -RepositoryCloneProbeSha256 ('0' * 64) -BranchLifetimeHours 24
+        }
+        catch { $missingProbeFailure = $_ }
+        Assert-True ($null -ne $missingProbeFailure -and $missingProbeFailure.Exception.Message -match 'No accessible GitHub App repository matched') 'A digest that matches no accessible repository should fail closed.'
     }
     finally {
         $testRsa.Dispose()
         Remove-Item Function:\global:Invoke-RestMethod -ErrorAction SilentlyContinue
         Remove-Item Function:\global:gh -ErrorAction SilentlyContinue
+        Remove-Item Function:\Invoke-RqgGitHubAppCloneProbe -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_RECORD_PATH -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_FAIL_FIRST -ErrorAction SilentlyContinue
         Remove-Item Env:\RQG_TEST_INVALID_FIRST -ErrorAction SilentlyContinue

@@ -3,6 +3,7 @@
 param(
     [string]$Repository = '.',
     [string]$GitHubSpdxId = $env:RQG_GITHUB_LICENSE_SPDX_ID,
+    [ValidateSet('', 'Public', 'Private')][string]$RepositoryVisibility = $env:RQG_REPOSITORY_VISIBILITY,
     [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text'
 )
 
@@ -50,11 +51,26 @@ $rightsHolder = if ($licence.PSObject.Properties['rightsHolder']) { ([string]$li
 $decisionStatus = if ($licence.PSObject.Properties['decisionStatus']) { ([string]$licence.decisionStatus).Trim() } else { '' }
 $templateVersion = if ($licence.PSObject.Properties['templateVersion'] -and $null -ne $licence.templateVersion) { ([string]$licence.templateVersion).Trim() } else { '' }
 $overrideReason = if ($licence.PSObject.Properties['overrideReason'] -and $null -ne $licence.overrideReason) { ([string]$licence.overrideReason).Trim() } else { '' }
+$visibility = ([string]$RepositoryVisibility).Trim()
 
 if ($class -notin @('open-source', 'proprietary')) { Add-Failure $failures 'The approved licence class must be open-source or proprietary.' }
 if (-not $identifier) { Add-Failure $failures 'The approved licence identifier is missing.' }
 if (-not $rightsHolder) { Add-Failure $failures 'The approved licence rights holder is missing.' }
 if ($decisionStatus -ne 'approved') { Add-Failure $failures 'The project licence decision is unresolved or not approved.' }
+if ($visibility -notin @('Public', 'Private')) {
+    Add-Failure $failures 'The repository visibility is missing or unresolved.'
+} else {
+    $usesVisibilityDefault = if ($visibility -eq 'Public') {
+        $class -eq 'open-source' -and $identifier -eq 'MIT' -and -not $templateVersion
+    } else {
+        $class -eq 'proprietary' -and $identifier -eq 'LicenseRef-TR-Proprietary-1.0' -and $templateVersion -eq '1.0'
+    }
+    if ($usesVisibilityDefault -and $overrideReason) {
+        Add-Failure $failures 'The visibility-default licence must not declare a local override reason.'
+    } elseif (-not $usesVisibilityDefault -and -not $overrideReason) {
+        Add-Failure $failures "A $($visibility.ToLowerInvariant()) repository must use its visibility-default licence or record an approved local licence override reason."
+    }
+}
 
 $licenceFiles = @(Get-ChildItem -LiteralPath $root -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(LICENSE|LICENCE)(\..+)?$' })
 if ($licenceFiles.Count -eq 0) { Add-Failure $failures 'A repository-local licence file is missing.' }
@@ -74,7 +90,8 @@ $detectedId = ([string]$GitHubSpdxId).Trim()
 if (-not $detectedId) { Add-Failure $failures 'The GitHub licence presentation is missing or unresolved.' }
 
 if ($class -eq 'open-source') {
-    if ($templateVersion -or $overrideReason) { Add-Failure $failures 'An open-source licence decision must not define a proprietary template or override.' }
+    if ($templateVersion) { Add-Failure $failures 'An open-source licence decision must not define a proprietary template version.' }
+    $acceptedDetectorIds = @($identifier)
     $spdxPath = Join-Path $root '.rqg/licensing/spdx-license-identifiers.json'
     if (-not (Test-Path -LiteralPath $spdxPath -PathType Leaf)) {
         Add-Failure $failures 'The managed SPDX identifier policy is missing.'
@@ -84,9 +101,12 @@ if ($class -eq 'open-source') {
         if ($null -ne $spdx) {
             if ($spdx.schemaVersion -ne 1 -or -not ([string]$spdx.licenseListVersion).Trim()) { Add-Failure $failures 'The managed SPDX identifier policy is invalid.' }
             if ($identifier -and $identifier -notin @($spdx.licenseIds)) { Add-Failure $failures 'The approved open-source licence identifier is not an active SPDX identifier.' }
+            if ($spdx.PSObject.Properties['githubDetectorAliases'] -and $spdx.githubDetectorAliases.PSObject.Properties[$identifier]) {
+                $acceptedDetectorIds += @($spdx.githubDetectorAliases.$identifier)
+            }
         }
     }
-    if ($detectedId -and $identifier -and $detectedId -cne $identifier) { Add-Failure $failures 'GitHub licence detection contradicts the approved open-source SPDX decision.' }
+    if ($detectedId -and $identifier -and $detectedId -notin @($acceptedDetectorIds)) { Add-Failure $failures 'GitHub licence detection contradicts the approved open-source SPDX decision.' }
 }
 
 if ($class -eq 'proprietary') {
@@ -106,13 +126,15 @@ if ($class -eq 'proprietary') {
 
 $result = [ordered]@{
     status = if ($failures.Count -eq 0) { 'Passed' } else { 'Failed' }
+    visibility = $visibility
     class = $class
     identifier = $identifier
     rightsHolder = $rightsHolder
     decisionStatus = $decisionStatus
     githubSpdxId = $detectedId
     licenceFile = if ($licenceFiles.Count -eq 1) { $licenceFiles[0].Name } else { $null }
-    proprietaryOverride = [bool]$overrideReason
+    localOverride = [bool]$overrideReason
+    proprietaryOverride = [bool]($class -eq 'proprietary' -and $overrideReason)
     errors = @($failures)
 }
 

@@ -36,7 +36,23 @@ function Add-RepositoryStandardCore([string]$Path, [string]$Profile, [string]$Ac
     New-Item -ItemType Directory -Path (Join-Path $Path '.github\ISSUE_TEMPLATE') -Force | Out-Null
     foreach ($name in @('README.md', 'CHANGELOG.md')) { "# $name" | Set-Content -LiteralPath (Join-Path $Path $name) -Encoding utf8 }
     "MIT License`n`nCopyright (c) 2026 Example Owner" | Set-Content -LiteralPath (Join-Path $Path 'LICENSE') -Encoding utf8
-    @('AGENTS.md', 'PROJECT.md', 'GOALS.md', 'STATUS.md', 'DECISIONS.md', 'HANDOFFS.md') | Set-Content -LiteralPath (Join-Path $Path '.gitignore') -Encoding utf8
+    @('PROJECT.md', 'GOALS.md', 'STATUS.md', 'DECISIONS.md', 'HANDOFFS.md') | Set-Content -LiteralPath (Join-Path $Path '.gitignore') -Encoding utf8
+    @'
+<!-- repository-standard: schema=1; standard=Repository Standards; version=1.1.0; scope=local-required; source=local -->
+# Repository Review Instructions
+
+## Code Review Rules
+
+- Review correctness, security, privacy, reliability, & compatibility.
+
+## Repository-Specific Review Rules
+
+- Review this repository's supported behavior & contracts.
+
+## Review Scope
+
+- Apply these rules to every changed repository-visible file.
+'@ | Set-Content -LiteralPath (Join-Path $Path 'AGENTS.md') -Encoding utf8
     "* @$Account" | Set-Content -LiteralPath (Join-Path $Path '.github\CODEOWNERS') -Encoding utf8
     "version: 2`nupdates:`n  - package-ecosystem: github-actions`n    directory: '/'`n    schedule:`n      interval: weekly" | Set-Content -LiteralPath (Join-Path $Path '.github\dependabot.yml') -Encoding utf8
     $config = [ordered]@{ schemaVersion = 2; profile = $Profile; account = $Account; centralRepository = "https://github.com/$Account/.github"; licence = [ordered]@{ class = 'open-source'; identifier = 'MIT'; rightsHolder = 'Example Owner'; decisionStatus = 'approved'; templateVersion = $null; overrideReason = $null }; supportRoute = 'github-discussions'; conductRoute = 'confidential-email' }
@@ -457,10 +473,21 @@ try {
     '<!-- repository-standard: schema=1; standard=Repository Standards; version=1.0.0; owner=example-owner; source=local; scope=local-override; override=local-file; overrides=https://github.com/example-owner/.github/blob/main/CONTRIBUTING.md -->' | Set-Content -LiteralPath $falseInheritancePath -Encoding utf8
     $localOverrideResult = Invoke-RepositoryStandards $downstreamStandards
     Assert-True ($localOverrideResult.ExitCode -eq 0) 'A correctly marked downstream local override should pass.'
-    'private lifecycle' | Set-Content -LiteralPath (Join-Path $downstreamStandards 'AGENTS.md') -Encoding utf8
-    & git -C $downstreamStandards add --force AGENTS.md
+    'private lifecycle' | Set-Content -LiteralPath (Join-Path $downstreamStandards 'PROJECT.md') -Encoding utf8
+    & git -C $downstreamStandards add --force PROJECT.md
     $lifecycleLeakResult = Invoke-RepositoryStandards $downstreamStandards
     Assert-True ($lifecycleLeakResult.ExitCode -ne 0) 'A repository-visible private lifecycle file must fail the repository-standard gate.'
+
+    & git -C $downstreamStandards reset --hard HEAD | Out-Null
+    $agentsPath = Join-Path $downstreamStandards 'AGENTS.md'
+    (Get-Content -LiteralPath $agentsPath -Raw).Replace('## Repository-Specific Review Rules', '## Missing Review Rules') | Set-Content -LiteralPath $agentsPath -Encoding utf8
+    $missingReviewRulesResult = Invoke-RepositoryStandards $downstreamStandards
+    Assert-True ($missingReviewRulesResult.ExitCode -ne 0) 'A repository review file without repository-specific rules must fail the repository-standard gate.'
+
+    & git -C $downstreamStandards reset --hard HEAD | Out-Null
+    Add-Content -LiteralPath $agentsPath -Value '{{UNRESOLVED_REVIEW_RULE}}' -Encoding utf8
+    $unresolvedReviewRulesResult = Invoke-RepositoryStandards $downstreamStandards
+    Assert-True ($unresolvedReviewRulesResult.ExitCode -ne 0) 'A repository review file with unresolved template placeholders must fail the repository-standard gate.'
 
     $unverified = New-Fixture 'unverified-preserved-module'
     'fixture' | Set-Content -LiteralPath (Join-Path $unverified 'README.md') -Encoding ascii

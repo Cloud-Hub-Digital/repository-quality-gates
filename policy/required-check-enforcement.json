@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "public": {
+    "mode": "github-rules-required"
+  },
+  "private": {
+    "mode": "rqg-verified-merge-exception",
+    "exceptionId": "RQG-PRIVATE-PLAN-001",
+    "enabled": true,
+    "requiredControls": [
+      "expected-checks-derived-from-deployed-modules",
+      "all-expected-checks-observed",
+      "all-observed-executions-accepted",
+      "stable-check-set",
+      "exact-head-and-base-reverified",
+      "merge-pinned-to-verified-head",
+      "default-branch-version-verified",
+      "unverified-state-fails-closed"
+    ]
+  }
+}

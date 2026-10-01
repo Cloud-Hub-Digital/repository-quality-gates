@@ -7,6 +7,7 @@ param(
     [switch]$AutoEnroll,
     [switch]$Apply,
     [switch]$AutoMerge,
+    [ValidatePattern('^[a-f0-9]{64}$')][string]$CloneProbeRepositorySha256,
     [string]$PrivateReportPath,
     [ValidateRange(1, 168)][int]$TemporaryBranchLifetimeHours = 24
 )
@@ -91,6 +92,25 @@ function Get-GitHubAppInstallationRepositories([string]$Token) {
     return @($all)
 }
 
+function Get-RqgRepositoryNameSha256([string]$RepositoryName) {
+    if ($RepositoryName -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw 'The repository name is invalid.' }
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([Convert]::ToHexString($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($RepositoryName.ToLowerInvariant())))).ToLowerInvariant()
+    }
+    finally { $hasher.Dispose() }
+}
+
+function Invoke-RqgGitHubAppCloneProbe([string]$RepositoryName, [string]$Destination) {
+    & git clone --quiet --filter=blob:none --no-checkout -- "https://github.com/$RepositoryName.git" $Destination
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $Destination '.git') -PathType Container)) {
+        throw 'The GitHub App repository clone probe failed.'
+    }
+    $head = (& git -C $Destination rev-parse HEAD 2>$null).Trim()
+    if ($LASTEXITCODE -ne 0 -or $head -notmatch '^[a-f0-9]{40}$') { throw 'The cloned repository HEAD could not be verified.' }
+    return $head
+}
+
 function New-RqgInstallationFailureComment([string]$Stage, [string]$Cause) {
     $action = switch -Regex ($Stage) {
         '^Installation authentication' { 'Verify the GitHub App ID, private-key secret, installation state, and permission grants, then rerun the fleet workflow.' }
@@ -102,8 +122,52 @@ function New-RqgInstallationFailureComment([string]$Stage, [string]$Cause) {
     return "Stage: $Stage. Cause: $Cause Investigation: $action"
 }
 
+function Get-RqgInstallationFailureStatus([string]$Stage) {
+    switch -Regex ($Stage) {
+        '^Installation authentication' { return 'InstallationAuthenticationFailed' }
+        '^Repository discovery' { return 'RepositoryDiscoveryFailed' }
+        '^Structured result processing' { return 'ResultProcessingFailed' }
+        default { return 'FleetExecutionFailed' }
+    }
+}
+
+function Get-RqgStructuredFailureSummary([string]$Detail) {
+    $summary = $null
+    if ($Detail -match '^Stage:\s*(?<stage>.+?)\.\s+Cause:\s*(?<cause>.+?)(?:\s+Context:|\s+Cleanup:|\s+Investigation:|$)') {
+        $summary = "$([string]$Matches.stage) failed: $([string]$Matches.cause)"
+    }
+    elseif ($Detail) { $summary = $Detail }
+    else { $summary = 'No diagnostic summary was available.' }
+    if ($summary.Length -gt 240) { return $summary.Substring(0, 237).TrimEnd() + '...' }
+    return $summary
+}
+
+function Get-RqgCheckFailureSummary([string]$Detail, [string]$Prefix) {
+    if ($Detail -match 'Cause:\s*Pull-request quality checks failed:\s*(?<checks>.+?)(?:\s+Context:|\s+Cleanup:|\s+Investigation:|$)') {
+        $checkNames = [Collections.Generic.List[string]]::new()
+        $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($match in [regex]::Matches([string]$Matches.checks, '(?<name>.*?)(?:\s+\([^)]+\))(?:,\s*|$)')) {
+            $name = ([string]$match.Groups['name'].Value).Trim()
+            if ($name -and $seen.Add($name)) { $checkNames.Add($name) }
+        }
+        if ($checkNames.Count) {
+            $shown = @($checkNames | Select-Object -First 4)
+            $remaining = $checkNames.Count - $shown.Count
+            $suffix = if ($remaining -gt 0) { "; +$remaining more" } else { '' }
+            return "$Prefix$($shown -join '; ')$suffix."
+        }
+    }
+    return Get-RqgStructuredFailureSummary $Detail
+}
+
 function ConvertTo-RqgEmailComment([string]$Status, [string]$Detail) {
     $cleanDetail = [regex]::Replace(([string]$Detail).Trim(), '\s+', ' ')
+
+    if ($Status -eq 'RequiresLicenceDecision') { return 'Licence decision requires approval or correction.' }
+    if ($Status -eq 'ManagedFileConflict') { return 'Managed-file conflict requires review.' }
+    if ($Status -eq 'FailedChecks') { return Get-RqgCheckFailureSummary -Detail $cleanDetail -Prefix 'PR checks failed: ' }
+    if ($Status -eq 'MergedWithFailedChecks') { return Get-RqgCheckFailureSummary -Detail $cleanDetail -Prefix 'Update merged with failed checks: ' }
+    if ($Status -match 'Failed$' -or $Status -eq 'MergeOutcomeUnverified') { return Get-RqgStructuredFailureSummary $cleanDetail }
 
     switch ($Status) {
         'Current' { return 'Already current.' }
@@ -125,33 +189,6 @@ function ConvertTo-RqgEmailComment([string]$Status, [string]$Detail) {
                 return "Deferred: $($Matches.count) open pull requests."
             }
             return 'Deferred: open pull requests require attention.'
-        }
-        'Failed' {
-            $summary = $null
-            if ($cleanDetail -match '^Stage:\s*(?<stage>.+?)\.\s+Cause:\s*(?<cause>.+?)(?:\s+Context:|\s+Cleanup:|\s+Investigation:|$)') {
-                $stage = [string]$Matches.stage
-                $cause = [string]$Matches.cause
-                if ($cause -match '^Pull-request quality checks failed:\s*(?<checks>.+)$') {
-                    $checkNames = [Collections.Generic.List[string]]::new()
-                    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-                    foreach ($match in [regex]::Matches([string]$Matches.checks, '(?<name>.*?)(?:\s+\([^)]+\))(?:,\s*|$)')) {
-                        $name = ([string]$match.Groups['name'].Value).Trim()
-                        if ($name -and $seen.Add($name)) { $checkNames.Add($name) }
-                    }
-                    if ($checkNames.Count) {
-                        $shown = @($checkNames | Select-Object -First 4)
-                        $remaining = $checkNames.Count - $shown.Count
-                        $suffix = if ($remaining -gt 0) { "; +$remaining more" } else { '' }
-                        $summary = "PR checks failed: $($shown -join '; ')$suffix."
-                    }
-                }
-                if (-not $summary) { $summary = "$stage failed: $cause" }
-            }
-            elseif ($cleanDetail) { $summary = "Failed: $cleanDetail" }
-            else { $summary = 'Failed: no diagnostic summary was available.' }
-
-            if ($summary.Length -gt 240) { return $summary.Substring(0, 237).TrimEnd() + '...' }
-            return $summary
         }
         default {
             if (-not $cleanDetail) { return $Status }
@@ -179,6 +216,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
         [switch]$EnableAutoEnroll,
         [switch]$EnableApply,
         [switch]$EnableAutoMerge,
+        [string]$RepositoryCloneProbeSha256,
         [string]$ResolvedPrivateReportPath,
         [int]$BranchLifetimeHours
     )
@@ -198,9 +236,11 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
     $originalGitConfigKey0 = $env:GIT_CONFIG_KEY_0
     $originalGitConfigValue0 = $env:GIT_CONFIG_VALUE_0
     $installationFailureCount = 0
+    $cloneProbeMatched = $false
     $privateReportRows = [Collections.Generic.List[object]]::new()
     try {
         foreach ($installation in $installations) {
+            if ($cloneProbeMatched) { break }
             $installationJwt = $null
             $token = $null
             $basicCredential = $null
@@ -210,6 +250,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
             $installationResultPath = [IO.Path]::GetTempFileName()
             $installationRowsAdded = 0
             $installationFailureComment = $null
+            $installationFailureStatus = $null
             $installationFailed = $false
             $installationStage = 'Installation authentication'
             try {
@@ -243,6 +284,27 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 $repositories = @($repositoryMetadata.Keys | Sort-Object -Unique)
                 if (-not $repositories.Count) { continue }
 
+                if (-not [string]::IsNullOrWhiteSpace($RepositoryCloneProbeSha256)) {
+                    $matchingRepositories = @($repositories | Where-Object {
+                        (Get-RqgRepositoryNameSha256 ([string]$_)) -eq $RepositoryCloneProbeSha256
+                    })
+                    if ($matchingRepositories.Count -gt 1) { throw 'The repository clone-probe digest matched more than one accessible repository.' }
+                    if ($matchingRepositories.Count -eq 0) { continue }
+
+                    $cloneProbeMatched = $true
+                    $probeRepository = [string]$matchingRepositories[0]
+                    $probeDirectory = Join-Path ([IO.Path]::GetTempPath()) ("rqg-app-clone-probe-" + [Guid]::NewGuid().ToString('N'))
+                    try {
+                        $null = Invoke-RqgGitHubAppCloneProbe -RepositoryName $probeRepository -Destination $probeDirectory
+                        Write-Host 'GitHub App repository clone probe passed.'
+                    }
+                    finally {
+                        Remove-Item -LiteralPath $probeDirectory -Recurse -Force -ErrorAction SilentlyContinue
+                        if (Test-Path -LiteralPath $probeDirectory) { throw 'The GitHub App repository clone-probe cleanup failed.' }
+                    }
+                    continue
+                }
+
                 $fleetArguments = @{
                     Repository = $repositories
                     TemplateRoot = $ResolvedTemplateRoot
@@ -259,6 +321,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
             catch {
                 $installationFailureCount++
                 $installationFailed = $true
+                $installationFailureStatus = Get-RqgInstallationFailureStatus $installationStage
                 $installationFailureComment = New-RqgInstallationFailureComment -Stage $installationStage -Cause $_.Exception.Message
                 $maskedInstallationFailureComment = $installationFailureComment
                 foreach ($secretValue in @($installationJwt, $token, $authorizationHeader, $basicCredential)) {
@@ -300,6 +363,7 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                         $installationFailed = $true
                     }
                     $installationFailureComment = New-RqgInstallationFailureComment -Stage 'Structured result processing' -Cause $_.Exception.Message
+                    $installationFailureStatus = Get-RqgInstallationFailureStatus 'Structured result processing'
                     $maskedInstallationFailureComment = $installationFailureComment
                     foreach ($secretValue in @($installationJwt, $token, $authorizationHeader, $basicCredential)) {
                         if (-not [string]::IsNullOrWhiteSpace([string]$secretValue)) {
@@ -322,8 +386,8 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                             repository = [string]$repositoryName
                             visibility = [string]$repositoryMetadata[[string]$repositoryName].visibility
                             runner = 'Not Used'
-                            status = 'Failed'
-                            comment = ConvertTo-RqgEmailComment -Status 'Failed' -Detail ([string]$installationFailureComment)
+                            status = [string]$installationFailureStatus
+                            comment = ConvertTo-RqgEmailComment -Status ([string]$installationFailureStatus) -Detail ([string]$installationFailureComment)
                             detail = [string]$installationFailureComment
                         })
                     }
@@ -346,6 +410,9 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                 Remove-Variable basicCredential -ErrorAction SilentlyContinue
                 Remove-Variable authorizationHeader -ErrorAction SilentlyContinue
             }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($RepositoryCloneProbeSha256) -and -not $cloneProbeMatched) {
+            throw 'No accessible GitHub App repository matched the requested clone-probe digest.'
         }
         if (-not [string]::IsNullOrWhiteSpace($ResolvedPrivateReportPath)) {
             $resolvedReportPath = [IO.Path]::GetFullPath($ResolvedPrivateReportPath)
@@ -371,5 +438,5 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId $AppId -PemPrivateKey $PrivateKey -ResolvedTemplateRoot $TemplateRoot -EnableAutoEnroll:$AutoEnroll -EnableApply:$Apply -EnableAutoMerge:$AutoMerge -ResolvedPrivateReportPath $PrivateReportPath -BranchLifetimeHours $TemporaryBranchLifetimeHours
+    Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId $AppId -PemPrivateKey $PrivateKey -ResolvedTemplateRoot $TemplateRoot -EnableAutoEnroll:$AutoEnroll -EnableApply:$Apply -EnableAutoMerge:$AutoMerge -RepositoryCloneProbeSha256 $CloneProbeRepositorySha256 -ResolvedPrivateReportPath $PrivateReportPath -BranchLifetimeHours $TemporaryBranchLifetimeHours
 }

@@ -8,8 +8,10 @@ param(
     [switch]$AutoEnroll,
     [switch]$Apply,
     [switch]$AutoMerge,
+    [ValidateRange(5, 300)][int]$CheckSettleSeconds = 30,
     [ValidateRange(1, 168)][int]$TemporaryBranchLifetimeHours = 24,
     [ValidateSet('Text', 'Json')][string]$OutputFormat = 'Text',
+    [string]$RequiredCheckPolicyPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'policy\required-check-enforcement.json'),
     [string]$ResultPath
 )
 
@@ -53,23 +55,155 @@ function Get-WorkflowRunnerNames([string]$RepositoryName, [object[]]$Checks) {
     return $sortedRunnerNames
 }
 
-function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullRequestUrl) {
+function Get-PullRequestState([string]$RepositoryName, [int]$PullRequestNumber) {
+    $output = @(& gh api "repos/$RepositoryName/pulls/$PullRequestNumber" --jq '{state,merged,headSha:.head.sha,baseRef:.base.ref}' 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw "Unable to inspect the pull request: $($output -join [Environment]::NewLine)" }
+    try { $state = (($output -join [Environment]::NewLine) | ConvertFrom-Json) }
+    catch { throw 'GitHub returned invalid pull-request state data.' }
+    if ([string]$state.headSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'GitHub returned an invalid pull-request head commit.' }
+    if ([string]::IsNullOrWhiteSpace([string]$state.baseRef)) { throw 'GitHub returned an invalid pull-request base branch.' }
+    return $state
+}
+
+function Get-ExpectedQualityCheckNames([string]$RepositoryPath) {
+    $statePath = Join-Path $RepositoryPath '.repository-quality-gates.json'
+    if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) { throw 'The repository quality-gates state file is missing after deployment.' }
+    try { $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json }
+    catch { throw 'The repository quality-gates state file is invalid after deployment.' }
+    $checkNamesByModule = @{
+        documentation = 'Markdown Hygiene'
+        dotnet = '.NET Build And Test'
+        go = 'Go Format, Vet, Test, And Build'
+        licensing = 'Licence Decision'
+        'module-drift' = 'Report Required Quality Gates'
+        node = 'JavaScript Syntax, Test, And Build'
+        php = 'PHP Syntax And Project Test'
+        platformio = 'Firmware Build'
+        powershell = 'PowerShell And Regression Tests'
+        python = 'Python Compile And Test'
+        'secret-scanning' = 'Secret Scan'
+        shell = 'Shell Syntax'
+    }
+    $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($module in @($state.modules)) {
+        $moduleName = [string]$module
+        if ($checkNamesByModule.ContainsKey($moduleName)) { $null = $expected.Add([string]$checkNamesByModule[$moduleName]) }
+    }
+    if (-not $expected.Count) { throw 'The deployed module set did not identify any expected quality checks.' }
+    return @($expected | Sort-Object)
+}
+
+function Get-RequiredCheckEnforcementPolicy([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { throw 'The required-check enforcement policy path is required.' }
+    $resolved = [IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) { throw 'The required-check enforcement policy file is missing.' }
+    try { $policy = Get-Content -LiteralPath $resolved -Raw | ConvertFrom-Json }
+    catch { throw 'The required-check enforcement policy is invalid JSON.' }
+    if ([int]$policy.schemaVersion -ne 1) { throw 'The required-check enforcement policy schemaVersion must be 1.' }
+    if ([string]$policy.public.mode -cne 'github-rules-required') { throw 'The public required-check enforcement mode must be github-rules-required.' }
+    if ([string]$policy.private.mode -cne 'rqg-verified-merge-exception') { throw 'The private required-check enforcement mode must be rqg-verified-merge-exception.' }
+    if ($policy.private.enabled -ne $true) { throw 'The private required-check enforcement exception must be explicitly enabled.' }
+    if ([string]$policy.private.exceptionId -notmatch '^RQG-[A-Z0-9-]+$') { throw 'The private required-check enforcement exceptionId is invalid.' }
+    $requiredControls = @(
+        'expected-checks-derived-from-deployed-modules',
+        'all-expected-checks-observed',
+        'all-observed-executions-accepted',
+        'stable-check-set',
+        'exact-head-and-base-reverified',
+        'merge-pinned-to-verified-head',
+        'default-branch-version-verified',
+        'unverified-state-fails-closed'
+    )
+    $actualControls = @($policy.private.requiredControls | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+    $missingControls = @($requiredControls | Where-Object { $_ -notin $actualControls })
+    $unexpectedControls = @($actualControls | Where-Object { $_ -notin $requiredControls })
+    if ($missingControls.Count -or $unexpectedControls.Count -or $actualControls.Count -ne $requiredControls.Count) {
+        throw 'The private required-check enforcement exception does not contain the exact approved control set.'
+    }
+    return $policy
+}
+
+function Test-RqgPrivatePlanLimitation([string]$Message) {
+    if ([string]::IsNullOrWhiteSpace($Message)) { return $false }
+    return $Message -match '(?i)(upgrade\s+to\s+GitHub\s+(?:Pro|Team|Enterprise)|branch protection rules are not available for private repositories|protected branches are available (?:to|for).*(?:Pro|Team|Enterprise)|endpoint is unavailable for private repositories on (?:the|your) current plan)'
+}
+
+function Assert-RequiredQualityChecksEnforced(
+    [string]$RepositoryName,
+    [string]$DefaultBranch,
+    [string[]]$ExpectedCheckNames,
+    [ValidateSet('Public', 'Private')][string]$RepositoryVisibility,
+    [object]$Policy
+) {
+    if ([string]::IsNullOrWhiteSpace($DefaultBranch)) { throw 'The default branch is required for ruleset verification.' }
+    $expected = @($ExpectedCheckNames | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ } | Sort-Object -Unique)
+    if (-not $expected.Count) { throw 'At least one expected quality check is required for ruleset verification.' }
+    if ($null -eq $Policy) { throw 'The required-check enforcement policy is required.' }
+
+    $encodedBranch = [Uri]::EscapeDataString($DefaultBranch)
+    $output = @(& gh api -H 'Accept: application/vnd.github+json' "repos/$RepositoryName/rules/branches/$encodedBranch`?per_page=100" 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        $errorText = ($output -join [Environment]::NewLine).Trim()
+        if ($RepositoryVisibility -eq 'Private' -and [bool]$Policy.private.enabled -and (Test-RqgPrivatePlanLimitation $errorText)) {
+            return [pscustomobject]@{
+                mode = [string]$Policy.private.mode
+                exceptionId = [string]$Policy.private.exceptionId
+                requiredChecks = @()
+                expectedChecks = $expected
+                platformLimitationVerified = $true
+            }
+        }
+        throw "Unable to inspect active default-branch rules: $errorText"
+    }
+    try { $rules = @((($output -join [Environment]::NewLine) | ConvertFrom-Json)) }
+    catch { throw 'GitHub returned invalid active default-branch rule data.' }
+    if ($rules.Count -ge 100) { throw 'Active default-branch rule verification reached the API page limit and cannot prove complete enforcement.' }
+
+    $requiredContexts = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($rule in @($rules | Where-Object { [string]$_.type -eq 'required_status_checks' })) {
+        foreach ($requiredCheck in @($rule.parameters.required_status_checks)) {
+            $context = ([string]$requiredCheck.context).Trim()
+            if ($context) { $null = $requiredContexts.Add($context) }
+        }
+    }
+    $missing = @($expected | Where-Object { -not $requiredContexts.Contains($_) })
+    if ($missing.Count) { throw "Default-branch rules do not require expected quality checks: $($missing -join ', ')" }
+    return [pscustomobject]@{
+        mode = [string]$Policy.public.mode
+        exceptionId = $null
+        requiredChecks = @($requiredContexts | Sort-Object)
+        expectedChecks = $expected
+        platformLimitationVerified = $false
+    }
+}
+
+function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullRequestUrl, [string[]]$ExpectedCheckNames, [int]$SettleSeconds) {
     if ($PullRequestUrl -notmatch '/pull/(?<number>\d+)(?:[/?#]|$)') { throw 'The pull-request URL does not contain a pull-request number.' }
     $pullRequestNumber = [int]$Matches.number
-    $headOutput = @(& gh api "repos/$RepositoryName/pulls/$pullRequestNumber" --jq .head.sha 2>&1)
-    if ($LASTEXITCODE -ne 0) { throw "Unable to inspect the pull-request head commit: $($headOutput -join [Environment]::NewLine)" }
-    $headSha = ($headOutput -join [Environment]::NewLine).Trim()
-    if ($headSha -notmatch '^[0-9a-fA-F]{40}$') { throw 'GitHub returned an invalid pull-request head commit.' }
-
     $deadline = [DateTimeOffset]::UtcNow.AddMinutes(45)
     $discoveryDeadline = [DateTimeOffset]::UtcNow.AddMinutes(4)
+    $headSha = $null
+    $baseRef = $null
+    $lastCheckSignature = $null
+    $stableSince = $null
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
+        $pullRequestState = Get-PullRequestState $RepositoryName $pullRequestNumber
+        if ([bool]$pullRequestState.merged -or [string]$pullRequestState.state -ne 'open') {
+            throw 'The update pull request is no longer open and cannot be verified for merge.'
+        }
+        $currentHeadSha = [string]$pullRequestState.headSha
+        if ($currentHeadSha -cne $headSha) {
+            $headSha = $currentHeadSha
+            $baseRef = [string]$pullRequestState.baseRef
+            $discoveryDeadline = [DateTimeOffset]::UtcNow.AddMinutes(4)
+            $lastCheckSignature = $null
+            $stableSince = $null
+        }
         # Read the Checks API directly. GitHub's GraphQL rollup also expands
         # workflow-run metadata, which requires broader Actions access even
         # though RQG only needs each check's name, status, and conclusion.
-        $output = @(& gh api --paginate -H 'Accept: application/vnd.github+json' "repos/$RepositoryName/commits/$headSha/check-runs?per_page=100" --jq '.check_runs[] | {name,status,conclusion,details_url}' 2>&1)
+        $output = @(& gh api --paginate -H 'Accept: application/vnd.github+json' "repos/$RepositoryName/commits/$headSha/check-runs?per_page=100" --jq '.check_runs[] | {id,name,status,conclusion,details_url,started_at}' 2>&1)
         if ($LASTEXITCODE -ne 0) { throw "Unable to inspect pull-request quality checks: $($output -join [Environment]::NewLine)" }
-        $text = ($output -join [Environment]::NewLine).Trim()
         try { $checks = @($output | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json }) }
         catch { throw 'GitHub returned invalid pull-request quality-check data.' }
         if (-not $checks.Count) {
@@ -78,26 +212,57 @@ function Wait-PullRequestQualityChecks([string]$RepositoryName, [string]$PullReq
             continue
         }
 
+        $signature = (@($checks | Sort-Object id | ForEach-Object { "$($_.id):$($_.status):$($_.conclusion)" }) -join '|')
+        if ($signature -cne $lastCheckSignature) {
+            $lastCheckSignature = $signature
+            $stableSince = [DateTimeOffset]::UtcNow
+        }
+
+        $checksByName = @($checks | Group-Object { if ($_.PSObject.Properties['name'] -and -not [string]::IsNullOrWhiteSpace([string]$_.name)) { [string]$_.name } else { 'Unnamed Check' } })
+        $observedNames = @($checksByName.Name)
+        $missingExpected = @($ExpectedCheckNames | Where-Object { $_ -notin $observedNames })
+        if ($missingExpected.Count) {
+            if ([DateTimeOffset]::UtcNow -ge $discoveryDeadline) { throw "Expected quality checks were not reported: $($missingExpected -join ', ')" }
+            Start-Sleep -Seconds 5
+            continue
+        }
+
         $pending = [Collections.Generic.List[string]]::new()
         $failed = [Collections.Generic.List[string]]::new()
-        foreach ($check in $checks) {
-            $name = if ($check.PSObject.Properties['name']) { [string]$check.name } else { 'Unnamed Check' }
-            if ([string]$check.status -ne 'completed') { $pending.Add($name); continue }
-            if ([string]$check.conclusion -notin @('success', 'neutral', 'skipped')) { $failed.Add("$name ($($check.conclusion))") }
+        foreach ($group in $checksByName) {
+            $logicalChecks = @($group.Group)
+            if (@($logicalChecks | Where-Object { [string]$_.status -ne 'completed' }).Count) { $pending.Add([string]$group.Name); continue }
+            $failedConclusions = @($logicalChecks | Where-Object { [string]$_.conclusion -notin @('success', 'neutral', 'skipped') } | ForEach-Object { [string]$_.conclusion } | Sort-Object -Unique)
+            if ($failedConclusions.Count) { $failed.Add("$($group.Name) ($($failedConclusions -join '/'))") }
         }
         # Do not remove the temporary branch while another check is still
         # running. A workflow that is checking out that branch would then fail
         # for the wrong reason and hide the original result.
         if ($pending.Count) { Start-Sleep -Seconds 10; continue }
+        if ($null -eq $stableSince -or ([DateTimeOffset]::UtcNow - $stableSince).TotalSeconds -lt $SettleSeconds) { Start-Sleep -Seconds 5; continue }
         $runnerNames = @(Get-WorkflowRunnerNames -RepositoryName $RepositoryName -Checks $checks)
         if ($failed.Count) {
             $exception = [InvalidOperationException]::new("Pull-request quality checks failed: $($failed -join ', ')")
             $exception.Data['RunnerNames'] = $runnerNames
             throw $exception
         }
-        return [pscustomobject]@{ checkCount = $checks.Count; runnerNames = $runnerNames }
+        return [pscustomobject]@{ checkCount = $checksByName.Count; runnerNames = $runnerNames; headSha = $headSha; baseRef = $baseRef }
     }
     throw 'Timed out waiting for pull-request quality checks to complete.'
+}
+
+function Wait-DefaultBranchTargetVersion([string]$RepositoryName, [string]$DefaultBranch, [string]$ExpectedVersion) {
+    $deadline = [DateTimeOffset]::UtcNow.AddMinutes(2)
+    while ([DateTimeOffset]::UtcNow -lt $deadline) {
+        $remoteState = Get-RemoteTextFile $RepositoryName $DefaultBranch '.repository-quality-gates.json'
+        if ($remoteState.exists) {
+            try { $state = $remoteState.content | ConvertFrom-Json }
+            catch { throw 'The default-branch repository quality-gates state is invalid after merge.' }
+            if ([string]$state.templateVersion -ceq $ExpectedVersion) { return }
+        }
+        Start-Sleep -Seconds 5
+    }
+    throw "The default branch did not report Repository Quality Gates version $ExpectedVersion after merge."
 }
 
 function Get-RemoteTextFile([string]$RepositoryName, [string]$DefaultBranch, [string]$RelativePath) {
@@ -170,7 +335,9 @@ function Get-RqgInvestigationAction([string]$Stage) {
         '^Update pull-request creation' { return 'Verify Pull requests write access and branch-policy requirements, inspect any existing RQG pull request, and rerun after resolving the conflict.' }
         '^Pull-request quality-check discovery' { return 'Open the update pull request and its Checks tab, confirm the expected workflows are enabled and triggered for the update branch, then rerun after check runs appear.' }
         '^Pull-request quality checks' { return 'Open the update pull request Checks tab, inspect each named failing check and its job log, correct the downstream repository failure, then rerun the rollout.' }
+        '^Required-check enforcement' { return 'Configure active default-branch rules to require every expected Repository Quality Gates check, verify the effective branch rules, then rerun before publishing an update branch.' }
         '^Verified pull-request merge' { return 'Inspect branch protection, required reviews, mergeability, and the GitHub App Pull requests and Contents permissions; resolve the reported merge blocker and rerun.' }
+        '^Default-branch version verification' { return 'Inspect the merged pull request and default-branch managed-state file, confirm the merge contains the target RQG version, and correct the branch state before retrying.' }
         '^Temporary branch cleanup' { return 'The update merged. Remove the identified RQG-owned temporary branch after confirming the merge, then verify the repository reports the target RQG version.' }
         default { return 'Review the reported cause and the repository Actions and pull-request history, correct the repository-specific blocker, and rerun the rollout.' }
     }
@@ -193,6 +360,63 @@ function New-RqgFailureComment {
     return "Stage: $Stage. Cause: $Cause Context: $context $cleanupText Investigation: $(Get-RqgInvestigationAction $Stage)"
 }
 
+function Get-RqgFailureStatus {
+    param(
+        [Parameter(Mandatory)][string]$Stage,
+        [Parameter(Mandatory)][string]$Cause,
+        [bool]$PullRequestMerged = $false
+    )
+
+    if ($PullRequestMerged) {
+        if ($Stage -match '^Pull-request quality-check discovery|^Pull-request quality checks') { return 'MergedWithFailedChecks' }
+        if ($Stage -match '^Default-branch version verification') { return 'PostMergeVerificationFailed' }
+        return 'MergeOutcomeUnverified'
+    }
+
+    switch -Regex ($Stage) {
+        '^Repository metadata' { return 'RepositoryInspectionFailed' }
+        '^Managed-state inspection' { return 'ManagedStateInvalid' }
+        '^Open pull-request inspection' { return 'OpenPullRequestInspectionFailed' }
+        '^Repository clone' { return 'CloneFailed' }
+        '^Managed-file update' {
+            if ($Cause -match 'path conflict|managed file was modified|unmanaged file already uses') { return 'ManagedFileConflict' }
+            return 'ManagedFileUpdateFailed'
+        }
+        '^Publication-safety scan' { return 'PublicationSafetyFailed' }
+        '^Update commit' { return 'CommitFailed' }
+        '^Update branch push' { return 'BranchPushFailed' }
+        '^Update pull-request creation' { return 'PullRequestCreationFailed' }
+        '^Pull-request quality-check discovery' { return 'CheckDiscoveryFailed' }
+        '^Pull-request quality checks' {
+            if ($Cause -match '^Pull-request quality checks failed:\s*Licence Decision\s+\([^)]+\)\s*$') { return 'RequiresLicenceDecision' }
+            return 'FailedChecks'
+        }
+        '^Required-check enforcement' { return 'RequiredChecksNotEnforced' }
+        '^Verified pull-request merge' { return 'MergeFailed' }
+        '^Default-branch version verification' { return 'PostMergeVerificationFailed' }
+        '^Temporary branch cleanup' { return 'MergedCleanupRequired' }
+        default { return 'FleetUpdateFailed' }
+    }
+}
+
+function Test-RqgFailureStatus([string]$Status) {
+    return $Status -notin @(
+        'Skipped',
+        'Current',
+        'EmptyRepository',
+        'EnrollmentOptOut',
+        'DeferredOpenPullRequests',
+        'EnrollmentAvailable',
+        'Available',
+        'Ahead',
+        'ChecksPending',
+        'PullRequest',
+        'UpdatedSuccessfully'
+    )
+}
+
+$requiredCheckPolicy = Get-RequiredCheckEnforcementPolicy $RequiredCheckPolicyPath
+
 if (-not $TargetVersion) {
     $versionOutput = @(& $deploymentTool -Version)
     $TargetVersion = ([string]$versionOutput[0] -replace '^Repository Quality Gates\s+', '').Trim()
@@ -213,7 +437,7 @@ New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 try {
     foreach ($fullName in @($Repository | Sort-Object -Unique)) {
-        $entry = [ordered]@{ repository = $fullName; status = 'Skipped'; enrolment = $false; pullRequest = $null; autoMerge = $false; runners = @(); blockingPullRequests = @(); cleanedPullRequests = @(); detail = $null }
+        $entry = [ordered]@{ repository = $fullName; visibility = $null; status = 'Skipped'; enrolment = $false; pullRequest = $null; autoMerge = $false; runners = @(); expectedChecks = @(); requiredCheckControl = $null; requiredCheckException = $null; blockingPullRequests = @(); cleanedPullRequests = @(); detail = $null }
         $clonePath = $null
         $pushedUpdateBranch = $false
         $failureStage = 'Repository metadata and eligibility inspection'
@@ -223,11 +447,15 @@ try {
             if ($Owner -and ($fullName -split '/')[0] -ine $Owner) { $entry.detail = 'Repository is outside the selected owner.'; $results.Add([pscustomobject]$entry); continue }
 
             $failureStage = 'Repository metadata inspection'
-            $metadataText = @(& gh api "repos/$fullName" --jq '{defaultBranch:.default_branch,size:.size}' 2>$null) -join [Environment]::NewLine
+            $metadataText = @(& gh api "repos/$fullName" --jq '{defaultBranch:.default_branch,size:.size,visibility:.visibility,private:.private}' 2>$null) -join [Environment]::NewLine
             if ($LASTEXITCODE -ne 0 -or -not $metadataText) { throw 'Unable to read repository metadata.' }
             try { $metadata = $metadataText | ConvertFrom-Json }
             catch { throw 'GitHub returned invalid repository metadata.' }
             $defaultBranch = ([string]$metadata.defaultBranch).Trim()
+            $visibilityValue = if ($metadata.PSObject.Properties.Name -contains 'visibility') { [string]$metadata.visibility } else { '' }
+            $privateValue = if ($metadata.PSObject.Properties.Name -contains 'private') { $metadata.private } else { $false }
+            $repositoryVisibility = if ($visibilityValue -in @('public', 'private')) { (Get-Culture).TextInfo.ToTitleCase($visibilityValue) } elseif ($privateValue -eq $true) { 'Private' } else { 'Public' }
+            $entry.visibility = $repositoryVisibility
             if ([long]$metadata.size -eq 0) {
                 $entry.status = 'EmptyRepository'
                 $entry.detail = 'The repository has no commits. Automatic enrolment will be retried after its first commit.'
@@ -308,6 +536,7 @@ try {
             $updateText = @(& $updateScript @updateArguments) -join [Environment]::NewLine
             $update = $updateText | ConvertFrom-Json
             if ($update.status -notin @('Updated', 'Enrolled')) { $entry.status = [string]$update.status; $results.Add([pscustomobject]$entry); continue }
+            $entry.expectedChecks = @(Get-ExpectedQualityCheckNames $clonePath)
 
             & git -C $clonePath add -A
             if ($LASTEXITCODE -ne 0) { throw 'Unable to stage the update.' }
@@ -341,6 +570,11 @@ try {
                 $results.Add([pscustomobject]$entry)
                 continue
             }
+
+            $failureStage = 'Required-check enforcement before publication'
+            $enforcement = Assert-RequiredQualityChecksEnforced -RepositoryName $fullName -DefaultBranch $defaultBranch -ExpectedCheckNames @($entry.expectedChecks) -RepositoryVisibility $repositoryVisibility -Policy $requiredCheckPolicy
+            $entry.requiredCheckControl = [string]$enforcement.mode
+            $entry.requiredCheckException = [string]$enforcement.exceptionId
 
             $failureStage = 'Update branch push'
             & git -C $clonePath fetch origin "+refs/heads/$branchName`:refs/remotes/origin/$branchName" 2>$null
@@ -400,7 +634,7 @@ try {
                     $cleanupDetail = "Temporary RQG branch cleanup failed: $($cleanupOutput -join [Environment]::NewLine)"
                 }
             }
-            $entry.status = 'Failed'
+            $entry.status = Get-RqgFailureStatus -Stage $failureStage -Cause $failureCause
             $entry.detail = New-RqgFailureComment -Stage $failureStage -Cause $failureCause -Version $TargetVersion -PullRequestUrl ([string]$entry.pullRequest) -UpdateBranch $branchName -Cleanup $cleanupDetail
             Write-Warning "Repository Quality Gates update failed for '$fullName': $($entry.detail)"
         }
@@ -417,17 +651,27 @@ if ($Apply -and $AutoMerge) {
             $repositoryName = [string]$entry.repository
             $pullRequestUrl = [string]$entry.pullRequest
             $failureStage = 'Pull-request quality-check discovery and completion'
-            $checkResult = Wait-PullRequestQualityChecks $repositoryName $pullRequestUrl
+            $checkResult = Wait-PullRequestQualityChecks -RepositoryName $repositoryName -PullRequestUrl $pullRequestUrl -ExpectedCheckNames @($entry.expectedChecks) -SettleSeconds $CheckSettleSeconds
             $checkCount = [int]$checkResult.checkCount
             $entry.runners = @($checkResult.runnerNames)
             if ($pullRequestUrl -notmatch '/pull/(?<number>[1-9]\d*)/?$') { throw 'The update pull-request URL does not contain a valid pull-request number.' }
             $pullRequestNumber = [int]$Matches.number
             $failureStage = 'Verified pull-request merge'
-            $mergeOutput = @(& gh api --method PUT "repos/$repositoryName/pulls/$pullRequestNumber/merge" -f merge_method=squash 2>&1)
+            $preMergeState = Get-PullRequestState $repositoryName $pullRequestNumber
+            if ([bool]$preMergeState.merged -or [string]$preMergeState.state -ne 'open') { throw 'The update pull request closed before the verified merge could begin.' }
+            if ([string]$preMergeState.headSha -cne [string]$checkResult.headSha) { throw 'The update pull-request head changed after quality-check verification.' }
+            if ([string]$preMergeState.baseRef -cne [string]$checkResult.baseRef) { throw 'The update pull-request base branch changed after quality-check verification.' }
+            $failureStage = 'Required-check enforcement before verified merge'
+            $mergeEnforcement = Assert-RequiredQualityChecksEnforced -RepositoryName $repositoryName -DefaultBranch ([string]$checkResult.baseRef) -ExpectedCheckNames @($entry.expectedChecks) -RepositoryVisibility ([string]$entry.visibility) -Policy $requiredCheckPolicy
+            if ([string]$mergeEnforcement.mode -cne [string]$entry.requiredCheckControl -or [string]$mergeEnforcement.exceptionId -cne [string]$entry.requiredCheckException) { throw 'The required-check enforcement control changed after publication.' }
+            $failureStage = 'Verified pull-request merge'
+            $mergeOutput = @(& gh api --method PUT "repos/$repositoryName/pulls/$pullRequestNumber/merge" -f merge_method=squash -f "sha=$($checkResult.headSha)" 2>&1)
             if ($LASTEXITCODE -ne 0) { throw "Unable to merge the verified update pull request: $($mergeOutput -join [Environment]::NewLine)" }
             try { $mergeResponse = (($mergeOutput -join [Environment]::NewLine) | ConvertFrom-Json) }
             catch { throw 'GitHub returned invalid pull-request merge data.' }
             if ($mergeResponse.merged -ne $true) { throw "GitHub did not merge the verified update pull request: $([string]$mergeResponse.message)" }
+            $failureStage = 'Default-branch version verification after merge'
+            Wait-DefaultBranchTargetVersion $repositoryName ([string]$checkResult.baseRef) $TargetVersion
             $failureStage = 'Temporary branch cleanup after verified merge'
             $deleteOutput = @(& gh api --method DELETE "repos/$repositoryName/git/refs/heads/$branchName" 2>&1)
             if ($LASTEXITCODE -ne 0) {
@@ -443,12 +687,21 @@ if ($Apply -and $AutoMerge) {
         catch {
             $failureCause = $_.Exception.Message
             if ($_.Exception.Data.Contains('RunnerNames')) { $entry.runners = @($_.Exception.Data['RunnerNames']) }
-            $cleanupOutput = @(& gh pr close ([string]$entry.pullRequest) --repo ([string]$entry.repository) --delete-branch 2>&1)
-            $cleanupDetail = if ($LASTEXITCODE -eq 0) { 'The failed temporary RQG pull request and branch were removed.' } else { "Temporary RQG pull-request cleanup failed: $($cleanupOutput -join [Environment]::NewLine)" }
+            $cleanupDetail = $null
+            $completionPullRequestState = $null
+            try {
+                if ([string]$entry.pullRequest -match '/pull/(?<number>[1-9]\d*)/?$') { $completionPullRequestState = Get-PullRequestState ([string]$entry.repository) ([int]$Matches.number) }
+            } catch { $completionPullRequestState = $null }
+            if ($completionPullRequestState -and [bool]$completionPullRequestState.merged) {
+                $cleanupDetail = 'The pull request was already merged; no destructive cleanup was attempted.'
+            } else {
+                $cleanupOutput = @(& gh pr close ([string]$entry.pullRequest) --repo ([string]$entry.repository) --delete-branch 2>&1)
+                $cleanupDetail = if ($LASTEXITCODE -eq 0) { 'The failed temporary RQG pull request and branch were removed.' } else { "Temporary RQG pull-request cleanup failed: $($cleanupOutput -join [Environment]::NewLine)" }
+            }
             $entry.autoMerge = $false
-            $entry.status = 'Failed'
-            if ($failureCause -match '^No quality checks were reported|^Timed out waiting') { $failureStage = 'Pull-request quality-check discovery' }
+            if ($failureCause -match '^No quality checks were reported|^Expected quality checks were not reported|^Timed out waiting') { $failureStage = 'Pull-request quality-check discovery' }
             elseif ($failureCause -match '^Pull-request quality checks failed') { $failureStage = 'Pull-request quality checks' }
+            $entry.status = Get-RqgFailureStatus -Stage $failureStage -Cause $failureCause -PullRequestMerged ([bool]($completionPullRequestState -and [bool]$completionPullRequestState.merged))
             $entry.detail = New-RqgFailureComment -Stage $failureStage -Cause $failureCause -Version $TargetVersion -PullRequestUrl ([string]$entry.pullRequest) -UpdateBranch $branchName -Cleanup $cleanupDetail
             Write-Warning "Repository Quality Gates completion failed for '$($entry.repository)': $($entry.detail)"
         }
@@ -459,7 +712,7 @@ $summary = [ordered]@{
     targetVersion = $TargetVersion
     apply = [bool]$Apply
     repositories = @($results)
-    failed = @($results | Where-Object status -eq 'Failed').Count
+    failed = @($results | Where-Object { Test-RqgFailureStatus ([string]$_.status) }).Count
 }
 $summaryJson = $summary | ConvertTo-Json -Depth 6
 if (-not [string]::IsNullOrWhiteSpace($ResultPath)) {

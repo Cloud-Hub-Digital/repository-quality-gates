@@ -35,4 +35,4 @@ jobs:
           "spdx-id=$detected" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
       - name: Validate Licence Decision
         shell: pwsh
-        run: ./scripts/Test-RepositoryLicence.ps1 -Repository . -GitHubSpdxId '${{ steps.github-licence.outputs.spdx-id }}'
+        run: ./scripts/Test-RepositoryLicence.ps1 -Repository . -GitHubSpdxId '${{ steps.github-licence.outputs.spdx-id }}' -RepositoryVisibility '${{ github.event.repository.private && 'Private' || 'Public' }}'

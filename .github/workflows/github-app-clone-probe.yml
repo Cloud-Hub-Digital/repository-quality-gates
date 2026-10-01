@@ -1,0 +1,30 @@
+name: GitHub App Clone Probe
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository_sha256:
+        description: Lowercase SHA-256 of the private owner/repository name to test without disclosing it.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Verify GitHub App Repository Clone
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Read-Only Clone Probe
+        shell: pwsh
+        env:
+          RQG_APP_ID: ${{ vars.RQG_APP_ID }}
+          RQG_APP_PRIVATE_KEY: ${{ secrets.RQG_APP_PRIVATE_KEY }}
+          RQG_CLONE_PROBE_REPOSITORY_SHA256: ${{ inputs.repository_sha256 }}
+        run: ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -CloneProbeRepositorySha256 $env:RQG_CLONE_PROBE_REPOSITORY_SHA256

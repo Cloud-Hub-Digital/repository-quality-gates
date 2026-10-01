@@ -37,11 +37,19 @@ The automatic-reconciliation job deliberately retains its checkout credential an
 
 ## Module Selection And Checks
 
+### Repository Standards & Review Instructions
+
+**Selection rule:** Always selected for every Git repository through the documentation module.
+
+**Deployed controls:** `scripts/Test-RepositoryStandards.ps1` requires a tracked, sanitized root `AGENTS.md` for code review. The first line must contain the exact Repository Standards provenance for schema `1`, standard `Repository Standards`, version `1.1.0`, scope `local-required`, and source `local`. The file must contain exactly one `## Code Review Rules` section, exactly one `## Repository-Specific Review Rules` section, at least one meaningful repository-specific bullet, and no unresolved `{{...}}` placeholder.
+
+The public review file is repository-specific and remains distinct from private project lifecycle records. RQG validates and distributes the validator but does not infer or overwrite the repository-specific review rules. Render and review the local file from the approved Repository Standards template before enrolment or update. `PROJECT.md`, `GOALS.md`, `STATUS.md`, `DECISIONS.md`, and `HANDOFFS.md` remain prohibited publication content and must remain ignored; `AGENTS.md` must be tracked and must not be ignored.
+
 ### RQG Licensing
 
 **Selection rule:** Always selected for every Git repository.
 
-**Deployed controls:** `LICENSES/Repository-Quality-Gates-MIT.txt` preserves the MIT notice for RQG-managed components. It does not replace or change the downstream project's own licence. `scripts/Test-RepositoryLicence.ps1` validates the approved open-source or proprietary decision in `.repository-standards.json` schema 2, including the rights holder and exact-revision GitHub licence presentation. Open-source identifiers must be active SPDX identifiers. The standard proprietary template is exact-match validated, while a project-specific proprietary deviation requires an approved override reason and exact `LicenseRef` marker. GitHub `Other` or `NOASSERTION` is valid for proprietary terms; missing or contradictory information fails closed.
+**Deployed controls:** `LICENSES/Repository-Quality-Gates-MIT.txt` preserves the MIT notice for RQG-managed components. It does not replace or change the downstream project's own licence. `scripts/Test-RepositoryLicence.ps1` validates repository visibility and the approved decision in `.repository-standards.json` schema 2, including the rights holder and exact-revision GitHub licence presentation. Public repositories default to MIT. Private repositories default to TR Proprietary License 1.0 with `LicenseRef-TR-Proprietary-1.0` and template version `1.0`. An approved repository-local override may select another licence when it records a substantive reason and satisfies all open-source or proprietary checks. Active SPDX identifiers may define explicitly pinned GitHub legacy detector aliases; the current policy maps GitHub `GPL-3.0` to canonical SPDX `GPL-3.0-only`. GitHub `Other` or `NOASSERTION` is valid for a proprietary class. Missing visibility, missing decisions, undocumented deviations, mismatches, and contradictory information fail closed.
 
 ### Secret Scanning
 

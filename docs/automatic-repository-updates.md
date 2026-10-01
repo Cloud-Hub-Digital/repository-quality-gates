@@ -111,7 +111,13 @@ Install the App only on repositories that Repository Quality Gates may manage. T
 
 If the App is installed for **All Repositories**, every newly created repository becomes eligible automatically. Commit the opt-out file before the next fleet run when a repository must remain unmanaged. If the App is installed for **Only Select Repositories**, adding a repository to the App installation makes it eligible unless it already contains the opt-out file.
 
-For each selected downstream repository, enable **Allow Auto-Merge** and configure its default-branch rules so every required quality, build, and test check must pass before merging. This is a one-time repository-administration setting; the narrowly scoped updater App does not receive Administration permission to weaken or create those rules.
+For each selected public downstream repository, configure active default-branch rules so every applicable RQG quality, build, and test check must pass before the branch can be updated. This is a one-time repository-administration setting; the narrowly scoped updater App does not receive Administration permission to weaken or create those rules. The updater reads the effective active branch rules through its Metadata permission immediately before publishing an update branch and again immediately before merge. A missing expected required check stops the repository before publication or merge with `RequiredChecksNotEnforced`.
+
+Use `scripts/Get-RepositoryQualityGateRequiredCheckPlan.ps1` to produce a read-only JSON plan before changing repository rules. The planner accepts the dynamically discovered repository list, reads each repository's managed module set and active default-branch rules, and reports the exact expected, present, and missing checks. `ConfigureGitHubRules` identifies a public repository that needs an administration change. The planner never creates or changes a rule.
+
+Private repositories use native GitHub required-check rules whenever GitHub exposes them. When the effective-rules endpoint returns the specifically recognized current-plan limitation for a private repository, policy exception `RQG-PRIVATE-PLAN-001` permits the RQG verified merge path. The exception requires all eight controls recorded in `policy/required-check-enforcement.json`: expected checks derived from deployed modules, every expected check observed, every observed execution accepted, a stable check set, exact head and base reverified, merge pinned to the verified head, default-branch version verified, and every unverified state failed closed. The updater records the control mode and exception identifier, then proves the same control again immediately before merge.
+
+The exception does not accept an incomplete rule set, a generic permission or authentication failure, a missing check, a changed head or base, an unstable check set, or an unverifiable default-branch result. Public repositories cannot use it. The exception controls the RQG automation path; repository owners and other independently authorized writers remain able to make writes outside that path when the hosting plan cannot enforce branch rules. That residual platform limitation must remain explicit in private operational records.
 
 In the central `repository-quality-gates` repository:
 
@@ -122,6 +128,18 @@ In the central `repository-quality-gates` repository:
 5. Keep the private key and email credentials out of files, commits, workflow logs, and pull-request content.
 
 The workflow exchanges these values for a short-lived App JWT, then creates a separate short-lived installation token for each installation. It never reuses one installation's token for another installation, copies no token or private key into a managed repository, masks discovered owner and full repository names before downstream log output, and requests revocation of each installation token when processing finishes.
+
+## Read-Only GitHub App Clone Probe
+
+The manual **GitHub App Clone Probe** workflow proves that the configured App can discover and clone one selected repository without starting a fleet update. To keep a private repository name out of workflow inputs and run metadata, the workflow accepts the lowercase SHA-256 of the lowercase `owner/repository` name rather than the name itself. The probe discovers the App installations, selects the one repository matching that digest, performs a temporary no-checkout clone with the short-lived installation token, verifies its `HEAD`, removes the clone, and revokes the token. It does not enrol, update, commit, push, create a pull request, merge, or send a fleet email.
+
+Calculate the input locally:
+
+```powershell
+$Repository = '<owner>/<repository>'; $Bytes = [Text.Encoding]::UTF8.GetBytes($Repository.ToLowerInvariant()); $Hash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)).ToLowerInvariant(); $Hash
+```
+
+Run the workflow only from an exact reviewed RQG revision. A missing digest match, App authentication failure, repository-discovery failure, clone failure, unverifiable `HEAD`, or cleanup failure stops the probe.
 
 ## Workflow Triggers
 
@@ -134,7 +152,7 @@ The central `.github/workflows/update-managed-repositories.yml` workflow runs:
 - daily at its documented UTC schedule; and
 - on a manual `workflow_dispatch` request.
 
-The rollout job has a 120-minute overall limit. Each downstream pull request may wait up to 45 minutes for reported checks to finish, after allowing up to four minutes for the first check to appear. When email reporting is enabled, the workflow sends a final success or failure report after the rollout step, including the selected release, workflow-run link, and a Repository, Status, and Comment table. A failed row identifies the failing stage, captured cause, target version, pull request and temporary branch context when available, cleanup outcome, and a stage-specific investigation action. The repository-named JSON used to compose that table remains only in the rollout job workspace and is never uploaded. Every value registered with GitHub's masking controls is replaced before the separate diagnostic report artifact is persisted, and that sanitized artifact expires after one day. A rollout failure remains a workflow failure after the report is sent.
+The rollout job has a 120-minute overall limit. Each downstream pull request may wait up to 45 minutes for reported checks to finish, after allowing up to four minutes for every expected check to appear and requiring a stable completed check set before merge. The updater also requires effective default-branch rules to name every expected check and pins the merge request to the exact verified head commit. When email reporting is enabled, the workflow sends a final success or failure report after the rollout step, including the selected release, workflow-run link, and Repository, Visibility, Runner, Status, and Comment columns. Each status identifies the actual terminal state instead of collapsing failures into a generic result. Examples include `UpdatedSuccessfully`, `RequiresLicenceDecision`, `FailedChecks`, `RequiredChecksNotEnforced`, `ManagedFileConflict`, `CloneFailed`, `CheckDiscoveryFailed`, `MergedWithFailedChecks`, `MergedCleanupRequired`, `DeferredOpenPullRequests`, and `Current`. A failed row identifies the failing stage, captured cause, target version, pull request and temporary branch context when available, cleanup outcome, and a stage-specific investigation action. The repository-named JSON used to compose that table remains only in the rollout job workspace and is never uploaded. Every value registered with GitHub's masking controls is replaced before the separate diagnostic report artifact is persisted, and that sanitized artifact expires after one day. A rollout failure remains a workflow failure after the report is sent.
 
 The automatic release passes its exact stable tag to the fleet workflow, and an externally published release supplies its event tag. Scheduled runs and manual runs without a tag resolve the latest published release. Every path verifies that the selected tag is a published, non-draft, non-prerelease stable semantic version and checks out that immutable tag before updating repositories. Development work on `main` therefore cannot be distributed before it becomes a release, and a release-triggered rollout cannot drift to a different release.
 

@@ -85,15 +85,40 @@ if ($licenceClass -eq 'proprietary') {
 
 $errors = [Collections.Generic.List[string]]::new()
 $tracked = @(Get-TrackedPaths $root)
-$lifecycleNames = @('AGENTS.md', 'PROJECT.md', 'GOALS.md', 'STATUS.md', 'DECISIONS.md', 'HANDOFFS.md')
+$lifecycleNames = @('PROJECT.md', 'GOALS.md', 'STATUS.md', 'DECISIONS.md', 'HANDOFFS.md')
 foreach ($path in $tracked) {
     if ([IO.Path]::GetFileName($path) -in $lifecycleNames) { $errors.Add("Private lifecycle file is repository-visible: $path") }
 }
 
-$requiredLocal = @('README.md', 'CHANGELOG.md', '.gitignore', '.github/CODEOWNERS', '.github/dependabot.yml', '.repository-standards.json')
+$requiredLocal = @('AGENTS.md', 'README.md', 'CHANGELOG.md', '.gitignore', '.github/CODEOWNERS', '.github/dependabot.yml', '.repository-standards.json')
 foreach ($path in $requiredLocal) { if (-not (Test-Path -LiteralPath (Join-Path $root $path) -PathType Leaf)) { $errors.Add("Required repository-local file is missing: $path") } }
 $licenceFiles = @(Get-ChildItem -LiteralPath $root -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(LICENSE|LICENCE)(\..+)?$' })
 if ($licenceFiles.Count -eq 0) { $errors.Add('A repository-local licence file is missing.') }
+
+$agentsPath = Join-Path $root 'AGENTS.md'
+if (Test-Path -LiteralPath $agentsPath -PathType Leaf) {
+    $agentsText = [IO.File]::ReadAllText($agentsPath)
+    $agentsFirstLine = Get-FirstLine $agentsPath
+    $requiredAgentMarkerValues = @('schema=1', 'standard=Repository Standards', 'version=1.1.0', 'scope=local-required', 'source=local')
+    if (-not $agentsFirstLine -or -not $agentsFirstLine.StartsWith('<!-- repository-standard:', [StringComparison]::Ordinal)) {
+        $errors.Add('AGENTS.md does not start with the required repository-standard provenance marker.')
+    } else {
+        foreach ($value in $requiredAgentMarkerValues) {
+            if (-not $agentsFirstLine.Contains($value, [StringComparison]::Ordinal)) { $errors.Add("AGENTS.md provenance marker is missing: $value") }
+        }
+    }
+    if ([regex]::Matches($agentsText, '(?m)^## Code Review Rules\s*$').Count -ne 1) { $errors.Add('AGENTS.md must contain exactly one Code Review Rules section.') }
+    $specificMatches = [regex]::Matches($agentsText, '(?m)^## Repository-Specific Review Rules\s*$')
+    if ($specificMatches.Count -ne 1) {
+        $errors.Add('AGENTS.md must contain exactly one Repository-Specific Review Rules section.')
+    } else {
+        $specificStart = $specificMatches[0].Index + $specificMatches[0].Length
+        $nextHeading = [regex]::Match($agentsText.Substring($specificStart), '(?m)^##\s+')
+        $specificBody = if ($nextHeading.Success) { $agentsText.Substring($specificStart, $nextHeading.Index) } else { $agentsText.Substring($specificStart) }
+        if ($specificBody -notmatch '(?m)^-\s+\S') { $errors.Add('AGENTS.md must contain at least one repository-specific review rule.') }
+    }
+    if ($agentsText -match '\{\{[^}]+\}\}') { $errors.Add('AGENTS.md contains an unresolved template placeholder.') }
+}
 
 $ignorePath = Join-Path $root '.gitignore'
 if (Test-Path -LiteralPath $ignorePath -PathType Leaf) {
