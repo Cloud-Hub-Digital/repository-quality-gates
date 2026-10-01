@@ -576,6 +576,17 @@ try {
     Assert-True (($embeddedVersionOutput -join "`n").Contains('Repository Quality Gates 3.1.0')) 'The embedded deployment engine should match the canonical release version.'
     Assert-True ((Get-Content -LiteralPath (Join-Path $projectRoot '.repository-quality-gates.json') -Raw | ConvertFrom-Json).templateVersion -eq '3.1.0') 'The central managed state should match the canonical release version.'
 
+    $sourceModuleRoot = Join-Path $projectRoot 'modules'
+    $embeddedModuleRoot = Join-Path $projectRoot '.rqg\template\modules'
+    $sourceModuleFiles = @(Get-ChildItem -LiteralPath $sourceModuleRoot -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($sourceModuleRoot, $_.FullName).Replace('\', '/') } | Sort-Object)
+    $embeddedModuleFiles = @(Get-ChildItem -LiteralPath $embeddedModuleRoot -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath($embeddedModuleRoot, $_.FullName).Replace('\', '/') } | Sort-Object)
+    Assert-True (($sourceModuleFiles -join "`n") -ceq ($embeddedModuleFiles -join "`n")) 'The embedded deployment template should contain the complete canonical module tree.'
+    foreach ($relativeModulePath in $sourceModuleFiles) {
+        $sourceModuleHash = (Get-FileHash -LiteralPath (Join-Path $sourceModuleRoot $relativeModulePath) -Algorithm SHA256).Hash
+        $embeddedModuleHash = (Get-FileHash -LiteralPath (Join-Path $embeddedModuleRoot $relativeModulePath) -Algorithm SHA256).Hash
+        Assert-True ($sourceModuleHash -ceq $embeddedModuleHash) "The embedded deployment template should match the canonical module file: $relativeModulePath"
+    }
+
     Write-Host "$passed assertions passed."
 } finally {
     if (Test-Path -LiteralPath $testRoot) { Remove-Item -LiteralPath $testRoot -Recurse -Force }

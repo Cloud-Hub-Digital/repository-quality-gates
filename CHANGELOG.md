@@ -14,6 +14,10 @@
 - Reported precise stage-aware rollout statuses while preserving dynamic discovery, private-runner selection, and fail-closed repository handling.
 - Removed `AGENTS.md` from the private lifecycle filename exclusion so the separately sanitized repository review rules can be deployed and validated.
 
+### Fixed
+
+- Synchronized the current two-class licensing workflow, SPDX policy, and validator into the embedded deployment template, and added exact module-tree parity regression coverage.
+
 ## 3.0.0 - 2026-10-01
 
 ### Changed

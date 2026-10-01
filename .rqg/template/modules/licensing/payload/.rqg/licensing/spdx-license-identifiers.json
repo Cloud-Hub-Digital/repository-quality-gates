@@ -3,6 +3,11 @@
   "licenseListVersion": "3.29.0",
   "source": "https://spdx.org/licenses/licenses.json",
   "retrievedOn": "2026-09-30",
+  "githubDetectorAliases": {
+    "GPL-3.0-only": [
+      "GPL-3.0"
+    ]
+  },
   "licenseIds": [
     "0BSD",
     "3D-Slicer-1.0",
