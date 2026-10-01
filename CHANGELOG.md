@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.1.0 - 2026-10-01
+
+### Added
+
+- Added a visibility-aware required-check policy and read-only planner for dynamically discovered repositories.
+- Added a read-only GitHub App clone probe for validating installation access without mutating a downstream repository.
+- Added Repository Standards 1.1.0 enforcement for sanitized root `AGENTS.md` provenance, common-rule cardinality, and meaningful repository-specific review rules.
+
+### Changed
+
+- Required complete expected checks before merging an update and verified the exact target version on the default branch after merge.
+- Reported precise stage-aware rollout statuses while preserving dynamic discovery, private-runner selection, and fail-closed repository handling.
+- Removed `AGENTS.md` from the private lifecycle filename exclusion so the separately sanitized repository review rules can be deployed and validated.
+
 ## 3.0.0 - 2026-10-01
 
 ### Changed
