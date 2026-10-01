@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.0.0 - 2026-10-01
+
+### Changed
+
+- Enforced the approved two-class licence model through mandatory schema 2 repository decisions.
+- Validated open-source licences against the pinned active SPDX decision and the exact-revision GitHub licence presentation.
+- Validated proprietary licences against TR Proprietary License 1.0 or an explicitly approved project-specific override, including rights-holder, decision-state, identifier, and third-party-material boundaries.
+- Accepted GitHub `Other` and `NOASSERTION` for approved proprietary repositories while failing closed on missing, unresolved, mismatched, duplicated, or contradictory licence information.
+- Permitted only the non-locating `[WORK_PACKAGE_DISPLAY_ID]` and `OP#WORK_PACKAGE_DISPLAY_ID` forms for GitHub-visible OpenProject correlation.
+
+### Fixed
+
+- Returned an explicit successful process result after all licence-decision assertions pass, preventing an expected-negative child validation from incorrectly failing the PowerShell workflow.
+
 ## 2.0.1 - 2026-09-28
 
 ### Fixed
