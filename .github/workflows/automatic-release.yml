@@ -50,6 +50,7 @@ jobs:
           $required = @(
             @{ name = 'Documentation Quality'; path = '.github/workflows/quality-documentation.yml' },
             @{ name = 'Fleet Update Quality'; path = '.github/workflows/quality-fleet-update.yml' },
+            @{ name = 'Licence Quality'; path = '.github/workflows/quality-licensing.yml' },
             @{ name = 'Quality Gate Module Drift'; path = '.github/workflows/quality-module-drift.yml' },
             @{ name = 'Secret Scanning'; path = '.github/workflows/secret-scanning.yml' },
             @{ name = 'PowerShell Quality'; path = '.github/workflows/quality-powershell.yml' }

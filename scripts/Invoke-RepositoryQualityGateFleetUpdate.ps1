@@ -540,6 +540,8 @@ try {
 
             & git -C $clonePath add -A
             if ($LASTEXITCODE -ne 0) { throw 'Unable to stage the update.' }
+            . (Join-Path $clonePath 'scripts/RepositoryQualityGates.Detection.ps1')
+            $null = @(Repair-RqgManagedIndexCasing -RepositoryRoot $clonePath)
             $stagedPaths = @(& git -C $clonePath diff --cached --name-only --diff-filter=ACDMRTUXB | Where-Object { $_ })
             if (-not $stagedPaths.Count) { $entry.status = 'Current'; $results.Add([pscustomobject]$entry); continue }
             $failureStage = 'Publication-safety scan'

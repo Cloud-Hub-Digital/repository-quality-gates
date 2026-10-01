@@ -6,6 +6,11 @@ on:
       - '**'
   pull_request:
   workflow_dispatch:
+    inputs:
+      validation_only:
+        description: Validate the reconciled commit without creating another commit.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,6 +20,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate_reconciled:
+    name: Validate Reconciled Quality Gates
+    if: github.event_name == 'workflow_dispatch' && inputs.validation_only
+    runs-on: ${{ fromJSON(!github.event.repository.private && '["windows-2025"]' || (vars.RQG_WINDOWS_RUNS_ON || '["windows-2025"]')) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify Reconciliation Is Idempotent
+        shell: pwsh
+        run: |
+          ./scripts/Invoke-AutomaticQualityGateReconciliation.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Reconciled commit validation failed.' }
+          $changes = @(git status --porcelain)
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect reconciled commit state.' }
+          if ($changes.Count) { throw 'Reconciliation changed the validated commit; release stopped.' }
+
   report:
     name: Report Required Quality Gates
     if: github.event_name == 'pull_request'
@@ -30,7 +53,7 @@ jobs:
 
   reconcile:
     name: Reconcile Required Quality Gates
-    if: github.ref_type == 'branch' && github.event_name != 'pull_request'
+    if: github.ref_type == 'branch' && github.event_name != 'pull_request' && !inputs.validation_only
     permissions:
       actions: write
       contents: write
@@ -55,6 +78,9 @@ jobs:
         shell: pwsh
         run: |
           git add -A
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to stage reconciled modules.' }
+          . ./scripts/RepositoryQualityGates.Detection.ps1
+          Repair-RqgManagedIndexCasing -RepositoryRoot (Get-Location).Path
           $stagedPaths = @(git diff --cached --name-only --diff-filter=ACDMRTUXB | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
           if ($stagedPaths.Count) {
             git config user.name "github-actions[bot]"
@@ -73,7 +99,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $excludedWorkflows = @('quality-module-drift', 'update-managed-repositories')
+          gh workflow run .github/workflows/quality-module-drift.yml --ref $env:GITHUB_REF_NAME -f validation_only=true
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to dispatch validation for the reconciled commit.' }
+          $excludedWorkflows = @('quality-module-drift', 'update-managed-repositories', 'github-app-clone-probe')
           Get-ChildItem -LiteralPath .github/workflows -File | Where-Object {
             $_.Extension -in @('.yml', '.yaml') -and $_.BaseName -notin $excludedWorkflows
           } | ForEach-Object {

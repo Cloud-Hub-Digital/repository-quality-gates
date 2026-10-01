@@ -28,6 +28,7 @@ function Write-Checks([string]$Directory, [string]$FailedName = '') {
     $workflows = @(
         @{ name = 'Documentation Quality'; path = '.github/workflows/quality-documentation.yml' },
         @{ name = 'Fleet Update Quality'; path = '.github/workflows/quality-fleet-update.yml' },
+        @{ name = 'Licence Quality'; path = '.github/workflows/quality-licensing.yml' },
         @{ name = 'Quality Gate Module Drift'; path = '.github/workflows/quality-module-drift.yml' },
         @{ name = 'Secret Scanning'; path = '.github/workflows/secret-scanning.yml' },
         @{ name = 'PowerShell Quality'; path = '.github/workflows/quality-powershell.yml' }
@@ -74,6 +75,16 @@ try {
     $failedChecks = Write-Checks $fixture 'Secret Scanning'
     $result = Invoke-Plan $fixture @{ CheckRunsPath = $failedChecks }
     Assert-True (-not $result.Succeeded) 'A failed required workflow should block release.'
+
+    $failedLicence = Write-Checks $fixture 'Licence Quality'
+    $result = Invoke-Plan $fixture @{ CheckRunsPath = $failedLicence }
+    Assert-True (-not $result.Succeeded) 'A failed licence workflow must block release.'
+
+    $missingLicence = Write-Checks $fixture
+    $runsWithoutLicence = @(Get-Content -LiteralPath $missingLicence -Raw | ConvertFrom-Json | Where-Object name -ne 'Licence Quality')
+    [IO.File]::WriteAllText($missingLicence, ($runsWithoutLicence | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+    $result = Invoke-Plan $fixture @{ CheckRunsPath = $missingLicence }
+    Assert-True (-not $result.Succeeded) 'A missing licence workflow must block release.'
 
     $wrongPathChecks = Write-Checks $fixture
     $wrongPathRuns = @(Get-Content -LiteralPath $wrongPathChecks -Raw | ConvertFrom-Json | ForEach-Object { $_ })

@@ -609,6 +609,7 @@ if ($Commit) {
     if ($LASTEXITCODE -ne 0) { throw 'Verified Gitleaks installation failed.' }
     $stagePaths = @($plan | Where-Object action -ne 'Unchanged' | ForEach-Object path) + '.repository-quality-gates.json'
     foreach ($relative in @($stagePaths | Select-Object -Unique)) { & git -C $script:RepositoryRoot add -- $relative; if ($LASTEXITCODE -ne 0) { throw "Failed to stage $relative" } }
+    $stagePaths += @(Repair-RqgManagedIndexCasing -RepositoryRoot $script:RepositoryRoot)
     & $helperHost -NoProfile -ExecutionPolicy Bypass -File (Join-Path $script:RepositoryRoot 'scripts\Test-Secrets.ps1') -Mode Staged -Repository $script:RepositoryRoot -PrivateConfigPath $PrivateConfigPath
     if ($LASTEXITCODE -ne 0) { throw 'The staged secret scan failed.' }
     $staged = @(Invoke-Git diff --cached --name-only --diff-filter=ACMRD)

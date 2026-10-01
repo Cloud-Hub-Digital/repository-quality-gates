@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Preserve canonical managed Git path casing during fleet updates, reconciliation, & explicit deployment commits, so Linux receives validators at the paths called by its workflows. Repository-owned paths retain their original casing.
+
+### Fixed
+
+- Dispatch a non-publishing Module Drift validation for reconciliation commits so automatic releases receive their required check without another reconciliation loop.
+- Require Licence Quality in both automatic release polling and release-plan acceptance; keep operator-selected clone probes out of reconciliation dispatch.
+
 ## 3.1.0 - 2026-10-01
 
 ### Added

@@ -98,6 +98,28 @@ function Commit-Fixture([string]$Path, [string]$Message = 'fixture') {
 try {
     New-Item -ItemType Directory -Path $testRoot | Out-Null
 
+    . (Join-Path $projectRoot 'scripts/RepositoryQualityGates.Detection.ps1')
+    $casing = New-Fixture 'managed-index-casing'
+    & git -C $casing config core.ignorecase false
+    New-Item -ItemType Directory -Path (Join-Path $casing 'Scripts') | Out-Null
+    'managed validator' | Set-Content -LiteralPath (Join-Path $casing 'Scripts/Validator.ps1')
+    'product script' | Set-Content -LiteralPath (Join-Path $casing 'Scripts/Product.ps1')
+    '{"files":[{"path":"scripts/Validator.ps1"}]}' | Set-Content -LiteralPath (Join-Path $casing '.repository-quality-gates.json')
+    & git -C $casing add -A
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to stage casing fixture.' }
+    $beforeBlob = & git -C $casing rev-parse ':Scripts/Validator.ps1'
+    $repairs = @(Repair-RqgManagedIndexCasing -RepositoryRoot $casing)
+    $indexPaths = @(& git -C $casing ls-files)
+    Assert-True ($indexPaths -ccontains 'scripts/Validator.ps1') 'Managed validators must have the canonical lower-case index path.'
+    Assert-True ($indexPaths -cnotcontains 'Scripts/Validator.ps1') 'The obsolete managed index alias must be removed.'
+    Assert-True ($indexPaths -ccontains 'Scripts/Product.ps1') 'Product-owned path casing must be preserved.'
+    Assert-True ((& git -C $casing rev-parse ':scripts/Validator.ps1') -ceq $beforeBlob) 'Casing normalization must preserve the staged blob.'
+    Assert-True (@(Repair-RqgManagedIndexCasing -RepositoryRoot $casing).Count -eq 0) 'Repeated managed-index normalization must be idempotent.'
+    & git -C $casing update-index --add --cacheinfo "100644,$beforeBlob,Scripts/Validator.ps1"
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to create ambiguous index fixture.' }
+    $ambiguousRejected = $false
+    try { $null = @(Repair-RqgManagedIndexCasing -RepositoryRoot $casing) } catch { $ambiguousRejected = $true }
+    Assert-True $ambiguousRejected 'Multiple case aliases must fail closed before index mutation.'
     $reparseTarget = Join-Path $testRoot 'outside-repository'
     New-Item -ItemType Directory -Path $reparseTarget | Out-Null
     $sentinelPath = Join-Path $reparseTarget 'sentinel.txt'
@@ -185,8 +207,12 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-module-drift.yml')) 'The automatic module-drift workflow should be deployed universally.'
     $moduleDriftWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-module-drift.yml'))
     Assert-True ($moduleDriftWorkflow.Contains("if: github.ref_type == 'branch'")) 'Automatic reconciliation should be restricted to branch references and must not mutate tag checkouts.'
-    Assert-True ($moduleDriftWorkflow.Contains("'quality-module-drift', 'update-managed-repositories'")) 'Post-reconciliation validation must not redispatch the module-drift or central fleet-update workflows.'
+    Assert-True ($moduleDriftWorkflow.Contains("'quality-module-drift', 'update-managed-repositories'")) 'Generic dispatch must exclude module-drift and the central fleet; module-drift uses its separate validation-only dispatch.'
     Assert-True ($moduleDriftWorkflow.Contains("steps.commit_reconciliation.outputs.reconciled == 'true'")) 'Validation dispatch must require an explicit successful reconciliation output.'
+    Assert-True ($moduleDriftWorkflow.Contains('-f validation_only=true')) 'A reconciliation child must receive its own module-drift validation.'
+    Assert-True ($moduleDriftWorkflow.Contains("&& !inputs.validation_only")) 'Validation-only dispatch must never enter the committing reconciliation job.'
+    Assert-True ($moduleDriftWorkflow.Contains('if ($changes.Count) { throw')) 'A validation-only run must reject non-idempotent reconciliation.'
+    Assert-True ($moduleDriftWorkflow.Contains("'github-app-clone-probe'")) 'Automatic reconciliation must not dispatch the operator-selected clone probe.'
     Assert-True ($moduleDriftWorkflow.Contains('git diff --cached --name-only')) 'The reconciliation decision must use the staged Git index instead of runner-specific status output.'
     Assert-True (Test-Path -LiteralPath (Join-Path $projectRoot '.github\workflows\update-managed-repositories.yml')) 'The central template should provide a fleet-update workflow.'
     Assert-True (Test-Path -LiteralPath (Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1')) 'The central template should provide the fleet updater.'

@@ -93,3 +93,37 @@ function Get-RqgDetectedModules {
 
     return @($Catalog.modules | Where-Object { Test-RqgModuleDetection -Module $_ -Files $Files })
 }
+
+function Repair-RqgManagedIndexCasing {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$RepositoryRoot)
+
+    # Normalize only managed index entries. Product-owned paths and working files stay intact.
+    $statePath = Join-Path $RepositoryRoot '.repository-quality-gates.json'
+    $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+    $entries = @(& git -C $RepositoryRoot -c core.quotepath=false ls-files --stage)
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the staged managed paths.' }
+    $index = @($entries | ForEach-Object {
+        if ($_ -notmatch '^(?<mode>[0-9]{6}) (?<blob>[a-f0-9]{40,64}) (?<stage>[0-3])\t(?<path>.+)$') { throw 'Unsupported Git index entry.' }
+        [pscustomobject]@{ Mode = $Matches.mode; Blob = $Matches.blob; Stage = $Matches.stage; Path = $Matches.path }
+    })
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $repairs = @($state.files | ForEach-Object {
+        $path = [string]$_.path
+        if ($path -notmatch '^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$' -or @($path.Split('/') | Where-Object { $_ -in @('.', '..') }).Count) { throw 'Unsafe managed index path.' }
+        if (-not $seen.Add($path)) { throw 'Ambiguous managed path aliases.' }
+        $aliases = @($index | Where-Object { [string]::Equals($_.Path, $path, [StringComparison]::OrdinalIgnoreCase) })
+        if ($aliases.Count -ne 1 -or $aliases[0].Stage -ne '0' -or $aliases[0].Mode -notin @('100644', '100755')) { throw "Missing, ambiguous, or unmerged managed index entry: $path" }
+        if (-not [string]::Equals($aliases[0].Path, $path, [StringComparison]::Ordinal)) {
+            [pscustomobject]@{ OldPath = $aliases[0].Path; Path = $path; Mode = $aliases[0].Mode; Blob = $aliases[0].Blob }
+        }
+    })
+    foreach ($repair in $repairs) {
+        & git -C $RepositoryRoot update-index --force-remove -- $repair.OldPath
+        if ($LASTEXITCODE -ne 0) { throw 'Unable to remove a managed index casing alias.' }
+        & git -C $RepositoryRoot update-index --add --cacheinfo "$($repair.Mode),$($repair.Blob),$($repair.Path)"
+        if ($LASTEXITCODE -ne 0) { throw 'Unable to stage the canonical managed path.' }
+        $repair.OldPath
+        $repair.Path
+    }
+}
