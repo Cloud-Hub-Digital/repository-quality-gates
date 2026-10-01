@@ -1,9 +1,16 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "profile": "downstream",
   "account": "Cloud-Hub-Digital",
   "centralRepository": "https://github.com/Cloud-Hub-Digital/.github",
-  "licence": "MIT",
+  "licence": {
+    "class": "open-source",
+    "identifier": "MIT",
+    "rightsHolder": "Cloud Hub Digital",
+    "decisionStatus": "approved",
+    "templateVersion": null,
+    "overrideReason": null
+  },
   "supportRoute": "github-discussions",
   "conductRoute": "confidential-email"
 }

@@ -141,13 +141,20 @@ function Get-RuleStringArray($Object, [string]$Name, [string]$Context) {
     return @($items)
 }
 
+function Get-OpenProjectWorkPackageDisplayId([string]$Reference) {
+    if ($Reference -match '^(?:OP#(?<displayId>[A-Z][A-Z0-9_]{1,31}-[1-9][0-9]*)|\[(?<displayId>[A-Z][A-Z0-9_]{1,31}-[1-9][0-9]*)\])$') {
+        return [string]$Matches.displayId
+    }
+    throw 'An OpenProject work-package reference must use [PROJECT-123] or OP#PROJECT-123.'
+}
+
 function Read-RepositoryRules([string]$Path, $Catalog) {
-    $empty = [pscustomobject]@{ includeModules = @(); repositoryOwnedModules = @(); repositoryOwnedPaths = @(); additionalSecretConfigs = @() }
+    $empty = [pscustomobject]@{ includeModules = @(); repositoryOwnedModules = @(); repositoryOwnedPaths = @(); additionalSecretConfigs = @(); pullRequestReferences = @() }
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $empty }
     try { $rules = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
     catch { throw 'The .repository-quality-gates.local.json file is invalid.' }
     foreach ($property in @($rules.PSObject.Properties.Name)) {
-        if ($property -notin @('schemaVersion', 'automaticEnrollment', 'modules', 'paths', 'secretScanning')) { throw "Unsupported repository-rules property: $property" }
+        if ($property -notin @('schemaVersion', 'automaticEnrollment', 'modules', 'paths', 'secretScanning', 'pullRequest')) { throw "Unsupported repository-rules property: $property" }
     }
     if ($rules.PSObject.Properties['automaticEnrollment'] -and $rules.automaticEnrollment -isnot [bool]) {
         throw 'The repository-rules automaticEnrollment property must be true or false.'
@@ -156,6 +163,7 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
     $moduleRules = if ($rules.PSObject.Properties['modules']) { $rules.modules } else { $null }
     $pathRules = if ($rules.PSObject.Properties['paths']) { $rules.paths } else { $null }
     $secretRules = if ($rules.PSObject.Properties['secretScanning']) { $rules.secretScanning } else { $null }
+    $pullRequestRules = if ($rules.PSObject.Properties['pullRequest']) { $rules.pullRequest } else { $null }
     if ($moduleRules) {
         foreach ($property in @($moduleRules.PSObject.Properties.Name)) {
             if ($property -notin @('include', 'repositoryOwned')) { throw "Unsupported repository-rules modules property: $property" }
@@ -171,15 +179,25 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
             if ($property -ne 'additionalConfigFiles') { throw "Unsupported repository-rules secretScanning property: $property" }
         }
     }
+    if ($pullRequestRules) {
+        foreach ($property in @($pullRequestRules.PSObject.Properties.Name)) {
+            if ($property -ne 'references') { throw "Unsupported repository-rules pullRequest property: $property" }
+        }
+    }
     $include = @(Get-RuleStringArray $moduleRules 'include' 'modules')
     $repositoryOwned = @(Get-RuleStringArray $moduleRules 'repositoryOwned' 'modules')
     $repositoryOwnedPaths = @(Get-RuleStringArray $pathRules 'repositoryOwned' 'paths')
     $additionalConfigs = @(Get-RuleStringArray $secretRules 'additionalConfigFiles' 'secretScanning')
+    $pullRequestReferences = @(Get-RuleStringArray $pullRequestRules 'references' 'pullRequest')
+    $workPackageDisplayIds = @($pullRequestReferences | ForEach-Object { Get-OpenProjectWorkPackageDisplayId $_ })
+    if (@($workPackageDisplayIds | Sort-Object -Unique).Count -ne $workPackageDisplayIds.Count) { throw 'The pull-request references contain duplicate OpenProject work-package display IDs.' }
+    $projectIdentifiers = @($workPackageDisplayIds | ForEach-Object { $_ -replace '-[1-9][0-9]*$', '' } | Sort-Object -Unique)
+    if ($projectIdentifiers.Count -gt 1) { throw 'All pull-request references must belong to the same OpenProject project.' }
     $catalogIds = @($Catalog.modules | ForEach-Object { [string]$_.id })
     foreach ($moduleId in @($include + $repositoryOwned | Sort-Object -Unique)) {
         if ($moduleId -notin $catalogIds) { throw "Repository rules reference an unknown module: $moduleId" }
     }
-    $universalRepositoryOwned = @($repositoryOwned | Where-Object { $_ -in @('licensing', 'secret-scanning', 'module-drift') })
+    $universalRepositoryOwned = @($repositoryOwned | Where-Object { $_ -in @('licensing', 'secret-scanning', 'module-drift', 'documentation') })
     if ($universalRepositoryOwned.Count) {
         throw "Universal modules cannot be repository-owned: $($universalRepositoryOwned -join ', ')"
     }
@@ -206,6 +224,7 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
         repositoryOwnedModules = @($repositoryOwned)
         repositoryOwnedPaths = @($repositoryOwnedPaths)
         additionalSecretConfigs = @($additionalConfigs)
+        pullRequestReferences = @($pullRequestReferences)
     }
 }
 
@@ -294,7 +313,7 @@ foreach ($includedId in $includedIds) {
 $applicableIds = @($detectedIds + $includedIds | Sort-Object -Unique)
 $applicableModules = @($catalog.modules | Where-Object { [string]$_.id -in $applicableIds })
 $preservedIds = @(@($PreserveExistingModule) + @($repositoryRules.repositoryOwnedModules) | ForEach-Object { [string]$_ } | Where-Object { $_ } | Sort-Object -Unique)
-$universalPreservedIds = @($preservedIds | Where-Object { $_ -in @('licensing', 'secret-scanning', 'module-drift') })
+$universalPreservedIds = @($preservedIds | Where-Object { $_ -in @('licensing', 'secret-scanning', 'module-drift', 'documentation') })
 if ($universalPreservedIds.Count) {
     throw "Universal modules cannot be preserved outside RQG management: $($universalPreservedIds -join ', ')"
 }

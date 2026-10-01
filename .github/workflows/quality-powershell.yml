@@ -35,6 +35,10 @@ jobs:
         if: ${{ hashFiles('tests/Invoke-RepositoryQualityGates.Tests.ps1') != '' }}
         shell: pwsh
         run: ./tests/Invoke-RepositoryQualityGates.Tests.ps1
+      - name: Run Licence Decision Tests
+        if: ${{ hashFiles('tests/Test-RepositoryLicence.Tests.ps1') != '' }}
+        shell: pwsh
+        run: ./tests/Test-RepositoryLicence.Tests.ps1
       - name: Run Automatic Update Tests
         if: ${{ hashFiles('tests/Update-RepositoryQualityGates.Tests.ps1') != '' }}
         shell: pwsh

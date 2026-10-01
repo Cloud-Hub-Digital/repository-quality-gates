@@ -8,7 +8,7 @@ For operator instructions, see [Deployment Guide](deployment-guide.md). For the 
 
 | Module | Detection | Deployed Check |
 |---|---|---|
-| `licensing` | Every Git repository | Installs the MIT notice for the RQG-managed components without changing the repository's own licence |
+| `licensing` | Every Git repository | Installs the MIT notice for RQG-managed components and validates the repository's approved two-class licence decision |
 | `secret-scanning` | Every Git repository | Local hooks, verified Gitleaks scripts, portable policy, and GitHub Actions history scan |
 | `module-drift` | Every Git repository | Automatic addition of missing modules and removal of unchanged obsolete modules on trusted writable branches |
 | `powershell` | `.ps1`, `.psm1`, or `.psd1` | Parser validation on Windows |
@@ -93,7 +93,7 @@ A repository-owned path is narrower than a repository-owned module. It preserves
 
 The updater can perform a one-time migration of legacy secret-scanning state. It adopts only historical files whose SHA-256 hashes exactly match known published RQG payloads. A customized root `.gitleaks.toml` is preserved only when it still extends the central `security/gitleaks-portable.toml`; any unknown or modified legacy file fails closed for manual review.
 
-The `licensing` module writes `LICENSES/Repository-Quality-Gates-MIT.txt`. It attributes only the RQG files copied into the repository and does not select, replace, or modify the downstream project's own licence.
+The `licensing` module writes `LICENSES/Repository-Quality-Gates-MIT.txt`. It attributes only the RQG files copied into the repository and does not select, replace, or modify the downstream project's own licence. It also deploys `scripts/Test-RepositoryLicence.ps1`, a pinned active SPDX identifier snapshot, and the `Licence Quality` workflow. The validator requires `.repository-standards.json` schema 2 and checks the selected class, identifier, rights holder, approved decision state, root licence, and exact-revision GitHub detector result. Standard proprietary terms are hash-checked against TR Proprietary License 1.0; deviations require a recorded approved override and exact `LicenseRef` marker.
 
 If an existing `.gitignore` pattern matches a required managed file, the preview reports an exact negation such as `!/scripts/Test-Secrets.ps1`. Apply merges only those exact exceptions and then verifies every managed file is visible to Git. Deployment stops if a parent-directory rule still prevents a required file from being tracked.
 

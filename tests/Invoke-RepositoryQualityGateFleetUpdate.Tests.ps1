@@ -135,8 +135,11 @@ try {
         Assert-True ($fleetText.Contains('Pull request: $PullRequestUrl.')) 'Failed repository comments should include the update pull request when one exists.'
         Assert-True ($fleetText.Contains("Open the update pull request Checks tab, inspect each named failing check and its job log")) 'Quality-check failures should direct the operator to the named check logs.'
         Assert-True ($fleetText.Contains('<!-- repository-quality-gates-fleet-update -->')) 'Automated rollout pull requests must retain the exact authenticated fleet provenance marker.'
-        Assert-True (-not $fleetText.Contains('Get-PullRequestReferences')) 'The authenticated fleet exception should not add project tokens to rollout pull requests.'
-        Assert-True (-not $fleetText.Contains('Private project system:')) 'Automated rollout pull-request bodies should not add private project-system references.'
+        Assert-True ($fleetText.Contains('Get-PullRequestReferences')) 'The fleet should read repository-owned OpenProject work-package references for automated pull requests.'
+        Assert-True ($fleetText.Contains('OP#(?<displayId>')) 'The fleet should accept the OP# work-package shorthand.'
+        Assert-True ($fleetText.Contains('\[(?<displayId>')) 'The fleet should accept the bracketed work-package shorthand.'
+        Assert-True ($fleetText.Contains("'[' + `$pullRequestReferences[0].displayId + '] '")) 'Automated pull-request titles should use the bracketed work-package display ID.'
+        Assert-True ($fleetText.Contains('OpenProject: $($pullRequestReferences.reference -join')) 'Automated pull-request bodies should preserve the validated repository-owned shorthand references.'
         $powerShellWorkflow = Get-Content -LiteralPath (Join-Path $root 'modules\powershell\payload\.github\workflows\quality-powershell.yml') -Raw
         Assert-True ($powerShellWorkflow.Contains("if: `${{ hashFiles('tests/Invoke-RepositoryQualityGates.Tests.ps1') != '' }}")) 'The central synthetic deployment suite should run only when a downstream repository contains it.'
         Assert-True ($powerShellWorkflow.Contains("if: `${{ hashFiles('tests/Update-RepositoryQualityGates.Tests.ps1') != '' }}")) 'The central automatic-update suite should run only when a downstream repository contains it.'

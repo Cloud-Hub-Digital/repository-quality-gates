@@ -35,12 +35,12 @@ function Invoke-RepositoryStandards([string]$Repository) {
 function Add-RepositoryStandardCore([string]$Path, [string]$Profile, [string]$Account) {
     New-Item -ItemType Directory -Path (Join-Path $Path '.github\ISSUE_TEMPLATE') -Force | Out-Null
     foreach ($name in @('README.md', 'CHANGELOG.md')) { "# $name" | Set-Content -LiteralPath (Join-Path $Path $name) -Encoding utf8 }
-    'MIT License' | Set-Content -LiteralPath (Join-Path $Path 'LICENSE') -Encoding utf8
+    "MIT License`n`nCopyright (c) 2026 Example Owner" | Set-Content -LiteralPath (Join-Path $Path 'LICENSE') -Encoding utf8
     @('AGENTS.md', 'PROJECT.md', 'GOALS.md', 'STATUS.md', 'DECISIONS.md', 'HANDOFFS.md') | Set-Content -LiteralPath (Join-Path $Path '.gitignore') -Encoding utf8
     "* @$Account" | Set-Content -LiteralPath (Join-Path $Path '.github\CODEOWNERS') -Encoding utf8
     "version: 2`nupdates:`n  - package-ecosystem: github-actions`n    directory: '/'`n    schedule:`n      interval: weekly" | Set-Content -LiteralPath (Join-Path $Path '.github\dependabot.yml') -Encoding utf8
-    $config = [ordered]@{ schemaVersion = 1; profile = $Profile; account = $Account; centralRepository = "https://github.com/$Account/.github"; licence = 'MIT'; supportRoute = 'github-discussions'; conductRoute = 'confidential-email' }
-    ($config | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $Path '.repository-standards.json') -Encoding utf8
+    $config = [ordered]@{ schemaVersion = 2; profile = $Profile; account = $Account; centralRepository = "https://github.com/$Account/.github"; licence = [ordered]@{ class = 'open-source'; identifier = 'MIT'; rightsHolder = 'Example Owner'; decisionStatus = 'approved'; templateVersion = $null; overrideReason = $null }; supportRoute = 'github-discussions'; conductRoute = 'confidential-email' }
+    ($config | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath (Join-Path $Path '.repository-standards.json') -Encoding utf8
 }
 
 function Invoke-DriftCheck([string]$Repository, [string[]]$Arguments = @()) {
@@ -125,6 +125,9 @@ try {
     Assert-True ($apply.ExitCode -eq 0) "Apply should succeed on a clean fixture. $($apply.Output)"
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.repository-quality-gates.json')) 'Managed state should be created.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'LICENSES\Repository-Quality-Gates-MIT.txt')) 'The RQG MIT attribution file should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Test-RepositoryLicence.ps1')) 'The licence validator should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-licensing.yml')) 'The licence workflow should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.rqg\licensing\spdx-license-identifiers.json')) 'The pinned SPDX identifier policy should be deployed universally.'
     $deployedLicence = Get-Content -LiteralPath (Join-Path $mixed 'LICENSES\Repository-Quality-Gates-MIT.txt') -Raw
     Assert-True ($deployedLicence.Contains('MIT License')) 'The deployed RQG attribution file should contain the MIT license.'
     Assert-True ($deployedLicence.Contains('applies only to `.repository-quality-gates.json`')) 'The deployed RQG attribution file should scope the MIT license to the managed-state file.'
@@ -142,6 +145,10 @@ try {
     Assert-True ($secretWorkflow.Contains('shell: pwsh')) 'The secret-scanning workflow should run its script steps with PowerShell 7.'
     Assert-True (-not $secretWorkflow.Contains('shell: powershell')) 'The secret-scanning workflow should not invoke Windows PowerShell 5.1.'
     Assert-True ($secretWorkflow.Contains('vars.RQG_WINDOWS_RUNS_ON')) 'The secret-scanning workflow should support configured self-hosted Windows runners.'
+    $licenceWorkflow = [IO.File]::ReadAllText((Join-Path $projectRoot 'modules\licensing\payload\.github\workflows\quality-licensing.yml'))
+    Assert-True ($licenceWorkflow.Contains('vars.RQG_LINUX_RUNS_ON')) 'The licence workflow should support configured self-hosted Linux runners.'
+    Assert-True ($licenceWorkflow.Contains('/license?ref=$env:GITHUB_SHA')) 'The licence workflow should validate GitHub licence detection for the exact revision.'
+    Assert-True ($licenceWorkflow.Contains('Test-RepositoryLicence.ps1')) 'The licence workflow should invoke the managed licence validator.'
     $documentationWorkflow = [IO.File]::ReadAllText((Join-Path $projectRoot 'modules\documentation\payload\.github\workflows\quality-documentation.yml'))
     Assert-True ($documentationWorkflow.Contains('vars.RQG_LINUX_RUNS_ON')) 'The documentation workflow should support configured self-hosted Linux runners.'
     Assert-True ($documentationWorkflow.Contains("github.event.pull_request.head.repo.full_name != github.repository")) 'The documentation workflow should keep fork pull requests off self-hosted runners.'
@@ -391,12 +398,35 @@ try {
     Assert-True ($invalidEnrollmentPreview.ExitCode -ne 0) 'The automaticEnrollment repository rule must be a Boolean.'
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidEnrollmentRule '.repository-quality-gates.json'))) 'An invalid automatic-enrolment rule must not create managed state.'
 
-    $privateCorrelationRule = New-Fixture 'private-correlation-rule'
-    $privateCorrelationRulesText = '{"schemaVersion":1,"pullRequest":{"references":["PRIVATE-123"]}}'
-    [IO.File]::WriteAllText((Join-Path $privateCorrelationRule '.repository-quality-gates.local.json'), $privateCorrelationRulesText + "`n", [Text.UTF8Encoding]::new($false))
-    Commit-Fixture $privateCorrelationRule
-    $privateCorrelationPreview = Invoke-Tool $privateCorrelationRule @('-OutputFormat', 'Json')
-    Assert-True ($privateCorrelationPreview.ExitCode -ne 0) 'GitHub-visible repository rules must reject private project-management correlation fields.'
+    $validCorrelationRule = New-Fixture 'valid-correlation-rule'
+    $validCorrelationRulesText = '{"schemaVersion":1,"pullRequest":{"references":["OP#IVT_MCP-55","[IVT_MCP-56]"]}}'
+    [IO.File]::WriteAllText((Join-Path $validCorrelationRule '.repository-quality-gates.local.json'), $validCorrelationRulesText + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $validCorrelationRule
+    $validCorrelationPreview = Invoke-Tool $validCorrelationRule @('-OutputFormat', 'Json')
+    Assert-True ($validCorrelationPreview.ExitCode -eq 0) "Both approved OpenProject work-package shorthand forms should be accepted. $($validCorrelationPreview.Output)"
+
+    foreach ($invalidReference in @('IVT_MCP-55', '[IVT_MCP]', 'OP#IVT_MCP', 'https://openproject.example.invalid/wp/IVT_MCP-55')) {
+        $invalidCorrelationRule = New-Fixture ('invalid-correlation-' + [guid]::NewGuid().ToString('N'))
+        $invalidCorrelationRulesText = @{ schemaVersion = 1; pullRequest = @{ references = @($invalidReference) } } | ConvertTo-Json -Compress
+        [IO.File]::WriteAllText((Join-Path $invalidCorrelationRule '.repository-quality-gates.local.json'), $invalidCorrelationRulesText + "`n", [Text.UTF8Encoding]::new($false))
+        Commit-Fixture $invalidCorrelationRule
+        $invalidCorrelationPreview = Invoke-Tool $invalidCorrelationRule @('-OutputFormat', 'Json')
+        Assert-True ($invalidCorrelationPreview.ExitCode -ne 0) "A prohibited or malformed OpenProject reference must be rejected: $invalidReference"
+    }
+
+    $mixedCorrelationRule = New-Fixture 'mixed-correlation-rule'
+    $mixedCorrelationRulesText = '{"schemaVersion":1,"pullRequest":{"references":["OP#IVT_MCP-55","[OTHER-56]"]}}'
+    [IO.File]::WriteAllText((Join-Path $mixedCorrelationRule '.repository-quality-gates.local.json'), $mixedCorrelationRulesText + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $mixedCorrelationRule
+    $mixedCorrelationPreview = Invoke-Tool $mixedCorrelationRule @('-OutputFormat', 'Json')
+    Assert-True ($mixedCorrelationPreview.ExitCode -ne 0) 'OpenProject references from different projects must be rejected.'
+
+    $duplicateCorrelationRule = New-Fixture 'duplicate-correlation-rule'
+    $duplicateCorrelationRulesText = '{"schemaVersion":1,"pullRequest":{"references":["OP#IVT_MCP-55","[IVT_MCP-55]"]}}'
+    [IO.File]::WriteAllText((Join-Path $duplicateCorrelationRule '.repository-quality-gates.local.json'), $duplicateCorrelationRulesText + "`n", [Text.UTF8Encoding]::new($false))
+    Commit-Fixture $duplicateCorrelationRule
+    $duplicateCorrelationPreview = Invoke-Tool $duplicateCorrelationRule @('-OutputFormat', 'Json')
+    Assert-True ($duplicateCorrelationPreview.ExitCode -ne 0) 'The same OpenProject work package must not be repeated through different shorthand wrappers.'
 
     $centralStandards = New-Fixture 'central-repository-standards'
     Add-RepositoryStandardCore $centralStandards 'account-default' 'example-owner'

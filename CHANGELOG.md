@@ -14,7 +14,7 @@
 - Began a clean public Git history for the 2.x release line while preserving the product's earlier development milestones in this changelog.
 - Added repository-standard validation for account-level defaults, inherited downstream files, explicit local overrides, required local core files, CODEOWNERS, Dependabot, lifecycle-file exclusion, and fail-closed configuration.
 - Made repository-standard and documentation validation universal so repositories without existing Markdown cannot bypass the baseline.
-- Removed GitHub-visible private project-management references from repository-local RQG configuration.
+- Restricted GitHub-visible OpenProject correlation to validated `[PROJECT-123]` and `OP#PROJECT-123` work-package shorthand while continuing to reject URLs, locators, bare identifiers, and mixed-project references.
 - Prevented Markdown-only and docs-only pushes from starting the automatic stable-release workflow.
 
 ## 1.5.11 - 2026-09-27
@@ -105,7 +105,7 @@
 ### Added
 
 - Added optional authenticated SMTP rollout reports containing the selected release, workflow link, outcome, and sanitized per-repository output.
-- Added project-correlation validation that has since been superseded by the private one-way correlation boundary.
+- Added project-correlation validation that now accepts the two approved non-locating work-package shorthand forms.
 
 ### Changed
 

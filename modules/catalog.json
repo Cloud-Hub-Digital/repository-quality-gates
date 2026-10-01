@@ -3,7 +3,7 @@
   "modules": [
     {
       "id": "licensing",
-      "description": "Universal attribution for Repository Quality Gates components.",
+      "description": "Universal RQG attribution and two-class repository licence validation.",
       "always": true,
       "source": "modules/licensing/payload",
       "overlapPatterns": []

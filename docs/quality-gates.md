@@ -41,7 +41,7 @@ The automatic-reconciliation job deliberately retains its checkout credential an
 
 **Selection rule:** Always selected for every Git repository.
 
-**Deployed control:** `LICENSES/Repository-Quality-Gates-MIT.txt` preserves the MIT notice for RQG-managed components. It does not replace or change the downstream project's own licence.
+**Deployed controls:** `LICENSES/Repository-Quality-Gates-MIT.txt` preserves the MIT notice for RQG-managed components. It does not replace or change the downstream project's own licence. `scripts/Test-RepositoryLicence.ps1` validates the approved open-source or proprietary decision in `.repository-standards.json` schema 2, including the rights holder and exact-revision GitHub licence presentation. Open-source identifiers must be active SPDX identifiers. The standard proprietary template is exact-match validated, while a project-specific proprietary deviation requires an approved override reason and exact `LicenseRef` marker. GitHub `Other` or `NOASSERTION` is valid for proprietary terms; missing or contradictory information fails closed.
 
 ### Secret Scanning
 

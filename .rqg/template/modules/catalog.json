@@ -3,7 +3,7 @@
   "modules": [
     {
       "id": "licensing",
-      "description": "Universal attribution for Repository Quality Gates components.",
+      "description": "Universal RQG attribution and two-class repository licence validation.",
       "always": true,
       "source": "modules/licensing/payload",
       "overlapPatterns": []
@@ -85,9 +85,9 @@
     },
     {
       "id": "documentation",
-      "description": "Basic Markdown hygiene checks.",
+      "description": "Universal repository-standard enforcement and Markdown hygiene checks.",
+      "always": true,
       "source": "modules/documentation/payload",
-      "detect": { "extensions": [".md", ".markdown"] },
       "overlapPatterns": ["markdownlint", "markdown check"]
     }
   ]

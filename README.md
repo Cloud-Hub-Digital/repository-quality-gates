@@ -4,7 +4,7 @@ Repository Quality Gates is a preview-first PowerShell deployment tool for addin
 
 The prepared template version written to managed state is `2.0.1`. The automatic release workflow publishes the matching immutable `v2.0.1` GitHub Release after the required checks pass for the release commit.
 
-Version `2.0.1` uses **Updated Successfully** for completed fleet updates, keeps all private project-management correlation outside GitHub, and validates central repository-standard inheritance and explicit local overrides. It retains private self-hosted runner routing, fixed-width email tables, line-separated runner names, concise failure comments, and a runner-sanitized one-day diagnostic artifact. It also uses separately configured protected email addresses and optional display names for the rollout report. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `2.0.1` uses **Updated Successfully** for completed fleet updates, permits only the two validated non-locating OpenProject work-package shorthand forms in GitHub, and validates central repository-standard inheritance and explicit local overrides. It retains private self-hosted runner routing, fixed-width email tables, line-separated runner names, concise failure comments, and a runner-sanitized one-day diagnostic artifact. It also uses separately configured protected email addresses and optional display names for the rollout report. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
 
 The 2.x line begins a clean public Git history. The [Development History](docs/development-history.md) explains how the earlier public development milestones are represented without carrying forward the previous commit graph.
 
@@ -94,6 +94,7 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `tests/Update-RepositoryQualityGates.Tests.ps1` | Synthetic regression suite for version comparison, safe updates, skips, and managed-file conflicts |
 | `tests/Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1` | Synthetic fleet-discovery suite for automatic enrolment, repository opt-out, open-pull-request deferral, and workflow activation |
 | `tests/Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1` | Synthetic authentication suite for multi-installation discovery, token isolation, and cross-owner fleet dispatch |
+| `tests/Test-RepositoryLicence.Tests.ps1` | Synthetic two-class licence suite for SPDX, proprietary-template, override, rights-holder, GitHub-presentation, and fail-closed behavior |
 | `tests/Get-RepositoryQualityGateReleasePlan.Tests.ps1` | Synthetic automatic-release suite for version, check, commit, tag, and release-state validation |
 | `scripts/Update-RepositoryQualityGates.ps1` | Preview or apply a newer template to one managed repository |
 | `scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1` | Discover GitHub App repositories, open update pull requests, and enable required-check-gated auto-merge |
@@ -110,6 +111,8 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `SECURITY.md` | Supported versions, reporting route, scope, invariants, and safe-testing policy |
 
 Managed downstream repositories receive `LICENSES/Repository-Quality-Gates-MIT.txt`. Its MIT terms apply only to `.repository-quality-gates.json` and the files identified in that file's `files` array. It does not license any other downstream source, documentation, configuration, assets, or data, and it does not replace or change the downstream project's own licence.
+
+The universal licensing module also validates the downstream project's own approved licence decision. `.repository-standards.json` schema 2 records an `open-source` or `proprietary` class, identifier, rights holder, and `approved` decision status. Open-source identifiers must appear in the pinned active SPDX 3.29.0 list and must match GitHub's detector result. The standard proprietary decision must match TR Proprietary License 1.0 byte-for-byte after line-ending normalization; an approved project-specific override must record a reason and carry its exact `LicenseRef` marker. GitHub `Other` or `NOASSERTION` is accepted for proprietary repositories. Missing, unresolved, mismatched, duplicated, or contradictory licensing information fails the gate.
 
 ## Recommended Repository Settings
 

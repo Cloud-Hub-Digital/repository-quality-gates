@@ -68,6 +68,9 @@ A downstream repository may contain `.repository-quality-gates.local.json`. The 
   },
   "secretScanning": {
     "additionalConfigFiles": []
+  },
+  "pullRequest": {
+    "references": ["OP#IVT_MCP-55", "[IVT_MCP-56]"]
   }
 }
 ```
@@ -79,10 +82,11 @@ A downstream repository may contain `.repository-quality-gates.local.json`. The 
 | `modules.repositoryOwned` | Keep a repository's existing verified implementation of a detected or explicitly included module instead of deploying the RQG payload |
 | `paths.repositoryOwned` | Preserve specific existing repository-relative files outside RQG managed state; every listed path must already be a regular file and cannot be the managed-state or local-rules file |
 | `secretScanning.additionalConfigFiles` | Run additional committed repository-specific Gitleaks TOML policies as separate scan layers |
+| `pullRequest.references` | Add validated OpenProject work-package shorthand to automated RQG pull requests using either `OP#PROJECT-123` or `[PROJECT-123]` |
 
-The file is declarative. It cannot run commands, change GitHub permissions, disable the universal secret-scanning, module-drift, or repository-standards/documentation modules, or override managed files. Module IDs must exist in the released catalogue. A repository-owned module must still have matching workflow evidence, and each additional secret policy must be a contained repository-relative TOML file that does not traverse a symbolic link or junction. Private project-management identifiers and work-package mappings are deliberately unsupported and must remain in private local records.
+The file is declarative. It cannot run commands, change GitHub permissions, disable the universal secret-scanning, module-drift, or repository-standards/documentation modules, or override managed files. Module IDs must exist in the released catalogue. A repository-owned module must still have matching workflow evidence, and each additional secret policy must be a contained repository-relative TOML file that does not traverse a symbolic link or junction. Pull-request references must be valid work-package display IDs in one of the two approved shorthand forms, must be unique, and must all belong to one OpenProject project.
 
-GitHub artifacts use GitHub-native issue, discussion, pull-request, and commit references. Any correlation with a private project-management system is recorded one-way in the private system or local project records and never copied into GitHub.
+GitHub artifacts continue to use GitHub-native issue, discussion, pull-request, and commit references. The optional OpenProject shorthand is non-locating: an OpenProject hostname, URL, path, API endpoint, instruction, numeric API ID, or bare project identifier remains prohibited.
 
 Older managed state that records preserved modules is migrated into this file during its first successful update. Legacy secret-scanning files return to central management only when each file matches a verified hash from a published RQG release. A customized root `.gitleaks.toml` may instead be recorded under `paths.repositoryOwned` when it still extends `security/gitleaks-portable.toml`; unknown or modified legacy files stop the update for review. After migration, the repository-owned file is the source of truth and the managed state contains only the resolved snapshot used for drift reporting.
 

@@ -1,0 +1,38 @@
+name: Licence Quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  licensing:
+    name: Licence Decision
+    runs-on: ${{ fromJSON(((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) || !github.event.repository.private) && '["ubuntu-latest"]' || (vars.RQG_LINUX_RUNS_ON || '["ubuntu-latest"]')) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read GitHub Licence Presentation
+        id: github-licence
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GH_TOKEN"
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/license?ref=$env:GITHUB_SHA"
+          try { $detected = [string](Invoke-RestMethod -Uri $uri -Headers $headers).license.spdx_id }
+          catch { throw 'GitHub could not resolve the repository licence presentation for this revision.' }
+          if (-not $detected.Trim()) { throw 'GitHub returned an empty repository licence presentation.' }
+          "spdx-id=$detected" | Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8
+      - name: Validate Licence Decision
+        shell: pwsh
+        run: ./scripts/Test-RepositoryLicence.ps1 -Repository . -GitHubSpdxId '${{ steps.github-licence.outputs.spdx-id }}'

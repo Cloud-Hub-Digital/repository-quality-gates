@@ -33,7 +33,7 @@ try {
     Assert-True ($workflowText.Contains('$maskedValues.Add([string]$Matches.value)')) 'The report writer should retain every registered mask value in memory.'
     Assert-True ($workflowText.Contains("`$Line = `$Line.Replace(`$value, '***')")) 'The preserved report must replace masked credentials and private identifiers.'
     Assert-True ($workflowText.Contains('(ConvertTo-SanitizedReportLine $failure)')) 'Failure diagnostics must receive the same report sanitization.'
-    Assert-True ($workflowText.Contains('actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4')) 'The report uploader should use the pinned Node.js 24 artifact action.'
+    Assert-True ($workflowText.Contains('actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a')) 'The report uploader should use the pinned Node.js 24 artifact action.'
     Assert-True (-not $workflowText.Contains('actions/download-artifact@')) 'The email-only repository table must not be downloaded from an artifact.'
     Assert-True ($workflowText.Contains('-PrivateReportPath $privateReportPath')) 'The App wrapper should receive a dedicated private report path.'
     Assert-True ($workflowText.Contains('PRIVATE_REPORT_PATH: ${{ github.workspace }}/.rqg-private/email-report.json')) 'The email step should read the private local report directly.'

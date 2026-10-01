@@ -52,15 +52,35 @@ catch { throw 'The .repository-standards.json file is invalid JSON.' }
 foreach ($property in @($config.PSObject.Properties.Name)) {
     if ($property -notin @('schemaVersion', 'profile', 'account', 'centralRepository', 'licence', 'supportRoute', 'conductRoute')) { throw "Unsupported repository-standards property: $property" }
 }
-if ($config.schemaVersion -ne 1) { throw 'The repository-standards schema is unsupported.' }
+if ($config.schemaVersion -ne 2) { throw 'The repository-standards schema must be version 2.' }
 $profile = [string]$config.profile
 if ($profile -notin @('account-default', 'downstream')) { throw 'The repository-standards profile must be account-default or downstream.' }
 $account = [string]$config.account
 if (-not $account -or $account -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$') { throw 'The repository-standards account is unresolved or invalid.' }
 $centralRepository = [string]$config.centralRepository
 if ($centralRepository -ne "https://github.com/$account/.github") { throw 'The centralRepository must identify the account public .github repository.' }
-foreach ($name in @('licence', 'supportRoute', 'conductRoute')) {
+foreach ($name in @('supportRoute', 'conductRoute')) {
     if (-not $config.PSObject.Properties[$name] -or -not ([string]$config.$name).Trim()) { throw "The repository-standards $name input is unresolved." }
+}
+if (-not $config.PSObject.Properties['licence'] -or $null -eq $config.licence -or $config.licence -isnot [pscustomobject]) { throw 'The approved project licence decision is missing.' }
+$allowedLicenceProperties = @('class', 'identifier', 'rightsHolder', 'decisionStatus', 'templateVersion', 'overrideReason')
+foreach ($property in @($config.licence.PSObject.Properties.Name)) {
+    if ($property -notin $allowedLicenceProperties) { throw "Unsupported licence decision property: $property" }
+}
+$licenceClass = if ($config.licence.PSObject.Properties['class']) { ([string]$config.licence.class).Trim() } else { '' }
+$licenceIdentifier = if ($config.licence.PSObject.Properties['identifier']) { ([string]$config.licence.identifier).Trim() } else { '' }
+$licenceRightsHolder = if ($config.licence.PSObject.Properties['rightsHolder']) { ([string]$config.licence.rightsHolder).Trim() } else { '' }
+$licenceDecisionStatus = if ($config.licence.PSObject.Properties['decisionStatus']) { ([string]$config.licence.decisionStatus).Trim() } else { '' }
+if ($licenceClass -notin @('open-source', 'proprietary')) { throw 'The approved licence class must be open-source or proprietary.' }
+if (-not $licenceIdentifier) { throw 'The approved licence identifier is missing.' }
+if (-not $licenceRightsHolder) { throw 'The approved licence rights holder is missing.' }
+if ($licenceDecisionStatus -ne 'approved') { throw 'The project licence decision is unresolved or not approved.' }
+if ($licenceClass -eq 'open-source') {
+    if (($config.licence.PSObject.Properties['templateVersion'] -and $null -ne $config.licence.templateVersion) -or ($config.licence.PSObject.Properties['overrideReason'] -and $null -ne $config.licence.overrideReason)) { throw 'An open-source licence decision must not define a proprietary template or override.' }
+}
+if ($licenceClass -eq 'proprietary') {
+    if ($licenceIdentifier -notmatch '^LicenseRef-[A-Za-z0-9.-]+$') { throw 'A proprietary licence must use a valid LicenseRef identifier.' }
+    if (-not $config.licence.PSObject.Properties['templateVersion'] -or -not ([string]$config.licence.templateVersion).Trim()) { throw 'A proprietary licence template version is missing.' }
 }
 
 $errors = [Collections.Generic.List[string]]::new()
