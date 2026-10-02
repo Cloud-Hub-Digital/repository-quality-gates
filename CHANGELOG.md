@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 3.1.1 - 2026-10-02
+
+- Allow read-only manual previews & deterministic rollout waves over dynamically discovered repositories; retain all merge gates & privacy controls.
+- Respect an operational pause for scheduled & release-triggered fleet updates while allowing explicit controlled dispatches.
 
 - Shorten temporary fleet clone paths to avoid Windows checkout failures caused by combining long repository names with embedded template paths.
 - Make the GitHub App clone probe perform a complete checkout, so success proves more than authentication & object retrieval.

@@ -26,6 +26,17 @@ try {
     $appFleetText = Get-Content -LiteralPath $appFleetTool -Raw
     $workflowText = Get-Content -LiteralPath $fleetWorkflow -Raw
     $cloneProbeWorkflowText = Get-Content -LiteralPath $cloneProbeWorkflow -Raw
+    Assert-True ($workflowText.Contains('default: preview')) 'Manual rollout requests should default to preview.'
+    Assert-True ($workflowText.Contains('-Apply:$applyWave -AutoMerge:$applyWave')) 'Preview must leave both mutation switches disabled.'
+    Assert-True ($workflowText.Contains("vars.RQG_FLEET_AUTOMATION_PAUSED != 'true'")) 'Automatic events should respect the operational pause.'
+    $waveNames = @(1..40 | ForEach-Object { "example/repository-$_" })
+    $partition = @(0..3 | ForEach-Object { $index = $_; $waveNames | Where-Object { (Get-RqgRepositoryWave $_ 4) -eq $index } })
+    Assert-True ($partition.Count -eq 40 -and @($partition | Sort-Object -Unique).Count -eq 40) 'The complete wave set must cover each discovered repository exactly once.'
+    Assert-True ((Get-RqgRepositoryWave 'Example/Repository-1' 4) -eq (Get-RqgRepositoryWave 'example/repository-1' 4)) 'Repository-name casing must not change wave membership.'
+    Assert-True ((Get-RqgRepositoryWave 'example/repository-1' 1) -eq 0) 'The default single wave should retain full-fleet behavior.'
+    $invalidWaveRejected = $false
+    try { Invoke-RepositoryQualityGateAppFleetUpdate -SelectedWaveCount 2 -SelectedWaveIndex 2 } catch { $invalidWaveRejected = $_.Exception.Message -eq 'Wave index must be smaller than wave count.' }
+    Assert-True $invalidWaveRejected 'Invalid wave bounds must fail before authentication or mutation.'
     Assert-True ($cloneProbeWorkflowText.Contains('name: GitHub App Clone Probe')) 'A separate read-only GitHub App clone-probe workflow should exist.'
     Assert-True ($cloneProbeWorkflowText.Contains('repository_sha256:')) 'The clone probe should accept only a repository-name digest.'
     Assert-True (-not $cloneProbeWorkflowText.Contains('AutoEnroll') -and -not $cloneProbeWorkflowText.Contains('AutoMerge') -and -not $cloneProbeWorkflowText.Contains(' -Apply')) 'The clone-probe workflow must not enable fleet mutation.'
@@ -227,6 +238,15 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True (@($privateRows | Where-Object repository -eq 'first-owner/one')[0].runner -eq 'Not Used') 'A current repository should report that no downstream runner was used.'
         Assert-True (@($privateRows | Where-Object repository -eq 'second-owner/two')[0].runner -eq 'Not Used') 'Every current repository should report that no downstream runner was used.'
         Assert-True (-not ((Get-Content -LiteralPath $privateReportPath -Raw) -match 'installation-token-')) 'The private email report must redact installation credentials from comments.'
+
+        Remove-Item -LiteralPath $recordPath -Force
+        $selectedIndex = Get-RqgRepositoryWave 'first-owner/one' 100
+        Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId '12345' -PemPrivateKey $testRsa.ExportPkcs8PrivateKeyPem() -ResolvedTemplateRoot $testRoot -SelectedWaveCount 100 -SelectedWaveIndex $selectedIndex -ResolvedPrivateReportPath $privateReportPath -BranchLifetimeHours 24
+        $waveRecords = @(Get-Content -LiteralPath $recordPath | ForEach-Object { $_ | ConvertFrom-Json })
+        $selectedNames = @($waveRecords | ForEach-Object { $_.repositories })
+        Assert-True ($selectedNames -contains 'first-owner/one') 'The selected wave must process its discovered repository.'
+        Assert-True (@($selectedNames | Where-Object { (Get-RqgRepositoryWave $_ 100) -ne $selectedIndex }).Count -eq 0) 'Other waves must never reach the fleet updater.'
+        Assert-True (@($waveRecords | Where-Object { $_.apply -or $_.autoMerge }).Count -eq 0) 'A preview wave must not forward apply or merge authorization.'
 
         Remove-Item -LiteralPath $recordPath -Force
         $env:RQG_TEST_FAIL_FIRST = '1'

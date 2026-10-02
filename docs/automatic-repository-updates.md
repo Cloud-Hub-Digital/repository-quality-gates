@@ -10,6 +10,14 @@ The release workflow binds every required result to both its exact workflow path
 
 ## What The Automation Does
 
+### Preview & Controlled Waves
+
+Manual dispatch defaults to `mode=preview`. This enumerates accessible installations & repository eligibility without creating branches, changing repository files, closing pull requests, or merging. It is an eligibility preview, not a substitute for checkout, licence, test, or required-check validation.
+
+Use `mode=apply` only after reviewing readiness. `wave_count` defaults to `1` & `wave_index` to `0`. For controlled waves, keep the same count & process indexes from zero through count minus one. Membership uses a hash of each normalized repository name, so discovery order does not affect it & no repository inventory is embedded in the workflow. Each repository belongs to exactly one wave. An empty wave produces no repository changes. Repeat discovery before final acceptance to cover repositories added during the rollout.
+
+Set the repository variable `RQG_FLEET_AUTOMATION_PAUSED=true` during remediation. Scheduled runs, release events & the automatic release workflow's explicit fleet dispatch then remain paused; an authorized manual preview or selected wave can still run. Clear the variable after controlled acceptance to resume full-fleet automation. Pausing fleet automation does not disable downstream required checks or alter merge eligibility.
+
 1. Resolves the latest published Repository Quality Gates release.
 2. Creates a short-lived GitHub App JSON Web Token used only to list the App's installations and request installation tokens.
 3. Enumerates every account or organization where the App is installed.

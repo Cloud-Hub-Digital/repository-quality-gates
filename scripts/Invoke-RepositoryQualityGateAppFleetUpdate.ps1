@@ -7,6 +7,8 @@ param(
     [switch]$AutoEnroll,
     [switch]$Apply,
     [switch]$AutoMerge,
+    [ValidateRange(1, 100)][int]$WaveCount = 1,
+    [ValidateRange(0, 99)][int]$WaveIndex = 0,
     [ValidatePattern('^[a-f0-9]{64}$')][string]$CloneProbeRepositorySha256,
     [string]$PrivateReportPath,
     [ValidateRange(1, 168)][int]$TemporaryBranchLifetimeHours = 24
@@ -208,6 +210,12 @@ function Get-RqgRunnerDisplay([object]$RepositoryResult) {
     return 'Unavailable'
 }
 
+function Get-RqgRepositoryWave([string]$RepositoryName, [ValidateRange(1, 100)][int]$Count) {
+    # Hash-based membership is independent of discovery order or other repositories.
+    $digest = Get-RqgRepositoryNameSha256 $RepositoryName.ToLowerInvariant()
+    return [int]([Convert]::ToUInt32($digest.Substring(0, 8), 16) % $Count)
+}
+
 function Invoke-RepositoryQualityGateAppFleetUpdate {
     param(
         [string]$ApplicationId,
@@ -216,11 +224,15 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
         [switch]$EnableAutoEnroll,
         [switch]$EnableApply,
         [switch]$EnableAutoMerge,
+        [ValidateRange(1, 100)][int]$SelectedWaveCount = 1,
+        [ValidateRange(0, 99)][int]$SelectedWaveIndex = 0,
         [string]$RepositoryCloneProbeSha256,
         [string]$ResolvedPrivateReportPath,
         [int]$BranchLifetimeHours
     )
 
+    if ($SelectedWaveIndex -ge $SelectedWaveCount) { throw 'Wave index must be smaller than wave count.' }
+    if ($RepositoryCloneProbeSha256 -and ($SelectedWaveCount -ne 1 -or $SelectedWaveIndex -ne 0)) { throw 'Clone probes cannot be combined with rollout waves.' }
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'GitHub CLI is required.' }
     $fleetTool = Join-Path ([IO.Path]::GetFullPath($ResolvedTemplateRoot)) 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'
     if (-not (Test-Path -LiteralPath $fleetTool -PathType Leaf)) { throw 'The fleet updater is missing.' }
@@ -305,6 +317,10 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                     continue
                 }
 
+                $repositories = @($repositories | Where-Object {
+                    (Get-RqgRepositoryWave ([string]$_) $SelectedWaveCount) -eq $SelectedWaveIndex
+                })
+                if (-not $repositories.Count) { continue }
                 $fleetArguments = @{
                     Repository = $repositories
                     TemplateRoot = $ResolvedTemplateRoot
@@ -438,5 +454,5 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId $AppId -PemPrivateKey $PrivateKey -ResolvedTemplateRoot $TemplateRoot -EnableAutoEnroll:$AutoEnroll -EnableApply:$Apply -EnableAutoMerge:$AutoMerge -RepositoryCloneProbeSha256 $CloneProbeRepositorySha256 -ResolvedPrivateReportPath $PrivateReportPath -BranchLifetimeHours $TemporaryBranchLifetimeHours
+    Invoke-RepositoryQualityGateAppFleetUpdate -ApplicationId $AppId -PemPrivateKey $PrivateKey -ResolvedTemplateRoot $TemplateRoot -EnableAutoEnroll:$AutoEnroll -EnableApply:$Apply -EnableAutoMerge:$AutoMerge -SelectedWaveCount $WaveCount -SelectedWaveIndex $WaveIndex -RepositoryCloneProbeSha256 $CloneProbeRepositorySha256 -ResolvedPrivateReportPath $PrivateReportPath -BranchLifetimeHours $TemporaryBranchLifetimeHours
 }

@@ -11,6 +11,22 @@ on:
         description: Exact stable release tag to deploy; leave empty to use the latest release.
         required: false
         type: string
+      mode:
+        description: Preview without repository mutation, or apply the selected wave.
+        required: true
+        default: preview
+        type: choice
+        options: [preview, apply]
+      wave_count:
+        description: Number of deterministic groups (1 processes the full fleet).
+        required: true
+        default: '1'
+        type: string
+      wave_index:
+        description: Zero-based group to process; must be smaller than wave_count.
+        required: true
+        default: '0'
+        type: string
 
 permissions:
   contents: read
@@ -22,6 +38,7 @@ concurrency:
 jobs:
   update:
     name: Update Downstream Repository Quality Gates
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.RQG_FLEET_AUTOMATION_PAUSED != 'true' }}
     runs-on: ${{ fromJSON(((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) || !github.event.repository.private) && '["windows-2025"]' || (vars.RQG_WINDOWS_RUNS_ON || '["windows-2025"]')) }}
     timeout-minutes: 120
     outputs:
@@ -58,6 +75,9 @@ jobs:
         env:
           RQG_APP_ID: ${{ vars.RQG_APP_ID }}
           RQG_APP_PRIVATE_KEY: ${{ secrets.RQG_APP_PRIVATE_KEY }}
+          RQG_ROLLOUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'apply' }}
+          RQG_WAVE_COUNT: ${{ inputs.wave_count || '1' }}
+          RQG_WAVE_INDEX: ${{ inputs.wave_index || '0' }}
         run: |
           $reportPath = Join-Path $env:GITHUB_WORKSPACE 'rollout-report.txt'
           $privateReportDirectory = Join-Path $env:GITHUB_WORKSPACE '.rqg-private'
@@ -71,7 +91,10 @@ jobs:
             return $Line
           }
           try {
-            ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply -AutoMerge -PrivateReportPath $privateReportPath *>&1 |
+            if ($env:RQG_ROLLOUT_MODE -notin @('preview', 'apply')) { throw 'Invalid rollout mode.' }
+            if ($env:RQG_WAVE_COUNT -notmatch '^(?:[1-9][0-9]?|100)$' -or $env:RQG_WAVE_INDEX -notmatch '^(?:0|[1-9][0-9]?)$') { throw 'Invalid rollout wave.' }
+            $applyWave = $env:RQG_ROLLOUT_MODE -eq 'apply'
+            ./scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply:$applyWave -AutoMerge:$applyWave -WaveCount ([int]$env:RQG_WAVE_COUNT) -WaveIndex ([int]$env:RQG_WAVE_INDEX) -PrivateReportPath $privateReportPath *>&1 |
               ForEach-Object {
                 $line = [string]$_
                 Write-Host $line
