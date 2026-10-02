@@ -22,6 +22,8 @@ function ConvertFrom-Base64Url([string]$Value) {
 
 try {
     . $appFleetTool
+    & python (Join-Path $PSScriptRoot 'test_fleet_email.py')
+    Assert-True ($LASTEXITCODE -eq 0) 'Actual preview and apply email rendering must pass with a mocked SMTP transport.'
 
     $appFleetText = Get-Content -LiteralPath $appFleetTool -Raw
     $workflowText = Get-Content -LiteralPath $fleetWorkflow -Raw

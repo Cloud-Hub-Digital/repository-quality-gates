@@ -608,12 +608,12 @@ try {
 
     $versionOutput = & pwsh -NoProfile -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 3.1.1')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 3.1.2')) 'The version interface should report the canonical version.'
     Assert-True (($versionOutput -join "`n").Contains('https://github.com/Cloud-Hub-Digital/repository-quality-gates')) 'The version interface should report the authoritative organization-owned repository.'
     $embeddedVersionOutput = & pwsh -NoProfile -File (Join-Path $projectRoot '.rqg\template\scripts\Invoke-RepositoryQualityGates.ps1') -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The embedded deployment engine version interface should succeed.'
-    Assert-True (($embeddedVersionOutput -join "`n").Contains('Repository Quality Gates 3.1.1')) 'The embedded deployment engine should match the canonical release version.'
-    Assert-True ((Get-Content -LiteralPath (Join-Path $projectRoot '.repository-quality-gates.json') -Raw | ConvertFrom-Json).templateVersion -eq '3.1.1') 'The central managed state should match the canonical release version.'
+    Assert-True (($embeddedVersionOutput -join "`n").Contains('Repository Quality Gates 3.1.2')) 'The embedded deployment engine should match the canonical release version.'
+    Assert-True ((Get-Content -LiteralPath (Join-Path $projectRoot '.repository-quality-gates.json') -Raw | ConvertFrom-Json).templateVersion -eq '3.1.2') 'The central managed state should match the canonical release version.'
 
     $sourceModuleRoot = Join-Path $projectRoot 'modules'
     $embeddedModuleRoot = Join-Path $projectRoot '.rqg\template\modules'

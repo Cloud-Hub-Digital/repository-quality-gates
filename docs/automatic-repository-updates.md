@@ -206,3 +206,7 @@ Move any intentional downstream customization out of an RQG-managed file and int
 ## Separate Dependency Updates
 
 This workflow updates Repository Quality Gates itself. Package updates for npm, Python, .NET, PHP, Go, Docker, GitHub Actions, and other ecosystems are a separate capability. Those can be added through ecosystem-specific Dependabot configuration after their grouping, schedule, and compatibility rules are defined.
+
+### Preview & Apply Reports
+
+Manual previews use a Fleet Preview subject & explicitly state that no repository changes were applied. Available means an update was detected, not installed. Apply reports retain the Fleet Rollout subject; each row records its own verified result. A successful workflow is not a claim that every repository was updated.

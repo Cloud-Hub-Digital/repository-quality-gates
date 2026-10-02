@@ -127,6 +127,7 @@ jobs:
         shell: bash
         env:
           ROLLOUT_OUTCOME: ${{ steps.rollout.outcome }}
+          ROLLOUT_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'apply' }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           PRIVATE_REPORT_PATH: ${{ github.workspace }}/.rqg-private/email-report.json
           SMTP_HOST: ${{ vars.RQG_REPORT_SMTP_HOST }}
@@ -203,6 +204,15 @@ jobs:
                   "comment": "No structured repository result was available. Review the sanitized workflow artifact.",
               })
 
+          mode = os.environ.get("ROLLOUT_MODE", "").strip().lower()
+          if mode not in ("preview", "apply"):
+              raise RuntimeError("The report requires an explicit preview or apply mode.")
+          report_kind = "Fleet Preview" if mode == "preview" else "Fleet Rollout"
+          mode_note = (
+              "Read-only preview: no repository changes were applied. Success means the preview completed."
+              if mode == "preview" else
+              "Applied rollout: review each repository status for its verified outcome."
+          )
           outcome = os.environ.get("ROLLOUT_OUTCOME", "unknown").upper()
           release_tag = os.environ.get("RELEASE_TAG", "").strip() or "unresolved"
           run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
@@ -235,6 +245,7 @@ jobs:
               "ResultProcessingFailed": "The structured installation result could not be read or validated.",
               "EmptyRepository": "The repository has no commits, so no update could be applied.",
               "DeferredOpenPullRequests": "Existing pull requests prevented this rollout from starting.",
+              "Available": "An update is available; this preview did not apply it.",
               "Current": "The repository already contains the target Repository Quality Gates version.",
               "Skipped": "The repository was intentionally excluded from this rollout.",
           }
@@ -306,7 +317,7 @@ jobs:
           )
 
           message = EmailMessage()
-          message["Subject"] = f"[RQG] Fleet Rollout {outcome}: {release_tag}"
+          message["Subject"] = f"[RQG] {report_kind} {outcome}: {release_tag}"
           from_address = parseaddr(os.environ["MESSAGE_FROM_EMAIL"])[1]
           to_address = parseaddr(os.environ["MESSAGE_TO_EMAIL"])[1]
           if not from_address or not to_address:
@@ -316,7 +327,8 @@ jobs:
           message["From"] = formataddr((from_name, from_address))
           message["To"] = formataddr((to_name, to_address))
           message.set_content(
-              "Repository Quality Gates fleet rollout report\n\n"
+              f"Repository Quality Gates {report_kind} Report\n\n"
+              f"Mode: {mode}\n{mode_note}\n\n"
               f"Release: {release_tag}\n"
               f"Outcome: {outcome}\n"
               f"Workflow run: {run_url}\n\n"
@@ -326,7 +338,8 @@ jobs:
           )
           message.add_alternative(
               "<!doctype html><html><body>"
-              "<h1>Repository Quality Gates Fleet Rollout Report</h1>"
+              f"<h1>Repository Quality Gates {html.escape(report_kind)} Report</h1>"
+              f"<p><strong>Mode:</strong> {html.escape(mode)}<br>{html.escape(mode_note)}</p>"
               f"<p><strong>Release:</strong> {html.escape(release_tag)}<br>"
               f"<strong>Outcome:</strong> {html.escape(outcome)}<br>"
               f"<strong>Workflow Run:</strong> <a href=\"{html.escape(run_url, quote=True)}\">{html.escape(run_url)}</a></p>"

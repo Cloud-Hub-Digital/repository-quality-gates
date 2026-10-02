@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.2 - 2026-10-02
+
+- Clearly distinguish read-only fleet previews from applied rollouts in report subjects, headings, mode summaries & status guidance.
+- Verify email rendering without sending messages, including runner line breaks, display names & invalid-mode rejection.
+
 ## 3.1.1 - 2026-10-02
 
 - Allow read-only manual previews & deterministic rollout waves over dynamically discovered repositories; retain all merge gates & privacy controls.
