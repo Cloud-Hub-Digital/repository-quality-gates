@@ -111,7 +111,7 @@ try {
         $parseErrors = $null
         $fleetAst = [Management.Automation.Language.Parser]::ParseFile($fleetTool, [ref]$tokens, [ref]$parseErrors)
         Assert-True (-not $parseErrors.Count) 'The fleet updater should parse before its status-classification functions are tested.'
-        foreach ($functionName in @('Get-RequiredCheckEnforcementPolicy', 'Test-RqgPrivatePlanLimitation', 'Assert-RequiredQualityChecksEnforced', 'Get-RqgFailureStatus', 'Test-RqgFailureStatus')) {
+        foreach ($functionName in @('Remove-RqgMergedBranch', 'Get-RequiredCheckEnforcementPolicy', 'Test-RqgPrivatePlanLimitation', 'Assert-RequiredQualityChecksEnforced', 'Get-RqgFailureStatus', 'Test-RqgFailureStatus')) {
             $functionAst = @($fleetAst.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName }, $true))[0]
             Assert-True ($null -ne $functionAst) "The fleet updater should define $functionName."
             Invoke-Expression $functionAst.Extent.Text
@@ -126,6 +126,36 @@ try {
         Assert-True (Test-RqgFailureStatus 'MergedCleanupRequired') 'MergedCleanupRequired should count as a fleet failure until cleanup succeeds.'
         Assert-True (-not (Test-RqgFailureStatus 'UpdatedSuccessfully')) 'UpdatedSuccessfully should not count as a fleet failure.'
         Assert-True (-not (Test-RqgFailureStatus 'DeferredOpenPullRequests')) 'A deliberate open-pull-request deferral should not count as an execution failure.'
+        $cleanupCalls = [Collections.Generic.List[string]]::new()
+        function global:gh {
+            $cleanupCalls.Add(($args -join ' '))
+            if ($args -contains 'DELETE') { $global:LASTEXITCODE = $cleanupDeleteCode; return 'Synthetic deletion response' }
+            $global:LASTEXITCODE = $cleanupReadCode
+            return $cleanupResponse
+        }
+        foreach ($case in @(
+            @{Name='deleted'; Delete=0; Read=0; Response='[]'; Pass=$true},
+            @{Name='already absent'; Delete=1; Read=0; Response='[]'; Pass=$true},
+            @{Name='unrelated prefix'; Delete=1; Read=0; Response='[{"ref":"refs/heads/rqg/update-v1.2.30"}]'; Pass=$true},
+            @{Name='still present'; Delete=1; Read=0; Response='[{"ref":"refs/heads/rqg/update-v1.2.3"}]'; Pass=$false},
+            @{Name='recreated after success'; Delete=0; Read=0; Response='[{"ref":"refs/heads/rqg/update-v1.2.3"}]'; Pass=$false},
+            @{Name='unauthorized read'; Delete=1; Read=1; Response='Forbidden'; Pass=$false},
+            @{Name='read fails after deletion'; Delete=0; Read=1; Response='Network failure'; Pass=$false},
+            @{Name='invalid JSON'; Delete=1; Read=0; Response='invalid'; Pass=$false},
+            @{Name='wrong JSON shape'; Delete=1; Read=0; Response='{}'; Pass=$false},
+            @{Name='null response'; Delete=1; Read=0; Response='null'; Pass=$false},
+            @{Name='invalid reference'; Delete=1; Read=0; Response='[{}]'; Pass=$false}
+        )) {
+            $cleanupDeleteCode=$case.Delete; $cleanupReadCode=$case.Read; $cleanupResponse=$case.Response
+            $cleanupCalls.Clear(); $cleanupError=$null
+            try { Remove-RqgMergedBranch 'owner/sample' 'rqg/update-v1.2.3' } catch { $cleanupError=$_ }
+            Assert-True (($null -eq $cleanupError) -eq $case.Pass) "Cleanup case '$($case.Name)' should preserve the verified absence contract. $cleanupError"
+            Assert-True ($cleanupCalls.Count -eq 2 -and $cleanupCalls[1].Contains('matching-refs/heads/rqg%2Fupdate-v1.2.3')) 'Every deletion result should be followed by exact branch-prefix readback.'
+        }
+        $cleanupCalls.Clear(); $cleanupError=$null
+        try { Remove-RqgMergedBranch 'owner/sample' 'main' } catch { $cleanupError=$_ }
+        Assert-True ($null -ne $cleanupError -and $cleanupCalls.Count -eq 0) 'Cleanup must reject a non-RQG branch before any API call.'
+        Assert-True ((Get-RqgFailureStatus -Stage 'Temporary branch cleanup after verified merge' -Cause 'Readback failed' -PullRequestMerged $true) -eq 'MergedCleanupRequired') 'Unverified cleanup of a merged update should retain its specific failed status.'
         $policyPath = Join-Path $root 'policy\required-check-enforcement.json'
         $requiredCheckPolicy = Get-RequiredCheckEnforcementPolicy $policyPath
         Assert-True ($requiredCheckPolicy.public.mode -eq 'github-rules-required') 'The checked-in policy should require native GitHub rules for public repositories.'
@@ -248,7 +278,7 @@ try {
         Assert-True ($fleetText.Contains("'^Default-branch version verification'")) 'Post-merge version failures should provide a specific investigation route.'
         Assert-True ($fleetText.Contains('no destructive cleanup was attempted')) 'A pull request merged outside the verified path should not be closed or have its branch deleted as failed cleanup.'
         Assert-True (-not $fleetText.Contains('gh pr merge')) 'The fleet must not depend on the GitHub CLI GraphQL merge path or repository-level auto-merge settings.'
-        Assert-True ($fleetText.Contains('gh api --method DELETE "repos/$repositoryName/git/refs/heads/$branchName"')) 'A successful REST merge should remove its temporary update branch.'
+        Assert-True ($fleetText.Contains('Remove-RqgMergedBranch -RepositoryName $repositoryName -BranchName $branchName')) 'A successful REST merge should remove its temporary update branch.'
         Assert-True ($fleetText.IndexOf('if ($pending.Count)') -lt $fleetText.IndexOf('if ($failed.Count)')) 'The fleet should wait for running checks before removing a branch after another check fails.'
         Assert-True ($fleetText.Contains('Repository Quality Gates update failed for')) 'Preparation failures should be written without table truncation.'
         Assert-True ($fleetText.Contains('Repository Quality Gates completion failed for')) 'Post-check completion failures should be written without table truncation.'

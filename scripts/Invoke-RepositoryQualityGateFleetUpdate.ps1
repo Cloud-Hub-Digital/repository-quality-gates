@@ -25,6 +25,25 @@ $updateScript = Join-Path $templateRootFull 'scripts\Update-RepositoryQualityGat
 $deploymentTool = Join-Path $templateRootFull 'scripts\Invoke-RepositoryQualityGates.ps1'
 if (-not (Test-Path -LiteralPath $updateScript -PathType Leaf)) { throw 'The repository updater is missing.' }
 
+function Remove-RqgMergedBranch([string]$RepositoryName, [string]$BranchName) {
+    if ($BranchName -notmatch '^rqg/update-v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$') { throw 'Refusing to remove a branch outside the RQG update namespace.' }
+    $deleteOutput = @(& gh api --method DELETE "repos/$RepositoryName/git/refs/heads/$BranchName" 2>&1)
+    $deleteCode = $LASTEXITCODE
+    # GitHub may delete the branch atomically with the merge. Prove the resulting
+    # state even when DELETE reports success; an error alone cannot prove absence.
+    $encodedBranch = [Uri]::EscapeDataString($BranchName)
+    $refOutput = @(& gh api "repos/$RepositoryName/git/matching-refs/heads/$encodedBranch" 2>&1)
+    if ($LASTEXITCODE -ne 0) { throw "Unable to verify temporary branch absence: $($refOutput -join [Environment]::NewLine)" }
+    try { $refs = ConvertFrom-Json -InputObject ($refOutput -join [Environment]::NewLine) -NoEnumerate }
+    catch { throw 'GitHub returned invalid temporary branch reference data.' }
+    if ($refs -isnot [array]) { throw 'GitHub did not return a temporary branch reference array.' }
+    foreach ($reference in $refs) {
+        if ($null -eq $reference -or -not $reference.PSObject.Properties['ref'] -or $reference.ref -isnot [string] -or $reference.ref -cnotmatch '^refs/heads/.+') { throw 'GitHub returned a malformed temporary branch reference.' }
+        if ([string]$reference.ref -ceq "refs/heads/$BranchName") {
+            throw "Temporary RQG branch still exists after deletion (exit $deleteCode): $($deleteOutput -join [Environment]::NewLine)"
+        }
+    }
+}
 function Get-OpenPullRequests([string]$RepositoryName) {
     $output = @(& gh pr list --repo $RepositoryName --state open --limit 1000 --json number,title,url,headRefName,baseRefName,isCrossRepository,body,createdAt 2>&1)
     if ($LASTEXITCODE -ne 0) { throw "Unable to inspect open pull requests: $($output -join [Environment]::NewLine)" }
@@ -368,6 +387,7 @@ function Get-RqgFailureStatus {
     )
 
     if ($PullRequestMerged) {
+        if ($Stage -match '^Temporary branch cleanup') { return 'MergedCleanupRequired' }
         if ($Stage -match '^Pull-request quality-check discovery|^Pull-request quality checks') { return 'MergedWithFailedChecks' }
         if ($Stage -match '^Default-branch version verification') { return 'PostMergeVerificationFailed' }
         return 'MergeOutcomeUnverified'
@@ -675,13 +695,7 @@ if ($Apply -and $AutoMerge) {
             $failureStage = 'Default-branch version verification after merge'
             Wait-DefaultBranchTargetVersion $repositoryName ([string]$checkResult.baseRef) $TargetVersion
             $failureStage = 'Temporary branch cleanup after verified merge'
-            $deleteOutput = @(& gh api --method DELETE "repos/$repositoryName/git/refs/heads/$branchName" 2>&1)
-            if ($LASTEXITCODE -ne 0) {
-                $entry.detail += " $checkCount reported quality check(s) passed and the pull request merged, but the temporary branch could not be removed: $($deleteOutput -join [Environment]::NewLine)"
-                $entry.autoMerge = $true
-                $entry.status = 'MergedCleanupRequired'
-                continue
-            }
+            Remove-RqgMergedBranch -RepositoryName $repositoryName -BranchName $branchName
             $entry.autoMerge = $true
             $entry.status = 'UpdatedSuccessfully'
             $entry.detail += " $checkCount reported quality check(s) passed before merge."

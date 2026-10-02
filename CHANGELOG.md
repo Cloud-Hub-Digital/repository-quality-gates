@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.3 - 2026-10-02
+
+- Accept GitHub's automatic post-merge branch deletion only after authenticated readback confirms the exact temporary branch is absent.
+- Preserve cleanup failures for remaining branches, failed verification & malformed responses; cover deletion races with regression tests.
+
 ## 3.1.2 - 2026-10-02
 
 - Clearly distinguish read-only fleet previews from applied rollouts in report subjects, headings, mode summaries & status guidance.
