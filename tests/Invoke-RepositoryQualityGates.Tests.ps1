@@ -243,7 +243,7 @@ try {
     Assert-True (-not $fleetScript.Contains('gh pr merge')) 'The fleet updater should not depend on the GitHub CLI GraphQL merge path.'
     Assert-True ($fleetScript.Contains('Wait-PullRequestQualityChecks')) 'Downstream updates should explicitly wait for reported quality checks.'
     Assert-True ($fleetScript.Contains('-f merge_method=squash')) 'Verified downstream updates should use squash merging.'
-    Assert-True ($fleetScript.Contains('gh api --method DELETE "repos/$repositoryName/git/refs/heads/$branchName"')) 'Verified downstream updates should remove their temporary version branch.'
+    Assert-True ($fleetScript.Contains('Remove-RqgMergedBranch -RepositoryName $repositoryName -BranchName $branchName')) 'Verified downstream updates should remove their temporary version branch.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Test-QualityGateModuleDrift.ps1')) 'The module-drift checker should be deployed universally.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\RepositoryQualityGates.Detection.ps1')) 'The shared detection library should be deployed universally.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\rqg-module-catalog.json')) 'The module catalog snapshot should be deployed universally.'
