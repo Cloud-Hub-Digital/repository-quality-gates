@@ -220,7 +220,7 @@ try {
     $fleetWorkflow = [IO.File]::ReadAllText((Join-Path $projectRoot '.github\workflows\update-managed-repositories.yml'))
     Assert-True ($fleetWorkflow.Contains('Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply:$applyWave -AutoMerge:$applyWave')) 'The fleet workflow should update every GitHub App installation through the cross-owner wrapper.'
     Assert-True (-not $fleetWorkflow.Contains('github.repository_owner')) 'The fleet workflow should not limit discovery to the central repository owner.'
-    Assert-True ($fleetWorkflow.Contains('-Apply -AutoMerge')) 'The fleet workflow should request automatic downstream completion.'
+    Assert-True ($fleetWorkflow.Contains('-Apply:$applyWave -AutoMerge:$applyWave')) 'The fleet workflow should request automatic completion only in apply mode.'
     Assert-True ($fleetWorkflow.Contains("cron: '23 4 * * *'")) 'The fleet workflow should retry deferred repositories every day.'
     Assert-True ($fleetWorkflow.Contains('release_tag:')) 'The fleet workflow should accept an exact release tag from the automatic release workflow.'
     Assert-True ($fleetWorkflow.Contains('PUBLISHED_RELEASE_TAG: ${{ github.event.release.tag_name }}')) 'Release-event fleet runs should use the exact published release tag.'
@@ -491,6 +491,19 @@ try {
     Assert-True ($downstreamStandardsResult.ExitCode -eq 0) "A downstream repository should inherit absent supported defaults. $($downstreamStandardsResult.Output)"
     $downstreamJson = $downstreamStandardsResult.Output | ConvertFrom-Json
     Assert-True (@($downstreamJson.inherited).Count -eq 8) 'A downstream repository with no overrides should report all eight supported files as inherited.'
+    $standardsConfigPath = Join-Path $downstreamStandards '.repository-standards.json'
+    $originalStandardsConfig = [IO.File]::ReadAllText($standardsConfigPath)
+    $overrideConfig = $originalStandardsConfig | ConvertFrom-Json
+    $overrideConfig.licence.identifier = 'GPL-3.0-only'
+    $overrideConfig.licence.overrideReason = 'Approved local decision retaining compatible copyleft terms.'
+    $overrideConfig | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $standardsConfigPath -Encoding utf8
+    $approvedLicenceOverride = Invoke-RepositoryStandards $downstreamStandards
+    Assert-True ($approvedLicenceOverride.ExitCode -eq 0) 'Standards validation must allow an approved open-source licence override; licence validation checks its exact decision.'
+    $overrideConfig.licence.templateVersion = '1.0'
+    $overrideConfig | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $standardsConfigPath -Encoding utf8
+    $invalidOpenSourceTemplate = Invoke-RepositoryStandards $downstreamStandards
+    Assert-True ($invalidOpenSourceTemplate.ExitCode -ne 0) 'An open-source override must still reject proprietary template metadata.'
+    [IO.File]::WriteAllText($standardsConfigPath, $originalStandardsConfig, [Text.UTF8Encoding]::new($false))
 
     $falseInheritancePath = Join-Path $downstreamStandards 'CONTRIBUTING.md'
     '<!-- repository-standard: schema=1; standard=Repository Standards; version=1.0.0; owner=example-owner; source=https://github.com/example-owner/.github/blob/main/CONTRIBUTING.md; scope=account-default; override=local-file -->' | Set-Content -LiteralPath $falseInheritancePath -Encoding utf8

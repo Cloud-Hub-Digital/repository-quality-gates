@@ -76,7 +76,7 @@ if (-not $licenceIdentifier) { throw 'The approved licence identifier is missing
 if (-not $licenceRightsHolder) { throw 'The approved licence rights holder is missing.' }
 if ($licenceDecisionStatus -ne 'approved') { throw 'The project licence decision is unresolved or not approved.' }
 if ($licenceClass -eq 'open-source') {
-    if (($config.licence.PSObject.Properties['templateVersion'] -and $null -ne $config.licence.templateVersion) -or ($config.licence.PSObject.Properties['overrideReason'] -and $null -ne $config.licence.overrideReason)) { throw 'An open-source licence decision must not define a proprietary template or override.' }
+    if ($config.licence.PSObject.Properties['templateVersion'] -and $null -ne $config.licence.templateVersion) { throw 'An open-source licence decision must not define a proprietary template.' }
 }
 if ($licenceClass -eq 'proprietary') {
     if ($licenceIdentifier -notmatch '^LicenseRef-[A-Za-z0-9.-]+$') { throw 'A proprietary licence must use a valid LicenseRef identifier.' }
