@@ -218,7 +218,7 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1')) 'The central template should provide the fleet updater.'
     Assert-True (Test-Path -LiteralPath (Join-Path $projectRoot 'scripts\Update-RepositoryQualityGates.ps1')) 'The central template should provide the single-repository updater.'
     $fleetWorkflow = [IO.File]::ReadAllText((Join-Path $projectRoot '.github\workflows\update-managed-repositories.yml'))
-    Assert-True ($fleetWorkflow.Contains('Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply -AutoMerge')) 'The fleet workflow should update every GitHub App installation through the cross-owner wrapper.'
+    Assert-True ($fleetWorkflow.Contains('Invoke-RepositoryQualityGateAppFleetUpdate.ps1 -AutoEnroll -Apply:$applyWave -AutoMerge:$applyWave')) 'The fleet workflow should update every GitHub App installation through the cross-owner wrapper.'
     Assert-True (-not $fleetWorkflow.Contains('github.repository_owner')) 'The fleet workflow should not limit discovery to the central repository owner.'
     Assert-True ($fleetWorkflow.Contains('-Apply -AutoMerge')) 'The fleet workflow should request automatic downstream completion.'
     Assert-True ($fleetWorkflow.Contains("cron: '23 4 * * *'")) 'The fleet workflow should retry deferred repositories every day.'

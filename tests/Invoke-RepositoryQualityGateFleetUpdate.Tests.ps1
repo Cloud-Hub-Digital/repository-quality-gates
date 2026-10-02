@@ -104,7 +104,7 @@ try {
         Assert-True ($disabledJson.repositories[0].status -eq 'Skipped') 'An unmanaged repository should remain skipped when automatic enrolment is disabled.'
 
         $workflowText = Get-Content -LiteralPath $workflowPath -Raw
-        Assert-True ($workflowText.Contains('-AutoEnroll -Apply -AutoMerge')) 'The fleet workflow should explicitly enable automatic enrolment.'
+        Assert-True ($workflowText.Contains('-AutoEnroll -Apply:$applyWave -AutoMerge:$applyWave')) 'The fleet workflow should explicitly enable automatic enrolment.'
         Assert-True ($workflowText.Contains('Invoke-RepositoryQualityGateAppFleetUpdate.ps1')) 'The fleet workflow should process every installation of the GitHub App.'
         $fleetText = Get-Content -LiteralPath $fleetTool -Raw
         $tokens = $null
