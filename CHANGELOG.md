@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Shorten temporary fleet clone paths to avoid Windows checkout failures caused by combining long repository names with embedded template paths.
+- Make the GitHub App clone probe perform a complete checkout, so success proves more than authentication & object retrieval.
+
 - Preserve canonical managed Git path casing during fleet updates, reconciliation, & explicit deployment commits, so Linux receives validators at the paths called by its workflows. Repository-owned paths retain their original casing.
 
 ### Fixed

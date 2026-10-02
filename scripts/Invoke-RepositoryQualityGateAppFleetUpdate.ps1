@@ -102,7 +102,7 @@ function Get-RqgRepositoryNameSha256([string]$RepositoryName) {
 }
 
 function Invoke-RqgGitHubAppCloneProbe([string]$RepositoryName, [string]$Destination) {
-    & git clone --quiet --filter=blob:none --no-checkout -- "https://github.com/$RepositoryName.git" $Destination
+    & git clone --quiet --single-branch -- "https://github.com/$RepositoryName.git" $Destination
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $Destination '.git') -PathType Container)) {
         throw 'The GitHub App repository clone probe failed.'
     }

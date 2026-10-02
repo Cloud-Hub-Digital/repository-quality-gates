@@ -518,7 +518,7 @@ try {
             }
 
             $failureStage = 'Repository clone'
-            $clonePath = Join-Path $tempRoot (($fullName -replace '/', '-') + '-' + [guid]::NewGuid().ToString('N'))
+            $clonePath = Join-Path $tempRoot ([guid]::NewGuid().ToString('N'))
             $null = @(& gh repo clone $fullName $clonePath -- --branch $defaultBranch --single-branch 2>&1)
             if ($LASTEXITCODE -ne 0) { throw 'Unable to clone the repository.' }
             & git -C $clonePath checkout -B $branchName | Out-Null
