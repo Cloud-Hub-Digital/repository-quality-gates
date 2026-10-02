@@ -31,6 +31,7 @@ function Write-Checks([string]$Directory, [string]$FailedName = '') {
         @{ name = 'Licence Quality'; path = '.github/workflows/quality-licensing.yml' },
         @{ name = 'Quality Gate Module Drift'; path = '.github/workflows/quality-module-drift.yml' },
         @{ name = 'Secret Scanning'; path = '.github/workflows/secret-scanning.yml' },
+        @{ name = 'Python Quality'; path = '.github/workflows/quality-python.yml' },
         @{ name = 'PowerShell Quality'; path = '.github/workflows/quality-powershell.yml' }
     )
     $runs = @($workflows | ForEach-Object { [pscustomobject]@{ name = $_.name; path = $_.path; status = 'completed'; conclusion = if ($_.name -eq $FailedName) { 'failure' } else { 'success' } } })
@@ -79,6 +80,16 @@ try {
     $failedLicence = Write-Checks $fixture 'Licence Quality'
     $result = Invoke-Plan $fixture @{ CheckRunsPath = $failedLicence }
     Assert-True (-not $result.Succeeded) 'A failed licence workflow must block release.'
+
+    $failedPython = Write-Checks $fixture 'Python Quality'
+    $result = Invoke-Plan $fixture @{ CheckRunsPath = $failedPython }
+    Assert-True (-not $result.Succeeded) 'Failed email-renderer Python validation must block release.'
+
+    $missingPython = Write-Checks $fixture
+    $runsWithoutPython = @(Get-Content -LiteralPath $missingPython -Raw | ConvertFrom-Json | Where-Object name -ne 'Python Quality')
+    [IO.File]::WriteAllText($missingPython, ($runsWithoutPython | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+    $result = Invoke-Plan $fixture @{ CheckRunsPath = $missingPython }
+    Assert-True (-not $result.Succeeded) 'Missing email-renderer Python validation must block release.'
 
     $missingLicence = Write-Checks $fixture
     $runsWithoutLicence = @(Get-Content -LiteralPath $missingLicence -Raw | ConvertFrom-Json | Where-Object name -ne 'Licence Quality')

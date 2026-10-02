@@ -18,6 +18,7 @@ $requiredChecks = @(
     [pscustomobject]@{ name = 'Licence Quality'; path = '.github/workflows/quality-licensing.yml' },
     [pscustomobject]@{ name = 'Quality Gate Module Drift'; path = '.github/workflows/quality-module-drift.yml' },
     [pscustomobject]@{ name = 'Secret Scanning'; path = '.github/workflows/secret-scanning.yml' },
+    [pscustomobject]@{ name = 'Python Quality'; path = '.github/workflows/quality-python.yml' },
     [pscustomobject]@{ name = 'PowerShell Quality'; path = '.github/workflows/quality-powershell.yml' }
 )
 
