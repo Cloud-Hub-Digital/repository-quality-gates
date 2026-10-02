@@ -33,8 +33,6 @@
 
 ### Fixed
 
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
-
 - Synchronized the current two-class licensing workflow, SPDX policy, and validator into the embedded deployment template, and added exact module-tree parity regression coverage.
 
 ## 3.0.0 - 2026-10-01
@@ -49,15 +47,11 @@
 
 ### Fixed
 
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
-
 - Returned an explicit successful process result after all licence-decision assertions pass, preventing an expected-negative child validation from incorrectly failing the PowerShell workflow.
 
 ## 2.0.1 - 2026-09-28
 
 ### Fixed
-
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
 
 - Renamed the protected rollout-report mailbox settings to `RQG_REPORT_FROM_EMAIL` and `RQG_REPORT_TO_EMAIL`.
 - Read optional sender and recipient display names from `RQG_REPORT_FROM_NAME` and `RQG_REPORT_TO_NAME`, falling back independently to the corresponding email address when a name is absent or empty.
@@ -83,8 +77,6 @@
 
 ### Fixed
 
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
-
 - Preserved line-separated runner names through private report normalization and rendered every runner on its own line in both HTML and plain-text fleet emails.
 - Added fixed, deliberate widths for every repository-detail column and explicit high-contrast header colours so narrow mail clients cannot collapse or obscure the table headings.
 - Added readable status labels and a concise guide explaining Merged After Checks, Failed, Empty Repository, and Skipped in each fleet email.
@@ -94,8 +86,6 @@
 
 ### Fixed
 
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
-
 - Reconciled exact GitHub-hosted `runs-on` selectors in repository-owned workflows so trusted events in private repositories use their configured Windows or Linux self-hosted runner labels.
 - Preserved the workflow's original GitHub-hosted selector for public repositories and pull requests from forks.
 - Added regression coverage for Linux and Windows repository-owned workflow routing during managed updates.
@@ -104,16 +94,12 @@
 
 ### Fixed
 
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
-
 - Registered every discovered workflow runner name with GitHub Actions masking before writing retained rollout output, so the public diagnostic artifact excludes both private self-hosted and GitHub-hosted runner identities while the private email keeps the actual names.
 - Added regression coverage for runner-name masking in retained workflow output.
 
 ## 1.5.7 - 2026-09-25
 
 ### Fixed
-
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
 
 - Refreshed the GitHub App JWT before requesting each installation token so long-running fleet updates can authenticate every installation after earlier installations take more than ten minutes.
 - Added regression coverage proving that every installation token request uses a newly generated App JWT.
@@ -150,8 +136,6 @@
 
 ### Fixed
 
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
-
 - Initialized per-installation temporary credential variables before GitHub App token issuance so an authentication failure cannot trigger a strict-mode cleanup error or prevent later installations from being processed and reported.
 
 ## 1.5.2 - 2026-09-25
@@ -180,8 +164,6 @@
 
 ### Fixed
 
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
-
 - Normalize an empty GitHub CLI pull-request lookup without a null-method failure.
 - Preserve per-repository failure diagnostics while continuing across accessible GitHub App installations.
 - Keep temporary branches available until running checks finish so branch cleanup cannot cause misleading checkout failures.
@@ -204,8 +186,6 @@
 
 ### Fixed
 
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
-
 - Allowed managed-state refreshes on filesystems that represent the dot-prefixed state file with a hidden attribute, while preserving that attribute.
 - Treated repository locations as literal paths during layered secret scans so folder names containing wildcard characters remain supported.
 
@@ -217,8 +197,6 @@
 - Defer empty GitHub repositories until their first commit makes a default branch available.
 
 ### Fixed
-
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
 
 - Treat an empty GitHub CLI pull-request lookup as no matching pull request instead of calling a method on a null value.
 - Migrate legacy repository-owned secret-scanning modules only when their historical RQG files match verified release hashes.
@@ -237,16 +215,12 @@
 
 ### Fixed
 
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
-
 - Resolve the selected GitHub Release against the explicit central repository so a dispatched fleet run does not depend on a local checkout that has not happened yet.
 - Preserve the command-scoped execution-policy override in generated `pwsh` Git hooks so secret checks run when a trusted repository is reached through a Windows network mapping.
 
 ## 1.3.1 - 2026-09-21
 
 ### Fixed
-
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
 
 - Supply each short-lived GitHub App installation token to Git through an installation-specific HTTPS authorization header so prepared update branches can be fetched, pushed, and cleaned up without an interactive credential prompt.
 - Explicitly dispatch the downstream fleet workflow after automatic release creation because GitHub suppresses most workflow events created by `GITHUB_TOKEN`.
@@ -404,8 +378,6 @@
 ## 1.0.1 - 2026-09-19
 
 ### Fixed
-
-- Permit approved open-source licence overrides in repository-standards validation, matching the separate licence validator; continue rejecting contradictory proprietary template metadata.
 
 - Automatic module reconciliation now runs only for branch references.
 - Tag pushes no longer start a reconciliation job that could attempt to commit and push against an immutable release tag.
