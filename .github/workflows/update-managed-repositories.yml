@@ -27,6 +27,11 @@ on:
         required: true
         default: '0'
         type: string
+      send_email:
+        description: Send the single final report; valid only for a full-fleet apply.
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -123,7 +128,7 @@ jobs:
           retention-days: 1
 
       - name: Email Fleet Rollout Report
-        if: ${{ always() && vars.RQG_REPORT_EMAIL_ENABLED == 'true' }}
+        if: ${{ always() && vars.RQG_REPORT_EMAIL_ENABLED == 'true' && (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && inputs.wave_count == '1' && inputs.wave_index == '0' && inputs.send_email == true)) }}
         shell: bash
         env:
           ROLLOUT_OUTCOME: ${{ steps.rollout.outcome }}

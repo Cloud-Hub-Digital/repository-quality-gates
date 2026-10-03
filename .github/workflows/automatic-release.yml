@@ -141,5 +141,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.plan.outputs.tag }}
         run: |
-          gh workflow run .github/workflows/update-managed-repositories.yml --ref main -f "release_tag=$env:RELEASE_TAG" -f mode=apply -f wave_count=1 -f wave_index=0
+          gh workflow run .github/workflows/update-managed-repositories.yml --ref main -f "release_tag=$env:RELEASE_TAG" -f mode=apply -f wave_count=1 -f wave_index=0 -f send_email=true
           if ($LASTEXITCODE -ne 0) { throw 'Unable to start the downstream Repository Quality Gates fleet update.' }

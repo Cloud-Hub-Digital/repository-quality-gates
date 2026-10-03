@@ -5,6 +5,7 @@ Set-StrictMode -Version Latest
 $root = Split-Path -Parent $PSScriptRoot
 $appFleetTool = Join-Path $root 'scripts\Invoke-RepositoryQualityGateAppFleetUpdate.ps1'
 $fleetWorkflow = Join-Path $root '.github\workflows\update-managed-repositories.yml'
+$automaticReleaseWorkflow = Join-Path $root '.github\workflows\automatic-release.yml'
 $cloneProbeWorkflow = Join-Path $root '.github\workflows\github-app-clone-probe.yml'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('rqg-app-fleet-tests-' + [guid]::NewGuid().ToString('N'))
 $passed = 0
@@ -27,8 +28,11 @@ try {
 
     $appFleetText = Get-Content -LiteralPath $appFleetTool -Raw
     $workflowText = Get-Content -LiteralPath $fleetWorkflow -Raw
+    $automaticReleaseWorkflowText = Get-Content -LiteralPath $automaticReleaseWorkflow -Raw
     $cloneProbeWorkflowText = Get-Content -LiteralPath $cloneProbeWorkflow -Raw
     Assert-True ($workflowText.Contains('default: preview')) 'Manual rollout requests should default to preview.'
+    Assert-True ($workflowText.Contains('send_email:')) 'Manual rollout requests should expose an explicit email-report switch.'
+    Assert-True ($workflowText -match '(?ms)^      send_email:\r?\n        description: Send the single final report; valid only for a full-fleet apply\.\r?\n        required: true\r?\n        default: false\r?\n        type: boolean$') 'Manual email reporting should default to disabled.'
     Assert-True ($workflowText.Contains('-Apply:$applyWave -AutoMerge:$applyWave')) 'Preview must leave both mutation switches disabled.'
     Assert-True ($workflowText.Contains("vars.RQG_FLEET_AUTOMATION_PAUSED != 'true'")) 'Automatic events should respect the operational pause.'
     $waveNames = @(1..40 | ForEach-Object { "example/repository-$_" })
@@ -80,6 +84,10 @@ try {
     Assert-True (-not $workflowText.Contains('secrets.RQG_REPORT_FROM }}')) 'The retired sender secret name should not remain in the workflow.'
     Assert-True (-not $workflowText.Contains('secrets.RQG_REPORT_TO }}')) 'The retired recipient secret name should not remain in the workflow.'
     Assert-True ($workflowText.Contains("vars.RQG_REPORT_EMAIL_ENABLED == 'true'")) 'Email reporting should remain controlled by the repository variable.'
+    $emailCondition = "if: `${{ always() && vars.RQG_REPORT_EMAIL_ENABLED == 'true' && (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'apply' && inputs.wave_count == '1' && inputs.wave_index == '0' && inputs.send_email == true)) }}"
+    Assert-True ($workflowText.Contains($emailCondition)) 'Email reporting should run only for a release event or an explicitly requested full-fleet manual apply.'
+    Assert-True (-not $workflowText.Contains("if: `${{ always() && vars.RQG_REPORT_EMAIL_ENABLED == 'true' }}")) 'Preview, schedule, and intermediate-wave runs must not send email automatically.'
+    Assert-True ($automaticReleaseWorkflowText.Contains('-f mode=apply -f wave_count=1 -f wave_index=0 -f send_email=true')) 'The automatic release should request exactly one report from its full-fleet apply.'
     Assert-True ($workflowText.Contains("steps.rollout.outcome == 'failure'")) 'A reported rollout failure should still fail the workflow.'
 
     Assert-True ((ConvertTo-RqgEmailComment -Status 'Current' -Detail '') -eq 'Already current.') 'Current repositories should use a short factual email comment.'

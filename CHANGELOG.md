@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.4 - 2026-10-03
+
+- Send one consolidated fleet report for a released version; keep previews, scheduled checks, and controlled intermediate waves silent.
+- Require an explicit `send_email=true` request for a final manual full-fleet apply report.
+
 ## 3.1.3 - 2026-10-02
 
 - Accept GitHub's automatic post-merge branch deletion only after authenticated readback confirms the exact temporary branch is absent.
