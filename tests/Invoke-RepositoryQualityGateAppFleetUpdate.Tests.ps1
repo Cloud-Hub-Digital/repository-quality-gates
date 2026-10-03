@@ -32,7 +32,7 @@ try {
     $cloneProbeWorkflowText = Get-Content -LiteralPath $cloneProbeWorkflow -Raw
     Assert-True ($workflowText.Contains('default: preview')) 'Manual rollout requests should default to preview.'
     Assert-True ($workflowText.Contains('send_email:')) 'Manual rollout requests should expose an explicit email-report switch.'
-    Assert-True ($workflowText -match '(?ms)^      send_email:\r?\n        description: Send the single final report; valid only for a full-fleet apply\.\r?\n        required: true\r?\n        default: false\r?\n        type: boolean$') 'Manual email reporting should default to disabled.'
+    Assert-True ($workflowText -match '(?ms)^      send_email:\r?\n        description: Send the single final report; valid only for a full-fleet apply\.\r?\n        required: true\r?\n        default: false\r?\n        type: boolean\r?$') 'Manual email reporting should default to disabled.'
     Assert-True ($workflowText.Contains('-Apply:$applyWave -AutoMerge:$applyWave')) 'Preview must leave both mutation switches disabled.'
     Assert-True ($workflowText.Contains("vars.RQG_FLEET_AUTOMATION_PAUSED != 'true'")) 'Automatic events should respect the operational pause.'
     $waveNames = @(1..40 | ForEach-Object { "example/repository-$_" })
