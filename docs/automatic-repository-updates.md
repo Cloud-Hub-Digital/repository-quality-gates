@@ -115,7 +115,20 @@ Use these repository permissions:
 | Checks | Read | Wait for and inspect every downstream pull-request quality check before merging |
 | Metadata | Read | Required GitHub App repository metadata |
 
-The app does not need issue, administration, secrets, Actions write, deployment, package, or organization permissions. Checks read access verifies private-repository quality results. Actions read access is limited to workflow-run and job metadata used to name the actual downstream runners in the private rollout report; it does not grant access to Actions secrets or permit workflow administration.
+The content-update workflow does not need Issues, Administration, secrets, Actions write, deployment, package, or organization permissions. Checks read access verifies private-repository quality results. Actions read access is limited to workflow-run and job metadata used to name the actual downstream runners in the private rollout report; it does not grant access to Actions secrets or permit workflow administration.
+
+The separate ruleset & feature workflow has a stricter boundary. Its daily audit remains read-only. An explicit manual apply requires the GitHub App installation token to have repository Administration write permission so it can reconcile rulesets, merge settings, branch cleanup, & supported repository features. The workflow's own `GITHUB_TOKEN` remains read-only, & the engine verifies every applied setting by fresh readback.
+
+## Ruleset & Feature Reconciliation
+
+RQG 3.2.0 separates content rollout from administration reconciliation:
+
+- the normal update workflow creates reviewable pull requests containing the four local issue files, managed-state hashes, validator updates, & the `github-issues` support-route migration;
+- the daily `Reconcile Repository Rulesets` workflow audits live rules, merge methods, branch cleanup, Issues, Discussions, Wikis, Pages, local forms, & approved exceptions without changing them;
+- apply mode is available only through an explicit manual workflow run with the necessary GitHub App permission;
+- Pages exceptions are audited but never automatically provisioned.
+
+Run the content preview & merge its passing pull requests before applying the administration policy, then repeat the audit to verify both layers.
 
 Install the App only on repositories that Repository Quality Gates may manage. The combined installations form the outer fleet allow-list. Within that scope, an existing managed-state file authorizes updates and an unmanaged repository is automatically eligible unless its committed repository rules opt out. The workflow discovers installations at runtime, so no owner names or repository inventory need to be stored in source, variables, or secrets.
 

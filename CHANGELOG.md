@@ -2,18 +2,24 @@
 
 ## 3.2.0 - Unreleased
 
-- Enforce the approved GitHub repository-feature contract: Issues enabled, Discussions, Wikis, & Pages disabled by default, with complete approved exceptions sourced only from `.repository-standards.json`.
-- Deploy & validate local bug-report, feature-request, question, & issue-picker configuration files in every governed repository.
-- Migrate the legacy `github-discussions` repository support route to mandatory `github-issues` during the ordinary reviewed RQG update.
-- Extend the audit-first GitHub administration engine to report feature drift, missing local forms, repository-profile gaps, & applied setting corrections without silently publishing repository content.
-
-## Unreleased
-
 ### Added
 
-- Add a canonical no-bypass default-branch ruleset policy, read-only fleet audit, & explicit apply-and-verify reconciliation engine.
-- Defer unsupported private repositories under `RQG-PRIVATE-PLAN-001`, then make them eligible for reconciliation when native rules become available or the repository becomes public.
-- Preserve the approved DCC LabStation LS8 milestone merge-commit exception while keeping squash-only merging as the fleet default.
+- Added a canonical no-bypass default-branch ruleset policy, read-only fleet audit, & explicit apply-and-verify reconciliation engine.
+- Added local bug-report, feature-request, question, & issue-picker configuration files to the universal documentation module.
+- Added fail-closed validation for repository-local feature exceptions, including their identifier, feature, intended state, owner, reason, approval status, & review condition.
+
+### Changed
+
+- Enforced the approved GitHub repository-feature contract: Issues enabled, with Discussions, Wikis, & Pages disabled unless a complete approved local exception changes one of those three optional features.
+- Migrated the legacy `github-discussions` support route to mandatory `github-issues` during the ordinary reviewed RQG update.
+- Extended the GitHub administration engine to report ruleset, merge-setting, feature-setting, repository-profile, & local issue-form drift in one structured result.
+- Kept squash-only merging as the fleet default while preserving the approved DCC LabStation LS8 milestone merge-commit exception.
+
+### Security
+
+- Kept scheduled reconciliation read-only & restricted apply mode to an explicit manual workflow run using short-lived GitHub App installation tokens.
+- Deferred unsupported private-repository native protection under `RQG-PRIVATE-PLAN-001`; a later reviewed apply can activate the ruleset when the repository becomes public or the plan supports it.
+- Refused to provision GitHub Pages automatically, even when an approved exception enables it, because its source, build, & ownership configuration require separate approval.
 
 ## 3.1.4 - 2026-10-03
 

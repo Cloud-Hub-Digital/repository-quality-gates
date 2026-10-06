@@ -103,6 +103,12 @@ Replace the example with an applicable non-universal module ID and list only spe
 
 During the first update from older managed state, the updater can adopt historical RQG secret-scanning files only when their SHA-256 hashes exactly match a verified published release. If the root `.gitleaks.toml` was deliberately extended for that repository and still extends `security/gitleaks-portable.toml`, the updater records it under `paths.repositoryOwned` and restores central management for the remaining secret-scanning files. Unknown or modified files stop the migration for review.
 
+### Repository Features & Issue Intake
+
+Every deployment includes local bug-report, feature-request, question, & issue-picker configuration files. The repository profile must use `supportRoute: github-issues`. An update automatically migrates only the known legacy `github-discussions` value; any other support route stops for review.
+
+Issues must remain enabled. Discussions, Wikis, & Pages remain disabled unless `.repository-standards.json` contains a complete approved `featureExceptions` entry for the specific feature. Repository-content deployment does not change those live GitHub settings. Audit or reconcile them separately with the [Repository Ruleset & Feature Engine](repository-ruleset-engine.md), after reviewing the content update.
+
 ### Intentional Duplicate Workflows
 
 When both the existing and template workflows should remain, acknowledge the reviewed overlap:
