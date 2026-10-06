@@ -49,6 +49,9 @@ try {
 
     $statePath = Join-Path $managed '.repository-quality-gates.json'
     $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+    $profilePath = Join-Path $managed '.repository-standards.json'
+    $profile = [ordered]@{ schemaVersion = 2; profile = 'downstream'; account = 'example-owner'; centralRepository = 'https://github.com/example-owner/.github'; licence = [ordered]@{ class = 'open-source'; identifier = 'MIT'; rightsHolder = 'Example Owner'; decisionStatus = 'approved'; templateVersion = $null; overrideReason = $null }; supportRoute = 'github-discussions'; conductRoute = 'confidential-email' }
+    [IO.File]::WriteAllText($profilePath, (($profile | ConvertTo-Json -Depth 8).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"), [Text.UTF8Encoding]::new($false))
     $state.templateVersion = '1.1.0'
     $stateJson = ($state | ConvertTo-Json -Depth 8).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"
     [IO.File]::WriteAllText($statePath, $stateJson, [Text.UTF8Encoding]::new($false))
@@ -65,7 +68,8 @@ try {
     Assert-True ($applyJson.status -eq 'Updated') 'Apply should report an updated repository.'
     Assert-True ($applyJson.changedPaths -contains '.repository-quality-gates.json') 'The update should refresh managed state.'
     $updatedState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-    Assert-True ($updatedState.templateVersion -eq '3.1.4') 'Managed state should record the new template version.'
+    Assert-True ($updatedState.templateVersion -eq '3.2.0') 'Managed state should record the new template version.'
+    Assert-True ((Get-Content -LiteralPath $profilePath -Raw | ConvertFrom-Json).supportRoute -eq 'github-issues') 'The update should migrate the legacy Discussions support route to Issues.'
     Commit-All $managed 'update quality gates'
 
     $current = Invoke-Update $managed
@@ -113,7 +117,7 @@ try {
     $enrollmentApplyJson = $enrollmentApply.Output | ConvertFrom-Json
     Assert-True ($enrollmentApplyJson.status -eq 'Enrolled') 'Applied initial enrolment should report Enrolled.'
     $enrolledState = Get-Content -LiteralPath (Join-Path $unmanaged '.repository-quality-gates.json') -Raw | ConvertFrom-Json
-    Assert-True ($enrolledState.templateVersion -eq '3.1.4') 'Initial enrolment should record the current template version.'
+    Assert-True ($enrolledState.templateVersion -eq '3.2.0') 'Initial enrolment should record the current template version.'
     Assert-True (Test-Path -LiteralPath (Join-Path $unmanaged '.github\workflows\secret-scanning.yml')) 'Initial enrolment should deploy the selected quality-gate workflows.'
 
     $overlap = Join-Path $testRoot 'overlap'

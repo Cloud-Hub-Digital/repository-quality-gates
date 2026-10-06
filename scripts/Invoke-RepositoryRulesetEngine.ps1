@@ -57,20 +57,95 @@ function Get-RepositoryPolicy([object]$Policy, [string]$RepositoryName) {
     return [pscustomobject]@{ Settings = [pscustomobject]$effective; ExceptionId = $exceptionId }
 }
 
+function Get-FeaturePolicy([object]$Policy, [object]$StandardsProfile) {
+    $settings = [ordered]@{
+        issues = [bool]$Policy.repositoryFeatures.issues
+        discussions = [bool]$Policy.repositoryFeatures.discussions
+        wiki = [bool]$Policy.repositoryFeatures.wiki
+        pages = [bool]$Policy.repositoryFeatures.pages
+    }
+    $ids = [Collections.Generic.List[string]]::new()
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $exceptions = if ($null -ne $StandardsProfile -and $StandardsProfile.PSObject.Properties['featureExceptions']) { @($StandardsProfile.featureExceptions) } else { @() }
+    foreach ($exception in $exceptions) {
+        $allowed = @('id','feature','enabled','owner','reason','approvalStatus','reviewCondition')
+        if (@($exception.PSObject.Properties.Name | Where-Object { $_ -notin $allowed }).Count) { throw 'A feature exception contains an unsupported property.' }
+        $id = ([string]$exception.id).Trim()
+        $feature = ([string]$exception.feature).Trim().ToLowerInvariant()
+        if ($id -notmatch '^[A-Z0-9][A-Z0-9._-]+$') { throw 'A feature exception has an invalid identifier.' }
+        if ($feature -notin @('discussions','wiki','pages')) { throw "$id names an unsupported repository feature." }
+        if (-not $seen.Add($feature)) { throw "More than one feature exception exists for $feature." }
+        if ($exception.enabled -isnot [bool]) { throw "$id does not define a Boolean enabled state." }
+        foreach ($name in @('owner','reason','reviewCondition')) { if ([string]::IsNullOrWhiteSpace([string]$exception.$name)) { throw "$id has an incomplete $name." } }
+        if ([string]$exception.approvalStatus -cne 'approved') { throw "$id is not approved." }
+        if ([bool]$exception.enabled -eq [bool]$settings[$feature]) { throw "$id does not deviate from the fixed feature baseline." }
+        $settings[$feature] = [bool]$exception.enabled
+        $ids.Add($id)
+    }
+    return [pscustomobject]@{ Settings = [pscustomobject]$settings; ExceptionIds = @($ids) }
+}
+
 function Get-RepositoryContext([string]$RepositoryName) {
-    $metadataResult = Invoke-Gh @('api', "repos/$RepositoryName", '--jq', '{defaultBranch:.default_branch,visibility:.visibility,private:.private,allowSquash:.allow_squash_merge,allowMerge:.allow_merge_commit,allowRebase:.allow_rebase_merge,deleteBranch:.delete_branch_on_merge}') 'Unable to read repository metadata.'
+    $metadataResult = Invoke-Gh @('api', "repos/$RepositoryName", '--jq', '{defaultBranch:.default_branch,visibility:.visibility,private:.private,allowSquash:.allow_squash_merge,allowMerge:.allow_merge_commit,allowRebase:.allow_rebase_merge,deleteBranch:.delete_branch_on_merge,hasIssues:.has_issues,hasDiscussions:.has_discussions,hasWiki:.has_wiki,hasPages:.has_pages}') 'Unable to read repository metadata.'
     $metadata = Read-Json $metadataResult.Text "GitHub returned invalid metadata for $RepositoryName."
     $defaultBranch = ([string]$metadata.defaultBranch).Trim()
     if (-not $defaultBranch) { throw "$RepositoryName does not identify a default branch." }
     $visibility = if ([bool]$metadata.private) { 'Private' } else { 'Public' }
     $stateResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString('.repository-quality-gates.json'))?ref=$([Uri]::EscapeDataString($defaultBranch))", '--jq', '.content') 'Unable to read the managed state.' -AllowFailure
+    $managed = $true
+    $expectedChecks = @()
     if ($stateResult.ExitCode -ne 0) {
-        if ($stateResult.Text -match '(?i)(HTTP 404|Not Found)') { return [pscustomobject]@{ Metadata = $metadata; DefaultBranch = $defaultBranch; Visibility = $visibility; Managed = $false; ExpectedChecks = @() } }
-        throw "Unable to read the managed state for $RepositoryName. $($stateResult.Text)"
+        if ($stateResult.Text -match '(?i)(HTTP 404|Not Found)') { $managed = $false }
+        else { throw "Unable to read the managed state for $RepositoryName. $($stateResult.Text)" }
+    } else {
+        try { $state = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($stateResult.Text -replace '\s', ''))) | ConvertFrom-Json }
+        catch { throw "GitHub returned invalid managed state for $RepositoryName." }
+        $expectedChecks = @(Get-ExpectedChecks $state)
     }
-    try { $state = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($stateResult.Text -replace '\s', ''))) | ConvertFrom-Json }
-    catch { throw "GitHub returned invalid managed state for $RepositoryName." }
-    return [pscustomobject]@{ Metadata = $metadata; DefaultBranch = $defaultBranch; Visibility = $visibility; Managed = $true; ExpectedChecks = @(Get-ExpectedChecks $state) }
+    $profileResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString('.repository-standards.json'))?ref=$([Uri]::EscapeDataString($defaultBranch))", '--jq', '.content') 'Unable to read the repository standards profile.' -AllowFailure
+    $standardsProfile = $null
+    if ($profileResult.ExitCode -eq 0) {
+        try { $standardsProfile = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($profileResult.Text -replace '\s', ''))) | ConvertFrom-Json }
+        catch { throw "GitHub returned an invalid repository standards profile for $RepositoryName." }
+    } elseif ($profileResult.Text -notmatch '(?i)(HTTP 404|Not Found)') {
+        throw "Unable to read the repository standards profile for $RepositoryName. $($profileResult.Text)"
+    }
+    $missingTemplates = [Collections.Generic.List[string]]::new()
+    foreach ($path in @($policy.repositoryFeatures.requiredIssueTemplates)) {
+        $templateResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString([string]$path))?ref=$([Uri]::EscapeDataString($defaultBranch))", '--jq', '.sha') 'Unable to inspect a required issue template.' -AllowFailure
+        if ($templateResult.ExitCode -ne 0) {
+            if ($templateResult.Text -match '(?i)(HTTP 404|Not Found)') { $missingTemplates.Add([string]$path) }
+            else { throw "Unable to inspect $path for $RepositoryName. $($templateResult.Text)" }
+        }
+    }
+    return [pscustomobject]@{ Metadata = $metadata; DefaultBranch = $defaultBranch; Visibility = $visibility; Managed = $managed; ExpectedChecks = $expectedChecks; StandardsProfile = $standardsProfile; MissingIssueTemplates = @($missingTemplates) }
+}
+
+function Test-RepositoryFeatures([object]$Context, [object]$FeaturePolicy) {
+    $missing = [Collections.Generic.List[string]]::new()
+    $settingsMissing = [Collections.Generic.List[string]]::new()
+    if ($null -eq $Context.StandardsProfile) { $missing.Add('repository-standards-profile') }
+    $map = @{ issues = 'hasIssues'; discussions = 'hasDiscussions'; wiki = 'hasWiki'; pages = 'hasPages' }
+    foreach ($feature in @('issues','discussions','wiki','pages')) {
+        if ([bool]$Context.Metadata.($map[$feature]) -ne [bool]$FeaturePolicy.Settings.$feature) {
+            $control = "repository-feature:$feature"
+            $missing.Add($control); $settingsMissing.Add($control)
+        }
+    }
+    foreach ($path in @($Context.MissingIssueTemplates)) { $missing.Add("issue-template:$path") }
+    return [pscustomobject]@{ Missing = @($missing); SettingsMissing = @($settingsMissing) }
+}
+
+function Set-RepositoryFeatures([string]$RepositoryName, [object]$Context, [object]$FeaturePolicy) {
+    $settingsPath = [IO.Path]::GetTempFileName()
+    try {
+        $body = [ordered]@{ has_issues = [bool]$FeaturePolicy.Settings.issues; has_discussions = [bool]$FeaturePolicy.Settings.discussions; has_wiki = [bool]$FeaturePolicy.Settings.wiki }
+        [IO.File]::WriteAllText($settingsPath, ($body | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+        $null = Invoke-Gh @('api','--method','PATCH','-H','Accept: application/vnd.github+json',"repos/$RepositoryName",'--input',$settingsPath) 'Unable to apply repository feature settings.'
+    } finally { Remove-Item -LiteralPath $settingsPath -Force -ErrorAction SilentlyContinue }
+    if (-not [bool]$FeaturePolicy.Settings.pages -and [bool]$Context.Metadata.hasPages) {
+        $null = Invoke-Gh @('api','--method','DELETE','-H','Accept: application/vnd.github+json',"repos/$RepositoryName/pages") 'Unable to disable GitHub Pages.'
+    }
 }
 
 function Test-RepositoryRules([string]$RepositoryName, [object]$Context, [object]$EffectivePolicy, [object]$Policy) {
@@ -159,22 +234,35 @@ function New-RulesetBody([object]$Policy, [object]$EffectivePolicy, [object]$Con
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'GitHub CLI is required.' }
 if (-not (Test-Path -LiteralPath $PolicyPath -PathType Leaf)) { throw 'The repository ruleset policy is missing.' }
 $policy = Read-Json (Get-Content -LiteralPath $PolicyPath -Raw) 'The repository ruleset policy is invalid JSON.'
-if ([int]$policy.schemaVersion -ne 1 -or [string]$policy.target -cne 'branch' -or [string]$policy.enforcement -cne 'active' -or [string]$policy.privatePlanException.id -cne 'RQG-PRIVATE-PLAN-001') { throw 'The repository ruleset policy is not an approved schema 1 policy.' }
+if ([int]$policy.schemaVersion -ne 2 -or [string]$policy.target -cne 'branch' -or [string]$policy.enforcement -cne 'active' -or [string]$policy.privatePlanException.id -cne 'RQG-PRIVATE-PLAN-001') { throw 'The repository ruleset policy is not an approved schema 2 policy.' }
 $requiredTrueDefaults = @('requireLastPushApproval','requireConversationResolution','requireCurrentStatusChecks','allowSquashMerge','deleteBranchOnMerge','blockDeletion','blockForcePush')
 if (@($requiredTrueDefaults | Where-Object { $policy.default.$_ -ne $true }).Count -or $policy.default.allowMergeCommit -ne $false -or $policy.default.allowRebaseMerge -ne $false -or [int]$policy.default.requiredApprovingReviewCount -ne 0 -or @($policy.default.bypassActors).Count) { throw 'The repository ruleset policy weakens the approved defaults.' }
 $exceptions = @($policy.repositoryExceptions)
 if ($exceptions.Count -ne 1 -or [string]$exceptions[0].id -cne 'RS-ADR-021-DCC' -or [string]$exceptions[0].repository -cne 'terryrogers/DCC_LabStation_LS8' -or $exceptions[0].allowMergeCommit -ne $true -or @($exceptions[0].PSObject.Properties.Name | Where-Object { $_ -notin @('id','repository','allowMergeCommit') }).Count) { throw 'The repository ruleset policy contains an unapproved repository exception.' }
+$featurePolicy = $policy.repositoryFeatures
+if ($null -eq $featurePolicy -or $featurePolicy.issues -ne $true -or $featurePolicy.discussions -ne $false -or $featurePolicy.wiki -ne $false -or $featurePolicy.pages -ne $false -or [string]$featurePolicy.exceptionSource -cne '.repository-standards.json') { throw 'The repository feature policy weakens the approved defaults.' }
+$requiredTemplates = @($featurePolicy.requiredIssueTemplates)
+$approvedTemplates = @('.github/ISSUE_TEMPLATE/bug_report.yml','.github/ISSUE_TEMPLATE/feature_request.yml','.github/ISSUE_TEMPLATE/question.yml','.github/ISSUE_TEMPLATE/config.yml')
+if ($requiredTemplates.Count -ne $approvedTemplates.Count -or (Compare-Object -ReferenceObject @($approvedTemplates | Sort-Object) -DifferenceObject @($requiredTemplates | Sort-Object))) { throw 'The repository feature policy does not require the approved local issue templates.' }
 
 $rows = [Collections.Generic.List[object]]::new()
 foreach ($repositoryName in @($Repository | Sort-Object -Unique)) {
     if ($repositoryName -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Invalid repository name: $repositoryName" }
     $effective = Get-RepositoryPolicy $policy $repositoryName
     $context = Get-RepositoryContext $repositoryName
+    $effectiveFeatures = Get-FeaturePolicy $policy $context.StandardsProfile
+    $featureAudit = Test-RepositoryFeatures $context $effectiveFeatures
+    if ($Apply -and $featureAudit.SettingsMissing.Count) {
+        Set-RepositoryFeatures $repositoryName $context $effectiveFeatures
+        $context = Get-RepositoryContext $repositoryName
+        $featureAudit = Test-RepositoryFeatures $context $effectiveFeatures
+    }
     if (-not $context.Managed) {
+        $missing = @('repository-quality-gates-state') + @($featureAudit.Missing)
         $rows.Add([pscustomobject][ordered]@{
             repository = $repositoryName; visibility = $context.Visibility; defaultBranch = $context.DefaultBranch
             status = 'MissingManagedState'; action = 'EnrollRepositoryQualityGates'; exceptionId = $null
-            expectedChecks = @(); missingControls = @('repository-quality-gates-state')
+            featureExceptionIds = @($effectiveFeatures.ExceptionIds); expectedChecks = @(); missingControls = @($missing | Sort-Object -Unique)
         })
         continue
     }
@@ -210,10 +298,16 @@ foreach ($repositoryName in @($Repository | Sort-Object -Unique)) {
         $status = 'AppliedAndVerified'; $action = 'None'
     }
 
+    $combinedMissing = @(@($audit.Missing) + @($featureAudit.Missing) | Sort-Object -Unique)
+    if ($featureAudit.Missing.Count) {
+        $status = 'NonCompliant'
+        $action = if (@($featureAudit.Missing | Where-Object { $_ -like 'issue-template:*' -or $_ -eq 'repository-standards-profile' }).Count) { 'UpdateRepositoryContent' } else { if ($Apply) { 'FeatureApplyIncomplete' } else { 'ApplyRequired' } }
+    }
+
     $rows.Add([pscustomobject][ordered]@{
         repository = $repositoryName; visibility = $context.Visibility; defaultBranch = $context.DefaultBranch
         status = $status; action = $action; exceptionId = if ($audit.Deferred) { [string]$policy.privatePlanException.id } else { $effective.ExceptionId }
-        expectedChecks = @($context.ExpectedChecks); missingControls = @($audit.Missing)
+        featureExceptionIds = @($effectiveFeatures.ExceptionIds); expectedChecks = @($context.ExpectedChecks); missingControls = $combinedMissing
     })
 }
 

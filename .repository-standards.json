@@ -11,6 +11,6 @@
     "templateVersion": null,
     "overrideReason": null
   },
-  "supportRoute": "github-discussions",
+  "supportRoute": "github-issues",
   "conductRoute": "confidential-email"
 }

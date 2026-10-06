@@ -4,9 +4,9 @@ Repository Quality Gates is a preview-first PowerShell deployment tool for addin
 
 Required-check enforcement is visibility-aware. Public repositories require native GitHub default-branch rules. Private repositories use those rules when available and may use only the reviewed, fail-closed `RQG-PRIVATE-PLAN-001` verified-merge exception when GitHub returns the recognized current-plan limitation. The read-only required-check planner reports the exact checks and control for every dynamically supplied repository before any administration change.
 
-The prepared template version written to managed state is `3.1.4`. The automatic release workflow publishes the matching immutable `v3.1.4` GitHub Release after the required checks pass for the release commit.
+The prepared template version written to managed state is `3.2.0`. The automatic release workflow publishes the matching immutable `v3.2.0` GitHub Release after the required checks pass for the release commit.
 
-Version `3.1.4` sends one consolidated named summary email for a released version. Preview, scheduled, and controlled intermediate-wave runs remain silent; an authorized manual report requires an explicit full-fleet apply request. It retains verified temporary branch cleanup, the approved two-class licence model, precise fleet statuses, private self-hosted runner routing, fixed-width email tables, line-separated runner names, concise failure comments, and a runner-sanitized one-day diagnostic artifact. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `3.2.0` adds a governed repository-feature contract: Issues must be enabled, Discussions, Wikis, & Pages must be disabled unless a complete repository-local exception is approved, and every repository must carry local bug-report, feature-request, question, & picker configuration files. The GitHub administration engine audits and can reconcile supported live settings, while ordinary RQG content updates deliver the required issue forms & migrate the legacy Discussions support route to Issues through reviewed repository changes. See [Repository Ruleset & Feature Engine](docs/repository-ruleset-engine.md) for the policy and authorization model.
 
 The 2.x line begins a clean public Git history. The [Development History](docs/development-history.md) explains how the earlier public development milestones are represented without carrying forward the previous commit graph.
 
@@ -107,7 +107,7 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `scripts/Invoke-RepositoryRulesetEngine.ps1` | Audit or explicitly reconcile the canonical default-branch ruleset & merge settings for supplied repositories |
 | `scripts/Invoke-RepositoryRulesetAppFleet.ps1` | Run ruleset audit or reconciliation across every accessible GitHub App installation with short-lived isolated tokens |
 | `docs/quality-gates.md` | Detailed gate and module-selection reference |
-| `docs/repository-ruleset-engine.md` | Ruleset policy, audit/apply behavior, private-plan boundary, & Actions credential requirements |
+| `docs/repository-ruleset-engine.md` | Ruleset & feature policy, audit/apply behavior, local exceptions, private-plan boundary, & Actions credential requirements |
 | `docs/deployment-guide.md` | End-to-end operator instructions |
 | `docs/module-system.md` | Architecture and managed-file lifecycle reference |
 | `docs/automation-costs-and-releases.md` | GitHub Actions cost boundary and recommended build/release automation controls |
@@ -124,6 +124,8 @@ The universal licensing module also validates the downstream project's own appro
 ## Recommended Repository Settings
 
 RQG's workflows provide repository-level checks, and the central repository now also uses GitHub's native secret scanning and push protection, dependency alerts and security updates, SHA-pinned Actions, read-only default workflow permissions, 30-day workflow retention, automatic deletion of merged branches, immutable releases, and active rulesets protecting `main` and release tags. Weekly grouped Dependabot updates keep GitHub Actions references current for review.
+
+Issues are enabled in every governed repository. RQG requires local bug-report, feature-request, question, & issue-picker configuration files, and audits the live repository setting. Discussions, Wikis, & Pages are disabled unless the repository-local `.repository-standards.json` file contains a complete approved `featureExceptions` entry.
 
 Apply the controls in stages. RQG's current self-reconciliation workflow can commit a normalized managed state directly to its branch. A rule requiring every `main` change to arrive through a pull request would block that behavior until self-reconciliation is changed to use a temporary pull request or a narrowly scoped GitHub App bypass is approved.
 

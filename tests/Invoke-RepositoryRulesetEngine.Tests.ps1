@@ -11,15 +11,22 @@ function global:gh {
     $joined = $args -join ' '
     if ($joined -match '^api repos/owner/apply --jq') {
         $mergeState = if ($global:rulesetApplied) { 'true' } else { 'false' }
-        "{`"defaultBranch`":`"main`",`"visibility`":`"public`",`"private`":false,`"allowSquash`":true,`"allowMerge`":false,`"allowRebase`":false,`"deleteBranch`":$mergeState}"
+        "{`"defaultBranch`":`"main`",`"visibility`":`"public`",`"private`":false,`"allowSquash`":true,`"allowMerge`":false,`"allowRebase`":false,`"deleteBranch`":$mergeState,`"hasIssues`":true,`"hasDiscussions`":false,`"hasWiki`":false,`"hasPages`":false}"
         $global:LASTEXITCODE=0; return
     }
-    if ($joined -match '^api repos/owner/public --jq') { '{"defaultBranch":"main","visibility":"public","private":false,"allowSquash":true,"allowMerge":false,"allowRebase":false,"deleteBranch":true}'; $global:LASTEXITCODE=0; return }
-    if ($joined -match '^api repos/owner/private --jq') { '{"defaultBranch":"main","visibility":"private","private":true,"allowSquash":true,"allowMerge":false,"allowRebase":false,"deleteBranch":true}'; $global:LASTEXITCODE=0; return }
-    if ($joined -match '^api repos/owner/unmanaged --jq') { '{"defaultBranch":"main","visibility":"public","private":false,"allowSquash":true,"allowMerge":false,"allowRebase":false,"deleteBranch":true}'; $global:LASTEXITCODE=0; return }
-    if ($joined -match '^api repos/terryrogers/DCC_LabStation_LS8 --jq') { '{"defaultBranch":"main","visibility":"public","private":false,"allowSquash":true,"allowMerge":true,"allowRebase":false,"deleteBranch":true}'; $global:LASTEXITCODE=0; return }
+    if ($joined -match '^api repos/owner/feature-drift --jq') { '{"defaultBranch":"main","visibility":"public","private":false,"allowSquash":true,"allowMerge":false,"allowRebase":false,"deleteBranch":true,"hasIssues":false,"hasDiscussions":true,"hasWiki":true,"hasPages":false}'; $global:LASTEXITCODE=0; return }
+    if ($joined -match '^api repos/owner/(public|missing-template|exception) --jq') { $discussion = $Matches[1] -eq 'exception'; "{`"defaultBranch`":`"main`",`"visibility`":`"public`",`"private`":false,`"allowSquash`":true,`"allowMerge`":false,`"allowRebase`":false,`"deleteBranch`":true,`"hasIssues`":true,`"hasDiscussions`":$($discussion.ToString().ToLowerInvariant()),`"hasWiki`":false,`"hasPages`":false}"; $global:LASTEXITCODE=0; return }
+    if ($joined -match '^api repos/owner/private --jq') { '{"defaultBranch":"main","visibility":"private","private":true,"allowSquash":true,"allowMerge":false,"allowRebase":false,"deleteBranch":true,"hasIssues":true,"hasDiscussions":false,"hasWiki":false,"hasPages":false}'; $global:LASTEXITCODE=0; return }
+    if ($joined -match '^api repos/owner/unmanaged --jq') { '{"defaultBranch":"main","visibility":"public","private":false,"allowSquash":true,"allowMerge":false,"allowRebase":false,"deleteBranch":true,"hasIssues":true,"hasDiscussions":false,"hasWiki":false,"hasPages":false}'; $global:LASTEXITCODE=0; return }
+    if ($joined -match '^api repos/terryrogers/DCC_LabStation_LS8 --jq') { '{"defaultBranch":"main","visibility":"public","private":false,"allowSquash":true,"allowMerge":true,"allowRebase":false,"deleteBranch":true,"hasIssues":true,"hasDiscussions":false,"hasWiki":false,"hasPages":false}'; $global:LASTEXITCODE=0; return }
     if ($joined -match 'repos/owner/unmanaged/contents/\.repository-quality-gates\.json') { 'gh: Not Found (HTTP 404)'; $global:LASTEXITCODE=1; return }
     if ($joined -match 'contents/\.repository-quality-gates\.json') { [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{"modules":["documentation","licensing"]}')); $global:LASTEXITCODE=0; return }
+    if ($joined -match 'contents/\.repository-standards\.json') {
+        $profile = if ($joined -match 'owner/exception') { '{"featureExceptions":[{"id":"TEST-DISCUSSIONS","feature":"discussions","enabled":true,"owner":"Example Owner","reason":"Test community route","approvalStatus":"approved","reviewCondition":"Review annually"}]}' } else { '{"featureExceptions":[]}' }
+        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($profile)); $global:LASTEXITCODE=0; return
+    }
+    if ($joined -match 'owner/missing-template/.+question\.yml') { 'gh: Not Found (HTTP 404)'; $global:LASTEXITCODE=1; return }
+    if ($joined -match 'contents/.+ISSUE_TEMPLATE') { 'abc123'; $global:LASTEXITCODE=0; return }
     if ($joined -match 'repos/owner/private/rules/branches/main') { 'Upgrade to GitHub Pro to use protected branches in private repositories.'; $global:LASTEXITCODE=1; return }
     if ($joined -match 'repos/owner/apply/rulesets\?includes_parents=false') { if ($global:rulesetApplied) { '[{"id":84,"name":"Repository Standards - Default Branch"}]' } else { '[]' }; $global:LASTEXITCODE=0; return }
     if ($joined -match '^api --method POST .*repos/owner/apply/rulesets --input (?<path>.+)$') { $global:lastRulesetBody = Get-Content -LiteralPath $Matches.path -Raw | ConvertFrom-Json; $global:rulesetApplied=$true; '{}'; $global:LASTEXITCODE=0; return }
@@ -49,8 +56,8 @@ function global:gh {
 }
 
 try {
-    $audit = & $engine -Repository @('owner/public','owner/private','owner/unmanaged','terryrogers/DCC_LabStation_LS8') -OutputFormat Json | ConvertFrom-Json
-    Assert-True ($audit.compliant -eq 2) 'Two public repositories should match the standard.'
+    $audit = & $engine -Repository @('owner/public','owner/private','owner/unmanaged','owner/missing-template','owner/feature-drift','owner/exception','terryrogers/DCC_LabStation_LS8') -OutputFormat Json | ConvertFrom-Json
+    Assert-True ($audit.compliant -eq 3) 'Three public repositories should match the standard, including one approved feature exception.'
     Assert-True ($audit.deferred -eq 1) 'The unsupported private repository should be deferred.'
     $private = @($audit.repositories | Where-Object repository -eq 'owner/private')[0]
     Assert-True ($private.status -eq 'DeferredUnsupportedPlan') 'Private plan rejection should have an explicit status.'
@@ -60,9 +67,18 @@ try {
     Assert-True ($dcc.status -eq 'Compliant') 'The DCC exception should accept squash and merge commits.'
     $unmanaged = @($audit.repositories | Where-Object repository -eq 'owner/unmanaged')[0]
     Assert-True ($unmanaged.status -eq 'MissingManagedState') 'A repository without RQG state should require enrolment without an unsafe guessed ruleset.'
+    $missingTemplate = @($audit.repositories | Where-Object repository -eq 'owner/missing-template')[0]
+    Assert-True ($missingTemplate.status -eq 'NonCompliant') 'A missing local issue form should fail the feature contract.'
+    Assert-True ($missingTemplate.missingControls -contains 'issue-template:.github/ISSUE_TEMPLATE/question.yml') 'The missing issue form should be identified exactly.'
+    $featureDrift = @($audit.repositories | Where-Object repository -eq 'owner/feature-drift')[0]
+    Assert-True ($featureDrift.missingControls -contains 'repository-feature:issues') 'Disabled Issues should fail the feature contract.'
+    Assert-True ($featureDrift.missingControls -contains 'repository-feature:discussions') 'Enabled Discussions should fail without an exception.'
+    $featureException = @($audit.repositories | Where-Object repository -eq 'owner/exception')[0]
+    Assert-True ($featureException.featureExceptionIds -contains 'TEST-DISCUSSIONS') 'An approved repository-local feature exception should be reported.'
     $policy = Get-Content -LiteralPath (Join-Path $root 'policy\repository-ruleset-policy.json') -Raw | ConvertFrom-Json
     Assert-True ($policy.default.bypassActors.Count -eq 0) 'The standard ruleset must have no bypass actors.'
     Assert-True ($policy.repositoryExceptions.Count -eq 1) 'Only the approved repository exception should exist.'
+    Assert-True ($policy.schemaVersion -eq 2) 'The combined ruleset & repository-feature policy should use schema 2.'
     $global:rulesetApplied = $false
     $global:lastRulesetBody = $null
     $apply = & $engine -Repository 'owner/apply' -Apply -OutputFormat Json | ConvertFrom-Json

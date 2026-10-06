@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "templateVersion": "3.1.4",
+  "templateVersion": "3.2.0",
   "modules": [
     "documentation",
     "licensing",
@@ -20,6 +20,26 @@
       "path": ".githooks/pre-push",
       "module": "secret-scanning",
       "sha256": "7ebb4a10bb9c3b9d4b7e6b61381c77b0013788726fa5289f74f48fa6e2b43a9e"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "module": "documentation",
+      "sha256": "73ad9f8a45ea2c0cf629e995aa80f6217771836d27946424edaede3144ac6f7e"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "module": "documentation",
+      "sha256": "3735a6e483da75fff1ec8e76cc8785e43774f5c17cb5731d5c4bb26665cd63a6"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
+      "module": "documentation",
+      "sha256": "bc19850e354351ae7662c2972ac5a1515bd4524d5aa7e3cb8f9c01178a521585"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/question.yml",
+      "module": "documentation",
+      "sha256": "fefc92b5d8d57ab0bac5361b3831bbe4754ba0bc5238ebaf69c84cdebf316ac2"
     },
     {
       "path": ".github/workflows/quality-documentation.yml",
@@ -67,6 +87,26 @@
       "sha256": "5d144e3fe4e1290ea6923854384c2e4ad22e0cd64671a428a770b37995f967fe"
     },
     {
+      "path": ".rqg/template/modules/documentation/payload/.github/ISSUE_TEMPLATE/bug_report.yml",
+      "module": "module-drift",
+      "sha256": "73ad9f8a45ea2c0cf629e995aa80f6217771836d27946424edaede3144ac6f7e"
+    },
+    {
+      "path": ".rqg/template/modules/documentation/payload/.github/ISSUE_TEMPLATE/config.yml",
+      "module": "module-drift",
+      "sha256": "3735a6e483da75fff1ec8e76cc8785e43774f5c17cb5731d5c4bb26665cd63a6"
+    },
+    {
+      "path": ".rqg/template/modules/documentation/payload/.github/ISSUE_TEMPLATE/feature_request.yml",
+      "module": "module-drift",
+      "sha256": "bc19850e354351ae7662c2972ac5a1515bd4524d5aa7e3cb8f9c01178a521585"
+    },
+    {
+      "path": ".rqg/template/modules/documentation/payload/.github/ISSUE_TEMPLATE/question.yml",
+      "module": "module-drift",
+      "sha256": "fefc92b5d8d57ab0bac5361b3831bbe4754ba0bc5238ebaf69c84cdebf316ac2"
+    },
+    {
       "path": ".rqg/template/modules/documentation/payload/.github/workflows/quality-documentation.yml",
       "module": "module-drift",
       "sha256": "8a84383d06832229439f9d5ed54086229e6176953c020c6eaa1ef0488c00d204"
@@ -74,7 +114,7 @@
     {
       "path": ".rqg/template/modules/documentation/payload/scripts/Test-RepositoryStandards.ps1",
       "module": "module-drift",
-      "sha256": "a053b22b19ecf2edf000e7f4cd310311bf0033204d812fcdaec45056e87387f1"
+      "sha256": "dde1f96ae22f69d14a85ad0f2ec9f929eba8a148637d85b702bf484bfb98419c"
     },
     {
       "path": ".rqg/template/modules/dotnet/payload/.github/workflows/quality-dotnet.yml",
@@ -159,7 +199,7 @@
     {
       "path": ".rqg/template/scripts/Invoke-RepositoryQualityGates.ps1",
       "module": "module-drift",
-      "sha256": "07f47090c8b6884f5f2db1f983df22b71784bfafca914418bdda2262aa54d40a"
+      "sha256": "5c1fcc46528341ea32fe97f189a7a52034002a0a05d455b0bfc705ca750bf058"
     },
     {
       "path": ".rqg/template/template/.githooks/pre-commit",
@@ -289,7 +329,7 @@
     {
       "path": "scripts/Test-RepositoryStandards.ps1",
       "module": "documentation",
-      "sha256": "a053b22b19ecf2edf000e7f4cd310311bf0033204d812fcdaec45056e87387f1"
+      "sha256": "dde1f96ae22f69d14a85ad0f2ec9f929eba8a148637d85b702bf484bfb98419c"
     },
     {
       "path": "scripts/Test-Secrets.ps1",

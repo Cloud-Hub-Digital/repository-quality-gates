@@ -40,6 +40,15 @@ function Test-ProvenanceMarker([string]$FirstLine, [string]$Scope, [string]$Owne
     return $true
 }
 
+function Test-LocalIssueTemplateMarker([string]$FirstLine, [string]$Owner, [string]$Path) {
+    if (-not $FirstLine) { return $false }
+    if (Test-ProvenanceMarker $FirstLine 'local-override' $Owner $Path) { return $true }
+    foreach ($value in @('# repository-standard:', 'schema=1', 'standard=Repository Standards', 'version=1.2.0', 'source=Repository Quality Gates', 'scope=local-required', 'override=local-file')) {
+        if (-not $FirstLine.Contains($value, [StringComparison]::Ordinal)) { return $false }
+    }
+    return $true
+}
+
 $root = [IO.Path]::GetFullPath($Repository)
 $gitRoot = @(& git -C $root rev-parse --show-toplevel 2>&1)
 if ($LASTEXITCODE -ne 0) { throw 'The target is not a Git repository.' }
@@ -50,7 +59,7 @@ try { $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json }
 catch { throw 'The .repository-standards.json file is invalid JSON.' }
 
 foreach ($property in @($config.PSObject.Properties.Name)) {
-    if ($property -notin @('schemaVersion', 'profile', 'account', 'centralRepository', 'licence', 'supportRoute', 'conductRoute')) { throw "Unsupported repository-standards property: $property" }
+    if ($property -notin @('schemaVersion', 'profile', 'account', 'centralRepository', 'licence', 'supportRoute', 'conductRoute', 'featureExceptions')) { throw "Unsupported repository-standards property: $property" }
 }
 if ($config.schemaVersion -ne 2) { throw 'The repository-standards schema must be version 2.' }
 $profile = [string]$config.profile
@@ -61,6 +70,19 @@ $centralRepository = [string]$config.centralRepository
 if ($centralRepository -ne "https://github.com/$account/.github") { throw 'The centralRepository must identify the account public .github repository.' }
 foreach ($name in @('supportRoute', 'conductRoute')) {
     if (-not $config.PSObject.Properties[$name] -or -not ([string]$config.$name).Trim()) { throw "The repository-standards $name input is unresolved." }
+}
+if ([string]$config.supportRoute -cne 'github-issues') { throw 'The repository support route must be github-issues.' }
+$featureExceptions = if ($config.PSObject.Properties['featureExceptions']) { @($config.featureExceptions) } else { @() }
+$seenFeatures = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($exception in $featureExceptions) {
+    $allowed = @('id','feature','enabled','owner','reason','approvalStatus','reviewCondition')
+    if (@($exception.PSObject.Properties.Name | Where-Object { $_ -notin $allowed }).Count) { throw 'A feature exception contains an unsupported property.' }
+    if ([string]$exception.id -notmatch '^[A-Z0-9][A-Z0-9._-]+$') { throw 'A feature exception has an invalid identifier.' }
+    if ([string]$exception.feature -notin @('discussions','wiki','pages')) { throw 'A feature exception names an unsupported feature.' }
+    if (-not $seenFeatures.Add([string]$exception.feature)) { throw 'More than one exception exists for the same repository feature.' }
+    if ($exception.enabled -isnot [bool]) { throw 'A feature exception must define a Boolean enabled state.' }
+    foreach ($name in @('owner','reason','reviewCondition')) { if ([string]::IsNullOrWhiteSpace([string]$exception.$name)) { throw "A feature exception has an incomplete $name." } }
+    if ([string]$exception.approvalStatus -cne 'approved') { throw 'A feature exception is not approved.' }
 }
 if (-not $config.PSObject.Properties['licence'] -or $null -eq $config.licence -or $config.licence -isnot [pscustomobject]) { throw 'The approved project licence decision is missing.' }
 $allowedLicenceProperties = @('class', 'identifier', 'rightsHolder', 'decisionStatus', 'templateVersion', 'overrideReason')
@@ -146,6 +168,7 @@ $supported = @(
     '.github/PULL_REQUEST_TEMPLATE.md',
     '.github/ISSUE_TEMPLATE/bug_report.yml',
     '.github/ISSUE_TEMPLATE/feature_request.yml',
+    '.github/ISSUE_TEMPLATE/question.yml',
     '.github/ISSUE_TEMPLATE/config.yml'
 )
 if ($profile -eq 'account-default') {
@@ -156,13 +179,15 @@ if ($profile -eq 'account-default') {
     }
 } else {
     $localIssueFiles = @($supported | Where-Object { $_.StartsWith('.github/ISSUE_TEMPLATE/', [StringComparison]::Ordinal) -and (Test-Path -LiteralPath (Join-Path $root $_) -PathType Leaf) })
-    if ($localIssueFiles.Count -gt 0 -and $localIssueFiles.Count -ne 3) { $errors.Add('A local issue-template override must provide bug_report.yml, feature_request.yml, and config.yml together.') }
+    if ($localIssueFiles.Count -ne 4) { $errors.Add('Every repository must provide local bug_report.yml, feature_request.yml, question.yml, and config.yml issue forms.') }
     foreach ($path in $supported) {
         $fullPath = Join-Path $root $path
         if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) { continue }
         $line = Get-FirstLine $fullPath
         if ($line -match 'scope=account-default') { $errors.Add("A downstream file falsely claims central provenance: $path"); continue }
-        if (-not (Test-ProvenanceMarker $line 'local-override' $account $path)) { $errors.Add("Local override has an invalid provenance marker: $path") }
+        if ($path.StartsWith('.github/ISSUE_TEMPLATE/', [StringComparison]::Ordinal)) {
+            if (-not (Test-LocalIssueTemplateMarker $line $account $path)) { $errors.Add("Local issue template has an invalid provenance marker: $path") }
+        } elseif (-not (Test-ProvenanceMarker $line 'local-override' $account $path)) { $errors.Add("Local override has an invalid provenance marker: $path") }
     }
 }
 

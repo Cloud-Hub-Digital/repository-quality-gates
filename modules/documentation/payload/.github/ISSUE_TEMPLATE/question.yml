@@ -1,0 +1,34 @@
+# repository-standard: schema=1; standard=Repository Standards; version=1.2.0; source=Repository Quality Gates; scope=local-required; override=local-file
+name: Question Or Support Request
+description: Ask a public-safe installation, configuration, or usage question.
+title: "[Question]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include credentials, vulnerability details, private project records, or internal infrastructure information. Use SECURITY.md for security reports."
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like help with?
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What You Have Tried
+      description: Describe the public-safe steps already attempted and the result.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include relevant public-safe versions, platform, & configuration.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched for an existing issue.
+          required: true
+        - label: I removed secrets, personal data, private paths, internal systems, & vulnerability details.
+          required: true

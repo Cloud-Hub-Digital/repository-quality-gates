@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "rulesetName": "Repository Standards - Default Branch",
   "target": "branch",
   "enforcement": "active",
@@ -19,6 +19,19 @@
   "privatePlanException": {
     "id": "RQG-PRIVATE-PLAN-001",
     "action": "defer-until-supported-or-public"
+  },
+  "repositoryFeatures": {
+    "issues": true,
+    "discussions": false,
+    "wiki": false,
+    "pages": false,
+    "requiredIssueTemplates": [
+      ".github/ISSUE_TEMPLATE/bug_report.yml",
+      ".github/ISSUE_TEMPLATE/feature_request.yml",
+      ".github/ISSUE_TEMPLATE/question.yml",
+      ".github/ISSUE_TEMPLATE/config.yml"
+    ],
+    "exceptionSource": ".repository-standards.json"
   },
   "repositoryExceptions": [
     {

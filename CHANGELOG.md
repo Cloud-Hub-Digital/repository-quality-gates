@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.0 - Unreleased
+
+- Enforce the approved GitHub repository-feature contract: Issues enabled, Discussions, Wikis, & Pages disabled by default, with complete approved exceptions sourced only from `.repository-standards.json`.
+- Deploy & validate local bug-report, feature-request, question, & issue-picker configuration files in every governed repository.
+- Migrate the legacy `github-discussions` repository support route to mandatory `github-issues` during the ordinary reviewed RQG update.
+- Extend the audit-first GitHub administration engine to report feature drift, missing local forms, repository-profile gaps, & applied setting corrections without silently publishing repository content.
+
 ## Unreleased
 
 ### Added

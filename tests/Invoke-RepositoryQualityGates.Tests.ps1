@@ -55,8 +55,14 @@ function Add-RepositoryStandardCore([string]$Path, [string]$Profile, [string]$Ac
 '@ | Set-Content -LiteralPath (Join-Path $Path 'AGENTS.md') -Encoding utf8
     "* @$Account" | Set-Content -LiteralPath (Join-Path $Path '.github\CODEOWNERS') -Encoding utf8
     "version: 2`nupdates:`n  - package-ecosystem: github-actions`n    directory: '/'`n    schedule:`n      interval: weekly" | Set-Content -LiteralPath (Join-Path $Path '.github\dependabot.yml') -Encoding utf8
-    $config = [ordered]@{ schemaVersion = 2; profile = $Profile; account = $Account; centralRepository = "https://github.com/$Account/.github"; licence = [ordered]@{ class = 'open-source'; identifier = 'MIT'; rightsHolder = 'Example Owner'; decisionStatus = 'approved'; templateVersion = $null; overrideReason = $null }; supportRoute = 'github-discussions'; conductRoute = 'confidential-email' }
+    $config = [ordered]@{ schemaVersion = 2; profile = $Profile; account = $Account; centralRepository = "https://github.com/$Account/.github"; licence = [ordered]@{ class = 'open-source'; identifier = 'MIT'; rightsHolder = 'Example Owner'; decisionStatus = 'approved'; templateVersion = $null; overrideReason = $null }; supportRoute = 'github-issues'; conductRoute = 'confidential-email' }
     ($config | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath (Join-Path $Path '.repository-standards.json') -Encoding utf8
+    if ($Profile -eq 'downstream') {
+        foreach ($issuePath in @('.github/ISSUE_TEMPLATE/bug_report.yml','.github/ISSUE_TEMPLATE/feature_request.yml','.github/ISSUE_TEMPLATE/question.yml','.github/ISSUE_TEMPLATE/config.yml')) {
+            $fullPath = Join-Path $Path $issuePath
+            "# repository-standard: schema=1; standard=Repository Standards; version=1.2.0; source=Repository Quality Gates; scope=local-required; override=local-file`nname: Test" | Set-Content -LiteralPath $fullPath -Encoding utf8
+        }
+    }
 }
 
 function Invoke-DriftCheck([string]$Repository, [string[]]$Arguments = @()) {
@@ -472,7 +478,7 @@ try {
 
     $centralStandards = New-Fixture 'central-repository-standards'
     Add-RepositoryStandardCore $centralStandards 'account-default' 'example-owner'
-    $centralSupported = @('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SUPPORT.md', 'SECURITY.md', '.github/PULL_REQUEST_TEMPLATE.md', '.github/ISSUE_TEMPLATE/bug_report.yml', '.github/ISSUE_TEMPLATE/feature_request.yml', '.github/ISSUE_TEMPLATE/config.yml')
+    $centralSupported = @('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SUPPORT.md', 'SECURITY.md', '.github/PULL_REQUEST_TEMPLATE.md', '.github/ISSUE_TEMPLATE/bug_report.yml', '.github/ISSUE_TEMPLATE/feature_request.yml', '.github/ISSUE_TEMPLATE/question.yml', '.github/ISSUE_TEMPLATE/config.yml')
     foreach ($path in $centralSupported) {
         $fullPath = Join-Path $centralStandards $path
         New-Item -ItemType Directory -Path (Split-Path -Parent $fullPath) -Force | Out-Null
@@ -490,9 +496,15 @@ try {
     $downstreamStandardsResult = Invoke-RepositoryStandards $downstreamStandards
     Assert-True ($downstreamStandardsResult.ExitCode -eq 0) "A downstream repository should inherit absent supported defaults. $($downstreamStandardsResult.Output)"
     $downstreamJson = $downstreamStandardsResult.Output | ConvertFrom-Json
-    Assert-True (@($downstreamJson.inherited).Count -eq 8) 'A downstream repository with no overrides should report all eight supported files as inherited.'
+    Assert-True (@($downstreamJson.inherited).Count -eq 5) 'A downstream repository should report only the five non-issue supported files as inherited.'
     $standardsConfigPath = Join-Path $downstreamStandards '.repository-standards.json'
     $originalStandardsConfig = [IO.File]::ReadAllText($standardsConfigPath)
+    $legacySupportConfig = $originalStandardsConfig | ConvertFrom-Json
+    $legacySupportConfig.supportRoute = 'github-discussions'
+    $legacySupportConfig | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $standardsConfigPath -Encoding utf8
+    $legacySupportResult = Invoke-RepositoryStandards $downstreamStandards
+    Assert-True ($legacySupportResult.ExitCode -ne 0) 'A disabled Discussions support route must fail the repository-standard gate.'
+    [IO.File]::WriteAllText($standardsConfigPath, $originalStandardsConfig, [Text.UTF8Encoding]::new($false))
     $overrideConfig = $originalStandardsConfig | ConvertFrom-Json
     $overrideConfig.licence.identifier = 'GPL-3.0-only'
     $overrideConfig.licence.overrideReason = 'Approved local decision retaining compatible copyleft terms.'
@@ -608,12 +620,12 @@ try {
 
     $versionOutput = & pwsh -NoProfile -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 3.1.4')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 3.2.0')) 'The version interface should report the canonical version.'
     Assert-True (($versionOutput -join "`n").Contains('https://github.com/Cloud-Hub-Digital/repository-quality-gates')) 'The version interface should report the authoritative organization-owned repository.'
     $embeddedVersionOutput = & pwsh -NoProfile -File (Join-Path $projectRoot '.rqg\template\scripts\Invoke-RepositoryQualityGates.ps1') -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The embedded deployment engine version interface should succeed.'
-    Assert-True (($embeddedVersionOutput -join "`n").Contains('Repository Quality Gates 3.1.4')) 'The embedded deployment engine should match the canonical release version.'
-    Assert-True ((Get-Content -LiteralPath (Join-Path $projectRoot '.repository-quality-gates.json') -Raw | ConvertFrom-Json).templateVersion -eq '3.1.4') 'The central managed state should match the canonical release version.'
+    Assert-True (($embeddedVersionOutput -join "`n").Contains('Repository Quality Gates 3.2.0')) 'The embedded deployment engine should match the canonical release version.'
+    Assert-True ((Get-Content -LiteralPath (Join-Path $projectRoot '.repository-quality-gates.json') -Raw | ConvertFrom-Json).templateVersion -eq '3.2.0') 'The central managed state should match the canonical release version.'
 
     $sourceModuleRoot = Join-Path $projectRoot 'modules'
     $embeddedModuleRoot = Join-Path $projectRoot '.rqg\template\modules'
