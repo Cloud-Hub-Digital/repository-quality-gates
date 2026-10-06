@@ -98,11 +98,16 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `tests/Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1` | Synthetic authentication suite for multi-installation discovery, token isolation, and cross-owner fleet dispatch |
 | `tests/Test-RepositoryLicence.Tests.ps1` | Synthetic visibility-based licence suite for public MIT, private TR Proprietary License 1.0, rights-holder, GitHub-presentation, and fail-closed behavior |
 | `tests/Get-RepositoryQualityGateReleasePlan.Tests.ps1` | Synthetic automatic-release suite for version, check, commit, tag, and release-state validation |
+| `tests/Invoke-RepositoryRulesetEngine.Tests.ps1` | Synthetic default-branch ruleset, private-plan deferral, & approved-exception validation |
+| `tests/Invoke-RepositoryRulesetAppFleet.Tests.ps1` | Static GitHub App token-boundary & Actions-orchestration validation for fleet ruleset reconciliation |
 | `scripts/Update-RepositoryQualityGates.ps1` | Preview or apply a newer template to one managed repository |
 | `scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1` | Discover GitHub App repositories, open update pull requests, and enable required-check-gated auto-merge |
 | `scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1` | Enumerate every GitHub App installation, issue an isolated token for each, mask discovered identities, and run the fleet updater |
 | `scripts/Get-RepositoryQualityGateReleasePlan.ps1` | Validate the central stable version and determine whether its immutable tag and release may be created or recovered |
+| `scripts/Invoke-RepositoryRulesetEngine.ps1` | Audit or explicitly reconcile the canonical default-branch ruleset & merge settings for supplied repositories |
+| `scripts/Invoke-RepositoryRulesetAppFleet.ps1` | Run ruleset audit or reconciliation across every accessible GitHub App installation with short-lived isolated tokens |
 | `docs/quality-gates.md` | Detailed gate and module-selection reference |
+| `docs/repository-ruleset-engine.md` | Ruleset policy, audit/apply behavior, private-plan boundary, & Actions credential requirements |
 | `docs/deployment-guide.md` | End-to-end operator instructions |
 | `docs/module-system.md` | Architecture and managed-file lifecycle reference |
 | `docs/automation-costs-and-releases.md` | GitHub Actions cost boundary and recommended build/release automation controls |
@@ -167,6 +172,8 @@ pwsh -NoProfile -File ".\tests\Update-RepositoryQualityGates.Tests.ps1"
 pwsh -NoProfile -File ".\tests\Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1"
 pwsh -NoProfile -File ".\tests\Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1"
 pwsh -NoProfile -File ".\tests\Get-RepositoryQualityGateReleasePlan.Tests.ps1"
+pwsh -NoProfile -File ".\tests\Invoke-RepositoryRulesetEngine.Tests.ps1"
+pwsh -NoProfile -File ".\tests\Invoke-RepositoryRulesetAppFleet.Tests.ps1"
 ```
 
 The regression suite uses generated synthetic repositories only and includes automatic Python-to-PHP reconciliation. It does not use real credentials or private identifier values.

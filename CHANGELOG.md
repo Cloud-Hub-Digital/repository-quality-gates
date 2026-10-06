@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add a canonical no-bypass default-branch ruleset policy, read-only fleet audit, & explicit apply-and-verify reconciliation engine.
+- Defer unsupported private repositories under `RQG-PRIVATE-PLAN-001`, then make them eligible for reconciliation when native rules become available or the repository becomes public.
+- Preserve the approved DCC LabStation LS8 milestone merge-commit exception while keeping squash-only merging as the fleet default.
+
 ## 3.1.4 - 2026-10-03
 
 - Send one consolidated fleet report for a released version; keep previews, scheduled checks, and controlled intermediate waves silent.

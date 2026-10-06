@@ -23,3 +23,5 @@ jobs:
           ./tests/Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1
           ./tests/Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1
           ./tests/Get-RepositoryQualityGateReleasePlan.Tests.ps1
+          ./tests/Invoke-RepositoryRulesetEngine.Tests.ps1
+          ./tests/Invoke-RepositoryRulesetAppFleet.Tests.ps1
