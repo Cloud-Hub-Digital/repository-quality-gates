@@ -596,15 +596,22 @@ $newState = [ordered]@{
     ownedGitIgnoreLines = @(@($(if ($state.PSObject.Properties['ownedGitIgnoreLines']) { $state.ownedGitIgnoreLines })) + @($missingIgnore) | Sort-Object -Unique)
 }
 $stateJson = ($newState | ConvertTo-Json -Depth 6).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"
-$stateAttributes = if (Test-Path -LiteralPath $statePath -PathType Leaf) { [IO.File]::GetAttributes($statePath) } else { $null }
-try {
-    if ($null -ne $stateAttributes -and ($stateAttributes -band [IO.FileAttributes]::Hidden)) {
-        [IO.File]::SetAttributes($statePath, ($stateAttributes -band (-bnot [IO.FileAttributes]::Hidden)))
-    }
-    [IO.File]::WriteAllText($statePath, $stateJson, [Text.UTF8Encoding]::new($false))
-} finally {
-    if ($null -ne $stateAttributes -and (Test-Path -LiteralPath $statePath -PathType Leaf)) {
-        [IO.File]::SetAttributes($statePath, $stateAttributes)
+# Preserve an equivalent checkout's bytes, newline convention and attributes.
+# Rewriting CRLF to LF can leave Git status dirty even when git add finds no diff.
+$existingStateJson = if (Test-Path -LiteralPath $statePath -PathType Leaf) {
+    [IO.File]::ReadAllText($statePath).Replace("`r`n", "`n").Replace("`r", "`n")
+} else { $null }
+if (-not [string]::Equals($existingStateJson, $stateJson, [StringComparison]::Ordinal)) {
+    $stateAttributes = if (Test-Path -LiteralPath $statePath -PathType Leaf) { [IO.File]::GetAttributes($statePath) } else { $null }
+    try {
+        if ($null -ne $stateAttributes -and ($stateAttributes -band [IO.FileAttributes]::Hidden)) {
+            [IO.File]::SetAttributes($statePath, ($stateAttributes -band (-bnot [IO.FileAttributes]::Hidden)))
+        }
+        [IO.File]::WriteAllText($statePath, $stateJson, [Text.UTF8Encoding]::new($false))
+    } finally {
+        if ($null -ne $stateAttributes -and (Test-Path -LiteralPath $statePath -PathType Leaf)) {
+            [IO.File]::SetAttributes($statePath, $stateAttributes)
+        }
     }
 }
 

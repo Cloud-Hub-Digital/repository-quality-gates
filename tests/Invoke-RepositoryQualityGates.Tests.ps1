@@ -127,10 +127,26 @@ try {
         if ($firstChanges.Count) {
             Write-Host "Central first-run changes (core.autocrlf=$checkoutStyle): $($firstChanges -join '; ')"
             Write-Host ((git -C $centralCheckout diff -- .repository-quality-gates.json .gitignore) -join "`n")
-            Commit-Fixture $centralCheckout 'reconciled central payload'
+            & git -C $centralCheckout add --all
+            if ($LASTEXITCODE) { throw 'Unable to stage central reconciliation fixture.' }
+            $stagedChanges = @(git -C $centralCheckout diff --cached --name-only)
+            if ($LASTEXITCODE) { throw 'Unable to inspect staged reconciliation fixture.' }
+            if ($stagedChanges.Count) { Commit-Fixture $centralCheckout 'reconciled central payload' }
         }
+        $centralStatePath = Join-Path $centralCheckout '.repository-quality-gates.json'
+        $stateText = [IO.File]::ReadAllText($centralStatePath).Replace("`r`n", "`n")
+        if ($checkoutStyle -eq 'true') { $stateText = $stateText.Replace("`n", "`r`n") }
+        [IO.File]::WriteAllText($centralStatePath, $stateText, [Text.UTF8Encoding]::new($false))
+        [IO.File]::SetLastWriteTimeUtc($centralStatePath, [datetime]::new(2001, 1, 1, 0, 0, 0, [DateTimeKind]::Utc))
+        & git -C $centralCheckout add -- .repository-quality-gates.json
+        if ($LASTEXITCODE) { throw 'Unable to refresh central fixture index.' }
+        Assert-True (@(git -C $centralCheckout status --porcelain).Count -eq 0) 'The equivalent newline fixture must start clean.'
+        $beforeStateBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($centralStatePath))
+        $beforeStateTimestamp = [IO.File]::GetLastWriteTimeUtc($centralStatePath)
         $second = Invoke-AutomaticReconciliation $centralCheckout
         if ($second.ExitCode) { throw "Repeated central reconciliation failed. $($second.Output)" }
+        Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($centralStatePath)) -ceq $beforeStateBytes) 'Equivalent reconciliation must preserve LF or CRLF state bytes.'
+        Assert-True ([IO.File]::GetLastWriteTimeUtc($centralStatePath) -eq $beforeStateTimestamp) 'Equivalent reconciliation must not rewrite the state file.'
         $secondChanges = @(git -C $centralCheckout status --porcelain)
         if ($secondChanges.Count) {
             $centralReconciliationFailures.Add("core.autocrlf=$checkoutStyle : $($secondChanges -join '; ')")

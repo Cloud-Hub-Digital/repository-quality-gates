@@ -11,6 +11,8 @@
 
 ### Changed
 
+- Preserve equivalent managed-state bytes & checkout newlines during reconciliation, preventing false Windows Git dirtiness & empty fixture commits. (#7)
+
 - Added fail-closed reconciliation diagnostics for initial checkout cleanliness, changed paths, managed-state hashes, & runtime versions; no file contents or credentials are logged. (#7)
 
 - Replaced the unused `automaticEnrollment` local rule with `rqgEnabled`; absence or `true` enables deployment and updates, while `false` opts out or requests checked deactivation. The old property is rejected. (#5)
