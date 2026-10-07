@@ -258,6 +258,11 @@
       "sha256": "41641fa7ee936cb6e6e8fefcb322798364f6a7bbd791cc839453e098b9b4a6e2"
     },
     {
+      "path": ".rqg/template/template/scripts/gitleaks-lock.json",
+      "module": "module-drift",
+      "sha256": "57f5407c9d150918315d4ea30df027021bcf2602fb5d31088916fbf0afa52c97"
+    },
+    {
       "path": ".rqg/template/template/scripts/Install-GitHooks.ps1",
       "module": "module-drift",
       "sha256": "aca12d0dc95be201927494543cd96ab332a595c982c531e1b720a74f66ff8623"
@@ -281,11 +286,6 @@
       "path": ".rqg/template/template/scripts/Test-Secrets.ps1",
       "module": "module-drift",
       "sha256": "6d6b63d84082859eebf18045ca6f9e8be0c53e5bd97bf17dbe03221604a0153e"
-    },
-    {
-      "path": ".rqg/template/template/scripts/gitleaks-lock.json",
-      "module": "module-drift",
-      "sha256": "57f5407c9d150918315d4ea30df027021bcf2602fb5d31088916fbf0afa52c97"
     },
     {
       "path": ".rqg/template/template/security/gitleaks-portable.toml",
@@ -313,6 +313,11 @@
       "sha256": "1ca21b0a2cdc5210a61d7db1d22254d7fb3ff8cced3b874bec0e0828ecb9b967"
     },
     {
+      "path": "scripts/gitleaks-lock.json",
+      "module": "secret-scanning",
+      "sha256": "57f5407c9d150918315d4ea30df027021bcf2602fb5d31088916fbf0afa52c97"
+    },
+    {
       "path": "scripts/Install-GitHooks.ps1",
       "module": "secret-scanning",
       "sha256": "aca12d0dc95be201927494543cd96ab332a595c982c531e1b720a74f66ff8623"
@@ -331,6 +336,11 @@
       "path": "scripts/RepositoryQualityGates.Detection.ps1",
       "module": "module-drift",
       "sha256": "86a2bae5265993a6f23061092d751ac642d014fa0dab948e7d698cf4bfb30c8d"
+    },
+    {
+      "path": "scripts/rqg-module-catalog.json",
+      "module": "module-drift",
+      "sha256": "e1e9d6ac7cd522a52f0402cc12e274e02138ab4d8a902fb02117b475feff9f85"
     },
     {
       "path": "scripts/Test-DetectionPolicy.ps1",
@@ -361,16 +371,6 @@
       "path": "scripts/Test-Secrets.ps1",
       "module": "secret-scanning",
       "sha256": "6d6b63d84082859eebf18045ca6f9e8be0c53e5bd97bf17dbe03221604a0153e"
-    },
-    {
-      "path": "scripts/gitleaks-lock.json",
-      "module": "secret-scanning",
-      "sha256": "57f5407c9d150918315d4ea30df027021bcf2602fb5d31088916fbf0afa52c97"
-    },
-    {
-      "path": "scripts/rqg-module-catalog.json",
-      "module": "module-drift",
-      "sha256": "e1e9d6ac7cd522a52f0402cc12e274e02138ab4d8a902fb02117b475feff9f85"
     },
     {
       "path": "security/gitleaks-portable.toml",
