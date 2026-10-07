@@ -197,7 +197,8 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
     foreach ($moduleId in @($include + $repositoryOwned | Sort-Object -Unique)) {
         if ($moduleId -notin $catalogIds) { throw "Repository rules reference an unknown module: $moduleId" }
     }
-    $universalRepositoryOwned = @($repositoryOwned | Where-Object { $_ -in @('licensing', 'secret-scanning', 'module-drift', 'documentation') })
+    $universalIds = @($Catalog.modules | Where-Object { $_.PSObject.Properties['always'] -and $_.always -eq $true } | ForEach-Object { [string]$_.id })
+    $universalRepositoryOwned = @($repositoryOwned | Where-Object { $_ -in $universalIds })
     if ($universalRepositoryOwned.Count) {
         throw "Universal modules cannot be repository-owned: $($universalRepositoryOwned -join ', ')"
     }

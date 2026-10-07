@@ -1,0 +1,147 @@
+name: Automatic Governed Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  security-events: read
+
+concurrency:
+  group: governed-release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Validate & Publish Governed Release
+    runs-on: ${{ fromJSON(!github.event.repository.private && '["windows-2025"]' || (vars.RQG_WINDOWS_RUNS_ON || '["windows-2025"]')) }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Detect Managed Release
+        id: governance
+        shell: pwsh
+        run: |
+          $profile = Get-Content ./.repository-standards.json -Raw | ConvertFrom-Json
+          $managed = $profile.schemaVersion -ge 3 -and $null -ne $profile.releaseGovernance
+          "managed=$($managed.ToString().ToLowerInvariant())" | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: Collect Release Evidence
+        if: steps.governance.outputs.managed == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $profile = Get-Content ./.repository-standards.json -Raw | ConvertFrom-Json
+          $sha = '${{ github.sha }}'
+          (gh api "repos/$env:GITHUB_REPOSITORY/commits/main" --jq .sha).Trim() | Set-Content remote-main.txt
+          $parent = git rev-parse "$sha^" 2>$null | Select-Object -First 1
+          $previous = ''
+          if ($parent) {
+            $previousValues = @($profile.releaseGovernance.versionSources | ForEach-Object {
+              $source = $_; $sourcePath = if ($source -is [string]) { [string]$source } else { [string]$source.path }; $sourceKind = if ($source -is [string]) { 'plain-text' } else { [string]$source.kind }
+              $text = git show "${parent}:$sourcePath" 2>$null; if ($LASTEXITCODE -ne 0) { throw "Previous version source is missing: $sourcePath" }
+              if ($sourceKind -eq 'plain-text') { ([string]($text -join [Environment]::NewLine)).Trim() }
+              elseif ($sourceKind -eq 'powershell-variable') { $pattern = '(?m)^\s*\$' + [regex]::Escape([string]$source.variable) + "\s*=\s*'(?<version>[^']+)'\s*$"; $match = [regex]::Match(($text -join [Environment]::NewLine), $pattern); if (-not $match.Success) { throw "Previous version variable is unresolved: $sourcePath" }; $match.Groups['version'].Value }
+              elseif ($sourceKind -eq 'json-property') { $node = ($text -join [Environment]::NewLine) | ConvertFrom-Json; foreach ($segment in ([string]$source.property -split '\.')) { if (-not $node.PSObject.Properties[$segment]) { throw "Previous version property is unresolved: $sourcePath" }; $node = $node.$segment }; [string]$node }
+              else { throw "Previous version-source kind is unsupported: $sourcePath" }
+            })
+            $uniquePrevious = @($previousValues | Select-Object -Unique)
+            if ($uniquePrevious.Count -ne 1) { throw 'Previous canonical version sources disagree.' }
+            $previous = $uniquePrevious[0]
+          }
+          $previous | Set-Content previous-version.txt
+          $deadline = [DateTimeOffset]::UtcNow.AddMinutes(20)
+          do {
+            $runs = @(((gh api "repos/$env:GITHUB_REPOSITORY/actions/runs?head_sha=$sha&per_page=100" | ConvertFrom-Json).workflow_runs))
+            $selected = @($profile.releaseGovernance.requiredGates | ForEach-Object { $gate = $_; $name = if ($gate -is [string]) { [string]$gate } else { [string]$gate.name }; $path = if ($gate -is [string]) { '' } else { [string]$gate.path }; @($runs | Where-Object { $_.name -ceq $name -and (-not $path -or $_.path -ceq $path) } | Sort-Object run_attempt, created_at -Descending | Select-Object -First 1) })
+            $ready = $selected.Count -eq @($profile.releaseGovernance.requiredGates).Count -and @($selected | Where-Object status -ne completed).Count -eq 0
+            if (-not $ready) { Start-Sleep 10 }
+          } while (-not $ready -and [DateTimeOffset]::UtcNow -lt $deadline)
+          if (-not $ready) { throw 'Timed out waiting for required gates.' }
+          $selected | Select-Object name,path,status,conclusion | ConvertTo-Json | Set-Content checks.json
+          $version = ./scripts/Get-RepositoryReleaseVersion.ps1
+          $changelog = Get-Content -LiteralPath $profile.releaseGovernance.changelogPath -Raw
+          $heading = [regex]::Match($changelog, "(?m)^##\s+$([regex]::Escape($version))\s+-\s+\d{4}-\d{2}-\d{2}\s*$")
+          if (-not $heading.Success) { throw "The changelog lacks a dated $version section." }
+          $remainder = $changelog.Substring($heading.Index + $heading.Length); $next = [regex]::Match($remainder, '(?m)^##\s+'); $section = if ($next.Success) { $remainder.Substring(0, $next.Index) } else { $remainder }
+          $numbers = @([regex]::Matches($section, '(?<![A-Za-z0-9])#(?<number>[1-9]\d*)\b') | ForEach-Object { [int]$_.Groups['number'].Value } | Sort-Object -Unique)
+          $advisories = @([regex]::Matches($section, '\bGHSA-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{4}\b', 'IgnoreCase') | ForEach-Object { $_.Value.ToUpperInvariant() } | Sort-Object -Unique)
+          $records = @($numbers | ForEach-Object { $issue = gh api "repos/$env:GITHUB_REPOSITORY/issues/$_" | ConvertFrom-Json; if ($issue.pull_request) { throw "#$_ is not an issue." }; $classes = @($issue.labels.name | Where-Object { $_ -in @('bug','feature','security','documentation','dependency','maintenance','compatibility','question','other') }); [pscustomobject]@{ reference = "#$_"; number = $_; type = 'issue'; classification = if ($classes.Count -eq 1) { $classes[0] } else { '' }; targetVersion = [string]$issue.milestone.title; delivered = $true } })
+          $records += @($advisories | ForEach-Object { $advisory = gh api "repos/$env:GITHUB_REPOSITORY/security-advisories/$_" | ConvertFrom-Json; if ([string]$advisory.ghsa_id -ine $_) { throw "Advisory authority is unresolved: $_" }; $target = [regex]::Match([string]$advisory.description, '(?im)^Target-Version:\s*(?<version>\S+)\s*$'); [pscustomobject]@{ reference = $_; number = $null; type = 'advisory'; classification = 'security'; targetVersion = if ($target.Success) { $target.Groups['version'].Value } else { '' }; delivered = $true } })
+          $records | ConvertTo-Json | Set-Content issues.json
+          git log --format='%h %s' $(if ($parent) { "$parent..$sha" } else { $sha }) | Set-Content commits.txt
+
+      - name: Prepare Release Plan
+        if: steps.governance.outputs.managed == 'true'
+        id: plan
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $arguments = @{ RepositoryRoot='.'; CommitSha='${{ github.sha }}'; RemoteMainSha=(Get-Content remote-main.txt -Raw).Trim(); CheckRunsPath='./checks.json'; IssueRecordsPath='./issues.json'; PreviousVersion=(Get-Content previous-version.txt -Raw).Trim(); CommitRangePath='./commits.txt' }
+          $version = ./scripts/Get-RepositoryReleaseVersion.ps1; $tag = "v$version"; git fetch --tags --force
+          $tagSha = git rev-parse --verify --quiet "refs/tags/$tag^{commit}" 2>$null; if ($LASTEXITCODE -eq 0) { $arguments.TagCommitSha = ($tagSha | Select-Object -First 1).Trim() }
+          $raw = gh release view $tag --json tagName,name,isPrerelease,body 2>$null; if ($LASTEXITCODE -eq 0) { $release = $raw | ConvertFrom-Json; $arguments.ReleaseExists=$true; $arguments.ExistingReleaseTag=$release.tagName; $arguments.ExistingReleaseName=$release.name; $arguments.ExistingReleaseIsPrerelease=[bool]$release.isPrerelease; $arguments.ExistingReleaseNotes=[string]$release.body }
+          $plan = ./scripts/Get-RepositoryReleasePlan.ps1 @arguments
+          $plan | ConvertTo-Json -Depth 8 | Set-Content release-plan.json
+          $plan.releaseNotes | Set-Content release-notes.md -NoNewline
+          foreach ($name in @('action','tag','version')) { "$name=$($plan.$name)" | Out-File $env:GITHUB_OUTPUT -Append }
+          "prerelease=$($plan.prerelease.ToString().ToLowerInvariant())" | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: Create Immutable Tag
+        if: steps.plan.outputs.action == 'CreateTagAndRelease'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $mainSha = (gh api "repos/$env:GITHUB_REPOSITORY/commits/main" --jq .sha).Trim()
+          if ($LASTEXITCODE -ne 0 -or $mainSha -ne '${{ github.sha }}') { throw 'Main changed after validation; release stopped.' }
+          git config user.name 'github-actions[bot]'; git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a '${{ steps.plan.outputs.tag }}' '${{ github.sha }}' -m '${{ steps.plan.outputs.version }}'
+          git push origin "refs/tags/${{ steps.plan.outputs.tag }}"
+          $ref = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/${{ steps.plan.outputs.tag }}" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or [string]$ref.object.type -ne 'tag') { throw 'The remote annotated tag could not be verified.' }
+          $remoteTag = gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$($ref.object.sha)" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or [string]$remoteTag.object.type -ne 'commit' -or [string]$remoteTag.object.sha -ne '${{ github.sha }}') { throw 'The remote tag does not resolve to the validated commit.' }
+
+      - name: Create Immutable GitHub Release
+        if: steps.plan.outputs.action == 'CreateTagAndRelease' || steps.plan.outputs.action == 'CreateRelease'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $arguments = @('release','create','${{ steps.plan.outputs.tag }}','--verify-tag','--title','${{ steps.plan.outputs.version }}','--notes-file','release-notes.md')
+          if ('${{ steps.plan.outputs.prerelease }}' -eq 'true') { $arguments += '--prerelease' }
+          gh @arguments; if ($LASTEXITCODE) { throw 'Release creation failed.' }
+
+      - name: Verify Release & Close Delivered Issues
+        if: steps.plan.outputs.action == 'CreateTagAndRelease' || steps.plan.outputs.action == 'CreateRelease'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $plan = Get-Content release-plan.json -Raw | ConvertFrom-Json
+          $ref = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$($plan.tag)" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or [string]$ref.object.type -ne 'tag') { throw 'Remote release verification failed; no issue was closed.' }
+          $remoteTag = gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$($ref.object.sha)" | ConvertFrom-Json
+          $release = gh release view $plan.tag --json tagName,name,isPrerelease,body | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or [string]$remoteTag.object.type -ne 'commit' -or [string]$remoteTag.object.sha -ne '${{ github.sha }}' -or $release.tagName -ne $plan.tag -or $release.name -ne $plan.version -or [bool]$release.isPrerelease -ne [bool]$plan.prerelease -or [string]$release.body -cne [string]$plan.releaseNotes) { throw 'Remote release verification failed; no issue was closed.' }
+          foreach ($issue in @($plan.deliveredIssues | Where-Object { $_.type -eq 'issue' -and $null -ne $_.number })) { gh issue close ([string]$issue.number) --reason completed; if ($LASTEXITCODE) { throw "Issue closure failed: #$($issue.number)" } }
+
+      - name: Start Central Fleet Update
+        if: ${{ vars.RQG_FLEET_AUTOMATION_PAUSED != 'true' && hashFiles('.github/workflows/update-managed-repositories.yml') != '' && (steps.plan.outputs.action == 'CreateTagAndRelease' || steps.plan.outputs.action == 'CreateRelease') }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run .github/workflows/update-managed-repositories.yml --ref main -f "release_tag=${{ steps.plan.outputs.tag }}" -f mode=apply -f wave_count=1 -f wave_index=0 -f send_email=true
+          if ($LASTEXITCODE) { throw 'Unable to start the central fleet update.' }

@@ -158,6 +158,7 @@ try {
     $previewJson = $preview.Output | ConvertFrom-Json
     Assert-True ($previewJson.selectedModules -contains 'secret-scanning') 'Universal secret scanning should be selected.'
     Assert-True ($previewJson.selectedModules -contains 'licensing') 'Universal RQG licensing attribution should be selected.'
+    Assert-True ($previewJson.selectedModules -contains 'release-governance') 'Universal governed release automation should be selected.'
     Assert-True ($previewJson.selectedModules -contains 'node') 'Node should be detected.'
     Assert-True ($previewJson.selectedModules -contains 'powershell') 'PowerShell should be detected.'
     Assert-True ($previewJson.selectedModules -contains 'python') 'Script-only Python should be detected.'
@@ -211,6 +212,14 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-php.yml')) 'The PHP workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-shell.yml')) 'The shell workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-module-drift.yml')) 'The automatic module-drift workflow should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\managed-automatic-release.yml')) 'The governed automatic-release workflow should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Get-RepositoryReleasePlan.ps1')) 'The governed release planner should be deployed universally.'
+    $governedReleaseWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\managed-automatic-release.yml'))
+    Assert-True ($governedReleaseWorkflow.Contains('security-advisories')) 'The governed release workflow should verify confidential GitHub advisory authority.'
+    Assert-True ($governedReleaseWorkflow.Contains('Main changed after validation; release stopped.')) 'The governed release workflow should recheck main immediately before creating an immutable tag.'
+    Assert-True ($governedReleaseWorkflow.Contains('git/ref/tags/${{ steps.plan.outputs.tag }}')) 'The governed release workflow should verify the authoritative remote tag immediately after pushing it.'
+    Assert-True ($governedReleaseWorkflow.Contains('git/ref/tags/$($plan.tag)')) 'The governed release workflow should verify the authoritative remote tag again before closing issues.'
+    Assert-True ($governedReleaseWorkflow.Contains("Where-Object { `$_.type -eq 'issue'")) 'The governed release workflow should never close advisory records.'
     $moduleDriftWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-module-drift.yml'))
     Assert-True ($moduleDriftWorkflow.Contains("if: github.ref_type == 'branch'")) 'Automatic reconciliation should be restricted to branch references and must not mutate tag checkouts.'
     Assert-True ($moduleDriftWorkflow.Contains("'quality-module-drift', 'update-managed-repositories'")) 'Generic dispatch must exclude module-drift and the central fleet; module-drift uses its separate validation-only dispatch.'
@@ -432,6 +441,12 @@ try {
     Commit-Fixture $licensingOwned
     $licensingOwnedPreview = Invoke-Tool $licensingOwned @('-OutputFormat', 'Json')
     Assert-True ($licensingOwnedPreview.ExitCode -ne 0) 'Repository rules must not suppress universal RQG licensing attribution.'
+
+    $releaseOwned = New-Fixture 'release-governance-repository-owned'
+    '{"schemaVersion":1,"modules":{"repositoryOwned":["release-governance"]}}' | Set-Content -LiteralPath (Join-Path $releaseOwned '.repository-quality-gates.local.json')
+    Commit-Fixture $releaseOwned
+    $releaseOwnedPreview = Invoke-Tool $releaseOwned @('-OutputFormat', 'Json')
+    Assert-True ($releaseOwnedPreview.ExitCode -ne 0) 'Repository rules must not suppress universal governed release automation.'
 
     $invalidEnrollmentRule = New-Fixture 'invalid-enrollment-rule'
     $invalidEnrollmentRulesText = @'

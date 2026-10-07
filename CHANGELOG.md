@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Added reusable, fail-closed schema-3 release governance for canonical version detection, issue and advisory evidence, required gates, stable and prerelease tags, immutable Releases, comprehensive notes, and post-verification issue closure. (#4)
+
+### Security
+
+- Confined version-source reads against traversal and filesystem links, rejected prohibited internal release-note content, and verified the authoritative remote tag before Release publication or issue closure. (#4)
+
 ## 3.2.0 - Unreleased
 
 ### Added
