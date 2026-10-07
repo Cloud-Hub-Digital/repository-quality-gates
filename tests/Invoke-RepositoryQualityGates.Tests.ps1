@@ -637,6 +637,8 @@ try {
     Assert-True ($LASTEXITCODE -eq 0) "The lifecycle regression suite must pass. $($lifecycleOutput -join [Environment]::NewLine)"
     $administrationOutput = & pwsh -NoProfile -File (Join-Path $projectRoot 'tests/Invoke-RepositoryRulesetEngine.Tests.ps1') 2>&1
     Assert-True ($LASTEXITCODE -eq 0) "The administration regression suite must pass. $($administrationOutput -join [Environment]::NewLine)"
+    $releasePlannerOutput = & pwsh -NoProfile -File (Join-Path $projectRoot 'tests/Get-RepositoryReleasePlan.Tests.ps1') 2>&1
+    Assert-True ($LASTEXITCODE -eq 0) "The governed release planner regression suite must pass. $($releasePlannerOutput -join [Environment]::NewLine)"
     $versionOutput = & pwsh -NoProfile -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
     Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 3.2.0')) 'The version interface should report the canonical version.'
