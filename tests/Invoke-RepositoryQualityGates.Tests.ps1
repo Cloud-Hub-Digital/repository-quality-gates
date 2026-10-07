@@ -140,6 +140,9 @@ try {
         [IO.File]::SetLastWriteTimeUtc($centralStatePath, [datetime]::new(2001, 1, 1, 0, 0, 0, [DateTimeKind]::Utc))
         & git -C $centralCheckout add -- .repository-quality-gates.json
         if ($LASTEXITCODE) { throw 'Unable to refresh central fixture index.' }
+        $newlineBaselineChanges = @(git -C $centralCheckout diff --cached --name-only)
+        if ($LASTEXITCODE) { throw 'Unable to inspect newline fixture baseline.' }
+        if ($newlineBaselineChanges.Count) { Commit-Fixture $centralCheckout 'committed newline baseline' }
         Assert-True (@(git -C $centralCheckout status --porcelain).Count -eq 0) 'The equivalent newline fixture must start clean.'
         $beforeStateBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($centralStatePath))
         $beforeStateTimestamp = [IO.File]::GetLastWriteTimeUtc($centralStatePath)
