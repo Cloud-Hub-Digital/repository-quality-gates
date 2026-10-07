@@ -88,7 +88,7 @@ function Invoke-RqgDeactivation([string]$RepositoryRoot, [string]$TemplateRoot, 
     $ignorePath = Join-Path $RepositoryRoot '.gitignore'
     $ignoreBytes = $null
     $newIgnore = $null
-    $ownedIgnore = if ($state.PSObject.Properties['ownedGitIgnoreLines']) { @($state.ownedGitIgnoreLines) } else { @() }
+    $ownedIgnore = @(if ($state.PSObject.Properties['ownedGitIgnoreLines']) { $state.ownedGitIgnoreLines })
     if ($ownedIgnore.Count -and (Test-Path -LiteralPath $ignorePath -PathType Leaf)) {
         if (((Get-Item -LiteralPath $ignorePath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Git ignore configuration cannot be a filesystem link.' }
         $ignoreBytes = [IO.File]::ReadAllBytes($ignorePath)
