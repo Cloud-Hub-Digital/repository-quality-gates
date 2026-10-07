@@ -266,7 +266,7 @@ try {
     Assert-True ($moduleDriftWorkflow.Contains('Changed paths after reconciliation:')) 'A dirty reconciled checkout must report its changed paths.'
     Assert-True ($moduleDriftWorkflow.Contains('Managed-state SHA-256 before:')) 'Reconciliation failure diagnostics must include state hashes without file contents.'
     Assert-True ($moduleDriftWorkflow.Contains('Reconciliation changed the validated commit; release stopped.')) 'Diagnostics must preserve the fail-closed reconciliation gate.'
-    Assert-True ($moduleDriftWorkflow.Contains('if ($changes.Count) { throw')) 'A validation-only run must reject non-idempotent reconciliation.'
+    Assert-True ($moduleDriftWorkflow -match '(?s)if \(\$changes\.Count\) \{[^}]*throw ''Reconciliation changed the validated commit; release stopped.''') 'A validation-only run must reject non-idempotent reconciliation.'
     Assert-True ($moduleDriftWorkflow.Contains("'github-app-clone-probe'")) 'Automatic reconciliation must not dispatch the operator-selected clone probe.'
     Assert-True ($moduleDriftWorkflow.Contains('git diff --cached --name-only')) 'The reconciliation decision must use the staged Git index instead of runner-specific status output.'
     Assert-True (Test-Path -LiteralPath (Join-Path $projectRoot '.github\workflows\update-managed-repositories.yml')) 'The central template should provide a fleet-update workflow.'
