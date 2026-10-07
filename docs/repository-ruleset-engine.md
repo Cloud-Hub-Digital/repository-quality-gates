@@ -79,7 +79,7 @@ If GitHub rejects native rules for a private repository because of the recognize
 
 ## Fleet Workflow & Credentials
 
-The `Reconcile Repository Rulesets` workflow performs a daily fleet audit. Apply is deliberately available only through an explicit manual workflow run. It uses short-lived installation tokens from the existing Repository Quality Gates GitHub App. Audit requires repository metadata & rules read access; apply additionally requires repository administration write access. The workflow's own `GITHUB_TOKEN` remains read-only.
+The `Reconcile Repository Rulesets` workflow performs a read-only daily audit & retains manual apply for diagnosis or recovery. The normal fleet apply automatically calls this engine after exact verified content outcomes. Both use installation-scoped short-lived tokens; settings apply requires Administration write access. The workflow's own `GITHUB_TOKEN` remains read-only.
 
 `terryrogers/DCC_LabStation_LS8` retains its approved milestone merge-commit exception. Every other governed repository remains squash-only by default.
 
@@ -89,9 +89,9 @@ The fleet wrapper isolates each installation token, masks it before use, process
 
 1. Release the exact tested RQG version.
 2. Run the ordinary fleet update in preview mode so required content changes are reviewable.
-3. Create & merge the generated repository pull requests only after their checks pass.
-4. Run the ruleset workflow in audit mode & review every calculated change or deferral.
-5. Run an explicitly authorized manual apply.
+3. Authorize fleet apply; generated repository pull requests merge only after all applicable checks pass.
+4. Let fleet administration inspect the exact checked revision & reconcile supported settings, preserving independent protections.
+5. Use a separate audit or explicitly authorized manual apply only for diagnosis, initial readiness, or recovery.
 6. Verify the resulting rules, merge settings, features, forms, & support route through fresh readback.
 
 No single step implies that a later step is authorized or complete.

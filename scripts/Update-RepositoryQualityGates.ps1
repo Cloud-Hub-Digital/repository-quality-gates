@@ -109,6 +109,16 @@ $result = [ordered]@{
     changedPaths = @()
 }
 
+$lifecycleLibrary = Join-Path ([IO.Path]::GetFullPath($TemplateRoot)) 'scripts/RepositoryQualityGates.Lifecycle.ps1'
+. $lifecycleLibrary
+$localRules = if (Test-Path -LiteralPath $rulesPath -PathType Leaf) { Get-Content -LiteralPath $rulesPath -Raw | ConvertFrom-Json } else { $null }
+if (-not (Get-RqgLifecycleEnabled $localRules)) {
+    $deactivation = Invoke-RqgDeactivation -RepositoryRoot $repositoryRoot -TemplateRoot ([IO.Path]::GetFullPath($TemplateRoot)) -Apply:$Apply
+    $result.status = $deactivation.status; $result.changedPaths = @($deactivation.changedPaths)
+    Write-Result $result
+    return
+}
+
 $isManaged = Test-Path -LiteralPath $statePath -PathType Leaf
 if (-not $isManaged -and -not $Enroll) {
     Write-Result $result

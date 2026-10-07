@@ -276,7 +276,7 @@ keywords = ["RQG_REPO_ONLY_"]
     $rulesText = @'
 {
   "schemaVersion": 1,
-  "automaticEnrollment": false,
+  "rqgEnabled": true,
   "modules": {
     "include": ["php"],
     "repositoryOwned": []

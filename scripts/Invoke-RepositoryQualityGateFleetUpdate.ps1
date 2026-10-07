@@ -23,6 +23,8 @@ if (-not $env:GH_TOKEN) { throw 'GH_TOKEN must contain a GitHub App installation
 $templateRootFull = [IO.Path]::GetFullPath($TemplateRoot)
 $updateScript = Join-Path $templateRootFull 'scripts\Update-RepositoryQualityGates.ps1'
 $deploymentTool = Join-Path $templateRootFull 'scripts\Invoke-RepositoryQualityGates.ps1'
+. (Join-Path $templateRootFull 'scripts/RepositoryQualityGates.Lifecycle.ps1')
+. (Join-Path $templateRootFull 'scripts/RepositoryQualityGates.Deactivation.ps1')
 if (-not (Test-Path -LiteralPath $updateScript -PathType Leaf)) { throw 'The repository updater is missing.' }
 
 function Remove-RqgMergedBranch([string]$RepositoryName, [string]$BranchName) {
@@ -89,6 +91,10 @@ function Get-ExpectedQualityCheckNames([string]$RepositoryPath) {
     if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) { throw 'The repository quality-gates state file is missing after deployment.' }
     try { $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json }
     catch { throw 'The repository quality-gates state file is invalid after deployment.' }
+    return @(Get-RqgExpectedModuleChecks $state.modules)
+}
+
+function Get-RqgExpectedModuleChecks([object[]]$Modules, [switch]$AllowEmpty) {
     $checkNamesByModule = @{
         documentation = 'Markdown Hygiene'
         dotnet = '.NET Build And Test'
@@ -104,11 +110,11 @@ function Get-ExpectedQualityCheckNames([string]$RepositoryPath) {
         shell = 'Shell Syntax'
     }
     $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    foreach ($module in @($state.modules)) {
+    foreach ($module in @($Modules)) {
         $moduleName = [string]$module
         if ($checkNamesByModule.ContainsKey($moduleName)) { $null = $expected.Add([string]$checkNamesByModule[$moduleName]) }
     }
-    if (-not $expected.Count) { throw 'The deployed module set did not identify any expected quality checks.' }
+    if (-not $expected.Count -and -not $AllowEmpty) { throw 'The deployed module set did not identify any expected quality checks.' }
     return @($expected | Sort-Object)
 }
 
@@ -298,14 +304,12 @@ function Get-RemoteTextFile([string]$RepositoryName, [string]$DefaultBranch, [st
     return [pscustomobject]@{ exists = $true; content = $content }
 }
 
-function Test-AutomaticEnrollmentEnabled([string]$RepositoryName, [string]$DefaultBranch) {
+function Test-RqgEnabled([string]$RepositoryName, [string]$DefaultBranch) {
     $rulesFile = Get-RemoteTextFile $RepositoryName $DefaultBranch '.repository-quality-gates.local.json'
     if (-not $rulesFile.exists) { return $true }
     try { $remoteRules = $rulesFile.content | ConvertFrom-Json }
     catch { throw 'The downstream repository rules file is not valid JSON.' }
-    if (-not $remoteRules.PSObject.Properties['automaticEnrollment']) { return $true }
-    if ($remoteRules.automaticEnrollment -isnot [bool]) { throw 'The downstream automaticEnrollment rule must be true or false.' }
-    return [bool]$remoteRules.automaticEnrollment
+    return Get-RqgLifecycleEnabled $remoteRules
 }
 
 function Get-OpenProjectWorkPackageDisplayId([string]$Reference) {
@@ -431,7 +435,11 @@ function Test-RqgFailureStatus([string]$Status) {
         'Ahead',
         'ChecksPending',
         'PullRequest',
-        'UpdatedSuccessfully'
+        'UpdatedSuccessfully',
+        'Disabled',
+        'DeactivationAvailable',
+        'DeactivationPullRequest',
+        'DeactivatedSuccessfully'
     )
 }
 
@@ -487,13 +495,20 @@ try {
             $stateFile = Get-RemoteTextFile $fullName $defaultBranch '.repository-quality-gates.json'
             $isManaged = [bool]$stateFile.exists
             $remoteState = $null
+            $enabled = Test-RqgEnabled $fullName $defaultBranch
+            if (-not $enabled) {
+                $entry.status = if ($isManaged) { 'DeactivationRequired' } else { 'Disabled' }
+                $entry.detail = if ($isManaged) { 'Committed rqgEnabled: false requests checked removal of the managed installation.' } else { 'RQG is disabled by committed repository rules.' }
+                $results.Add([pscustomobject]$entry)
+                continue
+            }
             if ($isManaged) {
                 try { $remoteState = $stateFile.content | ConvertFrom-Json }
                 catch { throw 'The remote managed-state file is not valid JSON.' }
                 if ([string]$remoteState.templateVersion -eq $TargetVersion) { $entry.status = 'Current'; $results.Add([pscustomobject]$entry); continue }
             } else {
                 if (-not $AutoEnroll) { $entry.detail = 'Repository is not managed by Repository Quality Gates.'; $results.Add([pscustomobject]$entry); continue }
-                if (-not (Test-AutomaticEnrollmentEnabled $fullName $defaultBranch)) {
+                if (-not (Test-RqgEnabled $fullName $defaultBranch)) {
                     $entry.status = 'EnrollmentOptOut'
                     $entry.detail = 'The downstream repository rules file opts out of automatic enrolment.'
                     $results.Add([pscustomobject]$entry)
@@ -586,7 +601,7 @@ try {
                 continue
             }
 
-            if ($entry.enrolment -and -not (Test-AutomaticEnrollmentEnabled $fullName $defaultBranch)) {
+            if (-not (Test-RqgEnabled $fullName $defaultBranch)) {
                 $entry.status = 'EnrollmentOptOut'
                 $entry.detail = 'The downstream repository opted out while automatic enrolment was being prepared. No RQG branch was pushed.'
                 $results.Add([pscustomobject]$entry)
@@ -692,6 +707,8 @@ if ($Apply -and $AutoMerge) {
             try { $mergeResponse = (($mergeOutput -join [Environment]::NewLine) | ConvertFrom-Json) }
             catch { throw 'GitHub returned invalid pull-request merge data.' }
             if ($mergeResponse.merged -ne $true) { throw "GitHub did not merge the verified update pull request: $([string]$mergeResponse.message)" }
+            if ([string]$mergeResponse.sha -cnotmatch '^[0-9a-f]{40}$') { throw 'The checked merge did not identify an authoritative commit.' }
+            $entry | Add-Member -NotePropertyName verifiedMergeSha -NotePropertyValue ([string]$mergeResponse.sha) -Force
             $failureStage = 'Default-branch version verification after merge'
             Wait-DefaultBranchTargetVersion $repositoryName ([string]$checkResult.baseRef) $TargetVersion
             $failureStage = 'Temporary branch cleanup after verified merge'
@@ -721,6 +738,28 @@ if ($Apply -and $AutoMerge) {
             $entry.detail = New-RqgFailureComment -Stage $failureStage -Cause $failureCause -Version $TargetVersion -PullRequestUrl ([string]$entry.pullRequest) -UpdateBranch $branchName -Cleanup $cleanupDetail
             Write-Warning "Repository Quality Gates completion failed for '$($entry.repository)': $($entry.detail)"
         }
+    }
+}
+
+if ($Apply) {
+    foreach ($entry in @($results | Where-Object status -eq 'Disabled')) {
+        try {
+            $metadata = Invoke-RqgDeactivationApi @("repos/$($entry.repository)")
+            $defaultBranch = [string]$metadata.default_branch
+            $probe = @(& gh api "repos/$($entry.repository)/rules/branches/$([Uri]::EscapeDataString($defaultBranch))?per_page=100" 2>&1)
+            if ($LASTEXITCODE -eq 0) {
+                $installation = Invoke-RqgDeactivationApi @('/installation')
+                Repair-RqgDeactivationTransition ([string]$entry.repository) $defaultBranch ([long]$installation.app_id)
+            } elseif (-not ([string]$entry.visibility -eq 'Private' -and (Test-RqgPrivatePlanLimitation ($probe -join "`n")))) { throw 'Unable to verify disabled-repository protection cleanup.' }
+        } catch { $entry.status = 'DeactivationFailed'; $entry.detail = 'Disabled-state cleanup failed: ' + $_.Exception.Message }
+    }
+}
+foreach ($entry in @($results | Where-Object status -eq 'DeactivationRequired')) {
+    try {
+        $null = Invoke-RqgCheckedDeactivation -Entry $entry -TemplateRoot $templateRootFull -TargetVersion $TargetVersion -RequiredCheckPolicy $requiredCheckPolicy -Apply:$Apply -AutoMerge:$AutoMerge
+    } catch {
+        $entry.status = 'DeactivationFailed'
+        $entry.detail = 'Checked deactivation failed: ' + $_.Exception.Message
     }
 }
 

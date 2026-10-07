@@ -4,6 +4,8 @@ param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string[]]$Repository,
     [string]$PolicyPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'policy\repository-ruleset-policy.json'),
     [switch]$Apply,
+    [string]$ExpectedTemplateVersion,
+    [ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedCommit,
     [ValidateSet('Objects', 'Json')][string]$OutputFormat = 'Objects',
     [string]$ResultPath
 )
@@ -85,15 +87,24 @@ function Get-FeaturePolicy([object]$Policy, [object]$StandardsProfile) {
     return [pscustomobject]@{ Settings = [pscustomobject]$settings; ExceptionIds = @($ids) }
 }
 
+function Assert-AdministrationHead([string]$RepositoryName, [string]$DefaultBranch) {
+    if (-not $ExpectedCommit) { return }
+    $head = Invoke-Gh @('api', "repos/$RepositoryName/git/ref/heads/$([Uri]::EscapeDataString($DefaultBranch))", '--jq', '.object.sha') 'Unable to verify the administration source head.'
+    if ($head.Text -cne $ExpectedCommit) { throw 'The destination head changed; administration requires a fresh verified content outcome.' }
+}
+
 function Get-RepositoryContext([string]$RepositoryName) {
     $metadataResult = Invoke-Gh @('api', "repos/$RepositoryName", '--jq', '{defaultBranch:.default_branch,visibility:.visibility,private:.private,allowSquash:.allow_squash_merge,allowMerge:.allow_merge_commit,allowRebase:.allow_rebase_merge,deleteBranch:.delete_branch_on_merge,hasIssues:.has_issues,hasDiscussions:.has_discussions,hasWiki:.has_wiki,hasPages:.has_pages}') 'Unable to read repository metadata.'
     $metadata = Read-Json $metadataResult.Text "GitHub returned invalid metadata for $RepositoryName."
     $defaultBranch = ([string]$metadata.defaultBranch).Trim()
     if (-not $defaultBranch) { throw "$RepositoryName does not identify a default branch." }
+    Assert-AdministrationHead $RepositoryName $defaultBranch
+    $contentRef = if ($ExpectedCommit) { $ExpectedCommit } else { $defaultBranch }
     $visibility = if ([bool]$metadata.private) { 'Private' } else { 'Public' }
-    $stateResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString('.repository-quality-gates.json'))?ref=$([Uri]::EscapeDataString($defaultBranch))", '--jq', '.content') 'Unable to read the managed state.' -AllowFailure
+    $stateResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString('.repository-quality-gates.json'))?ref=$([Uri]::EscapeDataString($contentRef))", '--jq', '.content') 'Unable to read the managed state.' -AllowFailure
     $managed = $true
     $expectedChecks = @()
+    $templateVersion = $null
     if ($stateResult.ExitCode -ne 0) {
         if ($stateResult.Text -match '(?i)(HTTP 404|Not Found)') { $managed = $false }
         else { throw "Unable to read the managed state for $RepositoryName. $($stateResult.Text)" }
@@ -101,8 +112,20 @@ function Get-RepositoryContext([string]$RepositoryName) {
         try { $state = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($stateResult.Text -replace '\s', ''))) | ConvertFrom-Json }
         catch { throw "GitHub returned invalid managed state for $RepositoryName." }
         $expectedChecks = @(Get-ExpectedChecks $state)
+        $templateVersion = if ($state.PSObject.Properties['templateVersion']) { [string]$state.templateVersion } else { $null }
     }
-    $profileResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString('.repository-standards.json'))?ref=$([Uri]::EscapeDataString($defaultBranch))", '--jq', '.content') 'Unable to read the repository standards profile.' -AllowFailure
+    $rulesResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString('.repository-quality-gates.local.json'))?ref=$([Uri]::EscapeDataString($contentRef))", '--jq', '.content') 'Unable to read repository lifecycle rules.' -AllowFailure
+    $enabled = $true
+    if ($rulesResult.ExitCode -eq 0) {
+        try { $localRules = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($rulesResult.Text -replace '\s', ''))) | ConvertFrom-Json }
+        catch { throw 'GitHub returned invalid repository lifecycle rules.' }
+        if ($localRules.PSObject.Properties['automaticEnrollment']) { throw 'automaticEnrollment is unsupported; use rqgEnabled.' }
+        if ($localRules.PSObject.Properties['rqgEnabled']) {
+            if ($localRules.rqgEnabled -isnot [bool]) { throw 'rqgEnabled must be a Boolean.' }
+            $enabled = [bool]$localRules.rqgEnabled
+        }
+    } elseif ($rulesResult.Text -notmatch '(?i)(HTTP 404|Not Found)') { throw 'Unable to verify repository lifecycle eligibility.' }
+    $profileResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString('.repository-standards.json'))?ref=$([Uri]::EscapeDataString($contentRef))", '--jq', '.content') 'Unable to read the repository standards profile.' -AllowFailure
     $standardsProfile = $null
     if ($profileResult.ExitCode -eq 0) {
         try { $standardsProfile = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(($profileResult.Text -replace '\s', ''))) | ConvertFrom-Json }
@@ -112,13 +135,13 @@ function Get-RepositoryContext([string]$RepositoryName) {
     }
     $missingTemplates = [Collections.Generic.List[string]]::new()
     foreach ($path in @($policy.repositoryFeatures.requiredIssueTemplates)) {
-        $templateResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString([string]$path))?ref=$([Uri]::EscapeDataString($defaultBranch))", '--jq', '.sha') 'Unable to inspect a required issue template.' -AllowFailure
+        $templateResult = Invoke-Gh @('api', "repos/$RepositoryName/contents/$([Uri]::EscapeDataString([string]$path))?ref=$([Uri]::EscapeDataString($contentRef))", '--jq', '.sha') 'Unable to inspect a required issue template.' -AllowFailure
         if ($templateResult.ExitCode -ne 0) {
             if ($templateResult.Text -match '(?i)(HTTP 404|Not Found)') { $missingTemplates.Add([string]$path) }
             else { throw "Unable to inspect $path for $RepositoryName. $($templateResult.Text)" }
         }
     }
-    return [pscustomobject]@{ Metadata = $metadata; DefaultBranch = $defaultBranch; Visibility = $visibility; Managed = $managed; ExpectedChecks = $expectedChecks; StandardsProfile = $standardsProfile; MissingIssueTemplates = @($missingTemplates) }
+    return [pscustomobject]@{ Metadata = $metadata; DefaultBranch = $defaultBranch; Visibility = $visibility; Managed = $managed; Enabled = $enabled; TemplateVersion = $templateVersion; ExpectedChecks = $expectedChecks; StandardsProfile = $standardsProfile; MissingIssueTemplates = @($missingTemplates) }
 }
 
 function Test-RepositoryFeatures([object]$Context, [object]$FeaturePolicy) {
@@ -137,6 +160,7 @@ function Test-RepositoryFeatures([object]$Context, [object]$FeaturePolicy) {
 }
 
 function Set-RepositoryFeatures([string]$RepositoryName, [object]$Context, [object]$FeaturePolicy) {
+    Assert-AdministrationHead $RepositoryName $Context.DefaultBranch
     $settingsPath = [IO.Path]::GetTempFileName()
     try {
         $body = [ordered]@{ has_issues = [bool]$FeaturePolicy.Settings.issues; has_discussions = [bool]$FeaturePolicy.Settings.discussions; has_wiki = [bool]$FeaturePolicy.Settings.wiki }
@@ -144,6 +168,7 @@ function Set-RepositoryFeatures([string]$RepositoryName, [object]$Context, [obje
         $null = Invoke-Gh @('api','--method','PATCH','-H','Accept: application/vnd.github+json',"repos/$RepositoryName",'--input',$settingsPath) 'Unable to apply repository feature settings.'
     } finally { Remove-Item -LiteralPath $settingsPath -Force -ErrorAction SilentlyContinue }
     if (-not [bool]$FeaturePolicy.Settings.pages -and [bool]$Context.Metadata.hasPages) {
+        Assert-AdministrationHead $RepositoryName $Context.DefaultBranch
         $null = Invoke-Gh @('api','--method','DELETE','-H','Accept: application/vnd.github+json',"repos/$RepositoryName/pages") 'Unable to disable GitHub Pages.'
     }
 }
@@ -231,6 +256,32 @@ function New-RulesetBody([object]$Policy, [object]$EffectivePolicy, [object]$Con
     }
 }
 
+function Preserve-IndependentRules([object]$Desired, [object]$Existing) {
+    foreach ($group in @($Existing.rules | Group-Object type)) {
+        if ($group.Count -ne 1) { throw 'Duplicate existing rule types prevent safe reconciliation.' }
+        $old = $group.Group[0]
+        $new = @($Desired.rules | Where-Object type -ceq $old.type)
+        if (-not $new.Count) { $Desired.rules += $old; continue }
+        if ($old.type -ceq 'required_status_checks') {
+            foreach ($check in @($old.parameters.required_status_checks)) {
+                $match = @($new[0].parameters.required_status_checks | Where-Object context -ceq $check.context)
+                if (-not $match.Count) { $new[0].parameters.required_status_checks += $check }
+                elseif ($check.PSObject.Properties['integration_id'] -and $null -ne $check.integration_id) {
+                    # Preserve provider bindings instead of replacing them with
+                    # an unbound name that another integration could satisfy.
+                    $new[0].parameters.required_status_checks = @($new[0].parameters.required_status_checks | Where-Object context -cne $check.context) + @($check)
+                }
+            }
+        } elseif ($old.type -ceq 'pull_request') {
+            if ([int]$old.parameters.required_approving_review_count -gt [int]$new[0].parameters.required_approving_review_count) { throw 'A stronger review requirement needs an approved policy exception; it was not weakened.' }
+            foreach ($flag in @('dismiss_stale_reviews_on_push','require_code_owner_review','require_last_push_approval','required_review_thread_resolution')) {
+                if ($old.parameters.PSObject.Properties[$flag] -and [bool]$old.parameters.$flag) { $new[0].parameters.$flag=$true }
+            }
+        }
+    }
+    return $Desired
+}
+
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw 'GitHub CLI is required.' }
 if (-not (Test-Path -LiteralPath $PolicyPath -PathType Leaf)) { throw 'The repository ruleset policy is missing.' }
 $policy = Read-Json (Get-Content -LiteralPath $PolicyPath -Raw) 'The repository ruleset policy is invalid JSON.'
@@ -250,13 +301,12 @@ foreach ($repositoryName in @($Repository | Sort-Object -Unique)) {
     if ($repositoryName -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') { throw "Invalid repository name: $repositoryName" }
     $effective = Get-RepositoryPolicy $policy $repositoryName
     $context = Get-RepositoryContext $repositoryName
+    if (-not $context.Enabled) {
+        $rows.Add([pscustomobject]@{ repository = $repositoryName; status = 'Disabled'; action = 'None'; missingControls = @(); expectedChecks = @() })
+        continue
+    }
     $effectiveFeatures = Get-FeaturePolicy $policy $context.StandardsProfile
     $featureAudit = Test-RepositoryFeatures $context $effectiveFeatures
-    if ($Apply -and $featureAudit.SettingsMissing.Count) {
-        Set-RepositoryFeatures $repositoryName $context $effectiveFeatures
-        $context = Get-RepositoryContext $repositoryName
-        $featureAudit = Test-RepositoryFeatures $context $effectiveFeatures
-    }
     if (-not $context.Managed) {
         $missing = @('repository-quality-gates-state') + @($featureAudit.Missing)
         $rows.Add([pscustomobject][ordered]@{
@@ -265,6 +315,14 @@ foreach ($repositoryName in @($Repository | Sort-Object -Unique)) {
             featureExceptionIds = @($effectiveFeatures.ExceptionIds); expectedChecks = @(); missingControls = @($missing | Sort-Object -Unique)
         })
         continue
+    }
+    if ($ExpectedTemplateVersion -and $context.TemplateVersion -cne $ExpectedTemplateVersion) { throw 'Managed content is not at the verified fleet target version; administration was not applied.' }
+    if ($Apply -and ($null -eq $context.StandardsProfile -or $context.MissingIssueTemplates.Count)) { throw 'Required repository content is incomplete; administration was not applied.' }
+    if ($Apply -and $featureAudit.SettingsMissing.Count) {
+        Assert-AdministrationHead $repositoryName $context.DefaultBranch
+        Set-RepositoryFeatures $repositoryName $context $effectiveFeatures
+        $context = Get-RepositoryContext $repositoryName
+        $featureAudit = Test-RepositoryFeatures $context $effectiveFeatures
     }
     $audit = Test-RepositoryRules $repositoryName $context $effective.Settings $policy
     $action = 'None'
@@ -280,7 +338,13 @@ foreach ($repositoryName in @($Repository | Sort-Object -Unique)) {
         if ($managed.Count -gt 1) { throw "$repositoryName has duplicate managed rulesets." }
         $bodyPath = [IO.Path]::GetTempFileName()
         try {
-            [IO.File]::WriteAllText($bodyPath, ((New-RulesetBody $policy $effective.Settings $context) | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
+            $desiredBody = New-RulesetBody $policy $effective.Settings $context
+            if ($managed.Count) {
+                $oldBody = Read-Json (Invoke-Gh @('api', "repos/$repositoryName/rulesets/$([long]$managed[0].id)") 'Unable to verify existing independent rules.').Text 'Invalid existing rule data.'
+                $desiredBody = Preserve-IndependentRules $desiredBody $oldBody
+            }
+            [IO.File]::WriteAllText($bodyPath, ($desiredBody | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
+            Assert-AdministrationHead $repositoryName $context.DefaultBranch
             if ($managed.Count) { $null = Invoke-Gh @('api', '--method', 'PUT', '-H', 'Accept: application/vnd.github+json', "repos/$repositoryName/rulesets/$([long]$managed[0].id)", '--input', $bodyPath) 'Unable to update the managed repository ruleset.' }
             else { $null = Invoke-Gh @('api', '--method', 'POST', '-H', 'Accept: application/vnd.github+json', "repos/$repositoryName/rulesets", '--input', $bodyPath) 'Unable to create the managed repository ruleset.' }
         }
@@ -289,6 +353,7 @@ foreach ($repositoryName in @($Repository | Sort-Object -Unique)) {
         try {
             $settingsBody = [ordered]@{ allow_squash_merge = [bool]$effective.Settings.allowSquashMerge; allow_merge_commit = [bool]$effective.Settings.allowMergeCommit; allow_rebase_merge = [bool]$effective.Settings.allowRebaseMerge; delete_branch_on_merge = [bool]$effective.Settings.deleteBranchOnMerge }
             [IO.File]::WriteAllText($settingsPath, ($settingsBody | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+            Assert-AdministrationHead $repositoryName $context.DefaultBranch
             $null = Invoke-Gh @('api', '--method', 'PATCH', '-H', 'Accept: application/vnd.github+json', "repos/$repositoryName", '--input', $settingsPath) 'Unable to apply repository merge settings.'
         }
         finally { Remove-Item -LiteralPath $settingsPath -Force -ErrorAction SilentlyContinue }

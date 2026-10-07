@@ -163,6 +163,14 @@ $summary | ConvertTo-Json -Depth 4
 if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-101') { throw 'Synthetic first-installation failure.' }
 '@
     [IO.File]::WriteAllText((Join-Path $testRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'), $fakeFleet, [Text.UTF8Encoding]::new($false))
+    $fakeAdmin = @'
+param([string[]]$Repository, [string]$ExpectedTemplateVersion, [string]$ExpectedCommit, [switch]$Apply, [string]$OutputFormat)
+if ($ExpectedTemplateVersion -ne '3.2.0' -or $ExpectedCommit -ne ('a' * 40) -or -not $Apply) { throw 'Administration sequencing contract failed.' }
+if ($env:RQG_TEST_ADMIN_FAIL -eq '1') { throw 'Synthetic administration permission failure.' }
+[pscustomobject]@{ repositories = @([pscustomobject]@{repository=$Repository[0];status='AppliedAndVerified'}) } | ConvertTo-Json -Depth 4
+'@
+    [IO.File]::WriteAllText((Join-Path $testRoot 'scripts/Invoke-RepositoryRulesetEngine.ps1'), $fakeAdmin, [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $testRoot 'scripts/Invoke-RepositoryQualityGates.ps1'), 'param([switch]$Version); "Repository Quality Gates 3.2.0"', [Text.UTF8Encoding]::new($false))
 
     function global:Invoke-RestMethod {
         param([string]$Method, [string]$Uri, [hashtable]$Headers, [string]$ContentType)
@@ -194,6 +202,8 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
     }
     function global:gh {
         $joined = $args -join ' '
+        if ($joined -match '^api repos/.+ --jq \.default_branch$') { 'main'; $global:LASTEXITCODE=0; return }
+        if ($joined -match '/git/ref/heads/main --jq \.object.sha$') { 'a' * 40; $global:LASTEXITCODE=0; return }
         if ($joined -eq 'api --method DELETE /installation/token') {
             $global:LASTEXITCODE = 0
             return
@@ -201,6 +211,11 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         throw "Unexpected gh invocation: $joined"
     }
     $script:cloneProbeRepositories = [Collections.Generic.List[string]]::new()
+    $script:administrationContentProbes = [Collections.Generic.List[string]]::new()
+    function Test-RqgAdministrationContent([string]$RepositoryName, [string]$Commit, [string]$TemplatePath) {
+        if ($Commit -cne ('a' * 40)) { throw 'Unexpected exact administration commit.' }
+        $script:administrationContentProbes.Add($RepositoryName)
+    }
     function Invoke-RqgGitHubAppCloneProbe([string]$RepositoryName, [string]$Destination) {
         $script:cloneProbeRepositories.Add($RepositoryName)
         return '0123456789abcdef0123456789abcdef01234567'
@@ -248,6 +263,25 @@ if ($env:RQG_TEST_FAIL_FIRST -eq '1' -and $env:GH_TOKEN -eq 'installation-token-
         Assert-True (@($privateRows | Where-Object repository -eq 'first-owner/one')[0].runner -eq 'Not Used') 'A current repository should report that no downstream runner was used.'
         Assert-True (@($privateRows | Where-Object repository -eq 'second-owner/two')[0].runner -eq 'Not Used') 'Every current repository should report that no downstream runner was used.'
         Assert-True (-not ((Get-Content -LiteralPath $privateReportPath -Raw) -match 'installation-token-')) 'The private email report must redact installation credentials from comments.'
+        Assert-True (@($privateRows | Where-Object administrationStatus -eq 'AppliedAndVerified').Count -eq 2) 'Administration should follow verified current content under each installation token.'
+        Assert-True ($script:administrationContentProbes.Count -eq 2) 'Administration must inspect exact destination content before either settings engine call.'
+        $failureFixture = [pscustomobject]@{repositories=@([pscustomobject]@{repository='owner/failure';status='FailedChecks';detail='Failed checks.'})}
+        $untouched = Complete-RqgFleetAdministration $failureFixture $testRoot $true
+        Assert-True ($untouched.repositories[0].status -eq 'FailedChecks' -and $untouched.repositories[0].administrationStatus -eq 'NotAttempted') 'Failed content must never enter the administration engine.'
+        $advancedFixture=[pscustomobject]@{repositories=@([pscustomobject]@{repository='owner/advanced';status='UpdatedSuccessfully';verifiedMergeSha='b'*40;detail='Prior merge succeeded.'})}
+        $beforeProbes=$script:administrationContentProbes.Count
+        $advanced=Complete-RqgFleetAdministration $advancedFixture $testRoot $true
+        Assert-True ($advanced.repositories[0].status -eq 'AdministrationFailed' -and $advanced.repositories[0].detail -match 'checked merge outcome') 'Administration must reject a new unchecked default head after a successful update.'
+        Assert-True ($script:administrationContentProbes.Count -eq $beforeProbes) 'A changed merge outcome must stop before settings or content inspection.'
+        $exactFixture=[pscustomobject]@{repositories=@([pscustomobject]@{repository='owner/exact';status='UpdatedSuccessfully';verifiedMergeSha='a'*40;detail='Checked merge succeeded.'})}
+        $exact=Complete-RqgFleetAdministration $exactFixture $testRoot $true
+        Assert-True ($exact.repositories[0].status -eq 'UpdatedSuccessfully' -and $exact.repositories[0].administrationStatus -eq 'AppliedAndVerified') 'Administration may follow the exact checked merge outcome.'
+        $env:RQG_TEST_ADMIN_FAIL='1'
+        try {
+            $fixture = [pscustomobject]@{repositories=@([pscustomobject]@{repository='owner/current';status='Current';detail='Current.'})}
+            $failedAdmin = Complete-RqgFleetAdministration $fixture $testRoot $true
+            Assert-True ($failedAdmin.repositories[0].status -eq 'AdministrationFailed' -and $failedAdmin.repositories[0].contentStatus -eq 'Current') 'An administration permission failure must retain the verified content outcome and fail accurately.'
+        } finally { Remove-Item Env:\RQG_TEST_ADMIN_FAIL -ErrorAction SilentlyContinue }
 
         Remove-Item -LiteralPath $recordPath -Force
         $selectedIndex = Get-RqgRepositoryWave 'first-owner/one' 100

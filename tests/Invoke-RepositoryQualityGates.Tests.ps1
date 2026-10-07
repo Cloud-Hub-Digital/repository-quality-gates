@@ -452,13 +452,13 @@ try {
     $invalidEnrollmentRulesText = @'
 {
   "schemaVersion": 1,
-  "automaticEnrollment": "false"
+  "rqgEnabled": "false"
 }
 '@
     [IO.File]::WriteAllText((Join-Path $invalidEnrollmentRule '.repository-quality-gates.local.json'), $invalidEnrollmentRulesText.Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n", [Text.UTF8Encoding]::new($false))
     Commit-Fixture $invalidEnrollmentRule
     $invalidEnrollmentPreview = Invoke-Tool $invalidEnrollmentRule @('-OutputFormat', 'Json')
-    Assert-True ($invalidEnrollmentPreview.ExitCode -ne 0) 'The automaticEnrollment repository rule must be a Boolean.'
+    Assert-True ($invalidEnrollmentPreview.ExitCode -ne 0) 'The rqgEnabled repository rule must be a Boolean.'
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidEnrollmentRule '.repository-quality-gates.json'))) 'An invalid automatic-enrolment rule must not create managed state.'
 
     $validCorrelationRule = New-Fixture 'valid-correlation-rule'
@@ -633,6 +633,10 @@ try {
     $directHelperPattern = '& \(Join-Path \$script:RepositoryRoot ''scripts\\(?:Configure-SecretScanning|Install-Gitleaks|Test-Secrets)\.ps1''\)'
     Assert-True (-not ($deployerText -match $directHelperPattern)) 'Managed helper scripts should not be invoked directly from a network-backed checkout.'
 
+    $lifecycleOutput = & pwsh -NoProfile -File (Join-Path $projectRoot 'tests/RepositoryQualityGates.Lifecycle.Tests.ps1') 2>&1
+    Assert-True ($LASTEXITCODE -eq 0) "The lifecycle regression suite must pass. $($lifecycleOutput -join [Environment]::NewLine)"
+    $administrationOutput = & pwsh -NoProfile -File (Join-Path $projectRoot 'tests/Invoke-RepositoryRulesetEngine.Tests.ps1') 2>&1
+    Assert-True ($LASTEXITCODE -eq 0) "The administration regression suite must pass. $($administrationOutput -join [Environment]::NewLine)"
     $versionOutput = & pwsh -NoProfile -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
     Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 3.2.0')) 'The version interface should report the canonical version.'

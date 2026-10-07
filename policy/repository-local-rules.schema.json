@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Repository Quality Gates Local Rules",
+  "type": "object",
+  "required": ["schemaVersion"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "rqgEnabled": {"type": "boolean", "default": true},
+    "modules": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "include": {"$ref": "#/$defs/stringArray"},
+        "repositoryOwned": {"$ref": "#/$defs/stringArray"}
+      }
+    },
+    "paths": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"repositoryOwned": {"$ref": "#/$defs/stringArray"}}
+    },
+    "secretScanning": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"additionalConfigFiles": {"$ref": "#/$defs/stringArray"}}
+    },
+    "pullRequest": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"references": {"$ref": "#/$defs/stringArray"}}
+    }
+  },
+  "$defs": {"stringArray": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}
+}

@@ -4,10 +4,18 @@
 
 ### Added
 
+- Added the reversible `rqgEnabled` lifecycle, ownership-safe removal plans, an App-bound checked removal path, independent-control preservation, & interrupted-transition recovery. (#5)
+- Added automatic post-content administration with exact-commit inspection, fresh settings readback, preserved provider-bound independent checks, & consolidated content/administration outcomes. (#6)
 - Added reusable, fail-closed schema-3 release governance for canonical version detection, issue and advisory evidence, required gates, stable and prerelease tags, immutable Releases, comprehensive notes, and post-verification issue closure. (#4)
+
+### Changed
+
+- Replaced the unused `automaticEnrollment` local rule with `rqgEnabled`; absence or `true` enables deployment and updates, while `false` opts out or requests checked deactivation. The old property is rejected. (#5)
+- Kept routine previews read-only & applied supported repository settings only after managed content and baseline checks are verified. Failed content never reaches administration. (#6)
 
 ### Security
 
+- Bound administration to the exact checked merge, retained stronger independent review controls, & guarded deactivation provider ownership, PR destination, live protection cleanup & complete protection-state comparisons. (#5, #6)
 - Confined version-source reads against traversal and filesystem links, rejected prohibited internal release-note content, and verified the authoritative remote tag before Release publication or issue closure. (#4)
 
 ## 3.2.0 - Unreleased
@@ -27,7 +35,7 @@
 
 ### Security
 
-- Kept scheduled reconciliation read-only & restricted apply mode to an explicit manual workflow run using short-lived GitHub App installation tokens.
+- Kept the separate administration audit read-only & retained manual diagnosis/recovery, while automatic fleet apply reconciles settings after verified content using the same short-lived installation token.
 - Deferred unsupported private-repository native protection under `RQG-PRIVATE-PLAN-001`; a later reviewed apply can activate the ruleset when the repository becomes public or the plan supports it.
 - Refused to provision GitHub Pages automatically, even when an approved exception enables it, because its source, build, & ownership configuration require separate approval.
 

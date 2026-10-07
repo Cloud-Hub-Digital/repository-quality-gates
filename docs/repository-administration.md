@@ -73,7 +73,7 @@ Downstream fleet updates already use short-lived pull requests and can operate u
 
 ## Automatic Stable Releases
 
-The central automatic-release workflow is intentionally repository-specific and is not copied into downstream repositories. A push to `main` is eligible only when the canonical version is stable, matches `.repository-quality-gates.json`, has a matching changelog heading, and all five required RQG workflows succeed on the exact commit. The job checks remote `main` again before creating an annotated tag, creates the immutable GitHub Release, and explicitly dispatches the fleet workflow. Existing matching releases are a clean no-op; a tag collision blocks publication.
+The central `automatic-release.yml` workflow is repository-specific. The distinct universal `release-governance` module supplies `managed-automatic-release.yml` to downstream repositories using their committed release contract. The central stable release requires matching canonical version, managed state & changelog plus successful required workflows on the exact commit. It verifies remote `main`, creates the annotated immutable tag & GitHub Release, then dispatches fleet deployment. Existing matching releases are a clean no-op; conflicting tags block publication.
 
 The repository must continue allowing workflow-level `contents: write` permission because the default token remains read-only. The active `v*` ruleset must permit new tags while continuing to block tag updates, deletion, and force pushes. Immutable Releases must remain enabled. Do not add an environment approval to this workflow unless the automatic publication policy is intentionally changed back to a manual gate.
 
@@ -97,7 +97,7 @@ After changing repository settings:
 
 ## Remaining Settings Work
 
-The 3.2.0 candidate adds the managed `Repository Standards - Default Branch` ruleset reconciler. Its daily path is audit-only; creating or replacing live rules requires a separately authorized manual apply with repository administration permission. Until that apply is completed & verified, the existing `Protect Main History` ruleset remains the central repository's active branch control.
+The 3.2.0 candidate adds the managed `Repository Standards - Default Branch` ruleset reconciler. The separate daily administration workflow remains audit-only. An authorized fleet apply reconciles supported settings after verifying content & the exact checked revision; manual apply remains a diagnosis or recovery route. Administration write permission, initial protection readiness & all independent requirements must be verified before production use. These candidate features do not claim that live settings have already changed.
 
 ## GitHub References
 

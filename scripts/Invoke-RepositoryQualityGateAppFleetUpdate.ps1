@@ -16,6 +16,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'RepositoryQualityGates.Lifecycle.ps1')
+. (Join-Path $PSScriptRoot 'RepositoryQualityGates.Deactivation.ps1')
 
 function ConvertTo-Base64Url([byte[]]$Bytes) {
     return [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
@@ -172,7 +174,14 @@ function ConvertTo-RqgEmailComment([string]$Status, [string]$Detail) {
     if ($Status -match 'Failed$' -or $Status -eq 'MergeOutcomeUnverified') { return Get-RqgStructuredFailureSummary $cleanDetail }
 
     switch ($Status) {
-        'Current' { return 'Already current.' }
+        'Current' { if ($cleanDetail -match 'Repository settings verified') { return 'Already current; repository settings verified.' }; return 'Already current.' }
+        'AdministrationDeferred' { return 'Content verified; native protection deferred by hosting plan.' }
+        'AdministrationFailed' { return Get-RqgStructuredFailureSummary $cleanDetail }
+        'Disabled' { return 'RQG is disabled; no managed installation remains.' }
+        'DeactivationAvailable' { return 'Checked removal is available; preview made no changes.' }
+        'DeactivationPullRequest' { return 'Removal validated; checked PR awaits controlled merge.' }
+        'DeactivatedSuccessfully' { return 'Owned RQG content removed; independent controls preserved.' }
+        'DeactivationFailed' { return $cleanDetail }
         'EmptyRepository' { return 'Skipped: repository has no commits.' }
         'EnrollmentOptOut' { return 'Skipped: automatic enrolment is disabled.' }
         'ChecksPending' { return 'Update pull request created; checks pending.' }
@@ -200,12 +209,71 @@ function ConvertTo-RqgEmailComment([string]$Status, [string]$Detail) {
     }
 }
 
+function Test-RqgAdministrationContent([string]$RepositoryName, [string]$Commit, [string]$TemplatePath, [bool]$RequireBaselineChecks = $true) {
+    $scratch = Join-Path ([IO.Path]::GetTempPath()) ('rqg-admin-verify-' + [Guid]::NewGuid().ToString('N'))
+    try {
+        & git clone --quiet --no-tags "https://github.com/$RepositoryName.git" $scratch
+        if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect destination content before administration.' }
+        & git -C $scratch checkout --quiet --detach $Commit
+        if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the exact administration source commit.' }
+        $head = (& git -C $scratch rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0 -or $head -cne $Commit) { throw 'Administration content checkout identity mismatch.' }
+        $text = @(& (Join-Path $TemplatePath 'scripts/Invoke-RepositoryQualityGates.ps1') -RepositoryPath $scratch -OutputFormat Json) -join [Environment]::NewLine
+        $preview = $text | ConvertFrom-Json
+        if ($preview.PSObject.Properties['status'] -and $preview.status -in @('Disabled','DeactivationAvailable')) { throw 'Destination content is disabled.' }
+        if (-not $preview.PSObject.Properties['plan'] -or @($preview.plan | Where-Object action -notin @('Unchanged','Retain')).Count) { throw 'Destination managed content does not match the verified release baseline.' }
+        if (@(& git -C $scratch status --porcelain=v1 --untracked-files=all).Count -or $LASTEXITCODE -ne 0) { throw 'Read-only administration content inspection changed the destination.' }
+        $state = Get-Content -LiteralPath (Join-Path $scratch '.repository-quality-gates.json') -Raw | ConvertFrom-Json
+        $expectedChecks = @(Get-RqgManagedCheckNames $state.modules)
+        if (-not $expectedChecks.Count) { throw 'The administration source has no expected managed checks.' }
+        if ($RequireBaselineChecks) { $null=Assert-RqgDeactivationBaseline $RepositoryName $Commit $expectedChecks }
+    } finally { if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force } }
+}
+
+function Complete-RqgFleetAdministration([object]$Result, [string]$TemplatePath, [bool]$ApplySettings) {
+    # Content failures remain failures. Never repair settings on an unverified PR.
+    $engine = Join-Path $TemplatePath 'scripts/Invoke-RepositoryRulesetEngine.ps1'
+    foreach ($row in @($Result.repositories)) {
+        $row | Add-Member -NotePropertyName contentStatus -NotePropertyValue ([string]$row.status) -Force
+        $row | Add-Member -NotePropertyName administrationStatus -NotePropertyValue $(if ([string]$row.status -eq 'DeactivatedSuccessfully') { 'DeactivationVerified' } else { 'NotAttempted' }) -Force
+        if (-not $ApplySettings -or [string]$row.status -notin @('Current', 'UpdatedSuccessfully')) { continue }
+        try {
+            if (-not (Test-Path -LiteralPath $engine -PathType Leaf)) { throw 'The trusted administration engine is missing.' }
+            $versionOutput = @(& (Join-Path $TemplatePath 'scripts/Invoke-RepositoryQualityGates.ps1') -Version)
+            $version = ([string]$versionOutput[0] -replace '^Repository Quality Gates\s+', '').Trim()
+            if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'The fleet target version cannot be verified.' }
+            $metadata = @(& gh api "repos/$($row.repository)" --jq '.default_branch' 2>&1)
+            if ($LASTEXITCODE -ne 0 -or $metadata.Count -ne 1 -or -not [string]$metadata[0]) { throw 'The destination default branch cannot be verified.' }
+            $head = @(& gh api "repos/$($row.repository)/git/ref/heads/$([Uri]::EscapeDataString([string]$metadata[0]))" --jq '.object.sha' 2>&1)
+            if ($LASTEXITCODE -ne 0 -or $head.Count -ne 1 -or [string]$head[0] -notmatch '^[0-9a-f]{40}$') { throw 'The destination commit cannot be verified.' }
+            if ([string]$row.contentStatus -eq 'UpdatedSuccessfully' -and (-not $row.PSObject.Properties['verifiedMergeSha'] -or [string]$row.verifiedMergeSha -cne [string]$head[0])) { throw 'The destination differs from the checked merge outcome; administration requires fresh successful baseline evidence.' }
+            Test-RqgAdministrationContent ([string]$row.repository) ([string]$head[0]) $TemplatePath ([string]$row.contentStatus -eq 'Current')
+            $admin = (& $engine -Repository ([string]$row.repository) -ExpectedTemplateVersion $version -ExpectedCommit ([string]$head[0]) -Apply -OutputFormat Json) | ConvertFrom-Json
+            if (@($admin.repositories).Count -ne 1 -or [string]$admin.repositories[0].repository -cne [string]$row.repository) { throw 'The administration result identifies an unexpected repository.' }
+            $state = [string]$admin.repositories[0].status
+            $row.administrationStatus = $state
+            if ($state -in @('Compliant', 'AppliedAndVerified')) { $row.detail += ' Repository settings verified.' }
+            elseif ($state -eq 'DeferredUnsupportedPlan') {
+                $row.status = 'AdministrationDeferred'
+                $row.detail += ' Content verified; native protection deferred under the approved private-plan exception.'
+            } else { throw "Repository administration did not verify: $state." }
+        } catch {
+            $row.administrationStatus = 'Failed'
+            $row.status = 'AdministrationFailed'
+            $row.detail += " Content outcome retained as $($row.contentStatus). Administration: $($_.Exception.Message)"
+        }
+    }
+    return $Result
+}
+
 function Get-RqgRunnerDisplay([object]$RepositoryResult) {
     [string[]]$runnerNames = @()
     if ($RepositoryResult.PSObject.Properties['runners']) {
         $runnerNames = @($RepositoryResult.runners | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ } | Sort-Object -Unique)
     }
     if ($runnerNames.Count) { return $runnerNames -join [Environment]::NewLine }
+    if ($RepositoryResult.PSObject.Properties['contentStatus'] -and [string]$RepositoryResult.contentStatus -eq 'Current') { return 'Not Used' }
+    if ([string]$RepositoryResult.status -in @('Disabled', 'DeactivationAvailable')) { return 'Not Used' }
     if ([string]$RepositoryResult.status -in @('Current', 'EmptyRepository', 'EnrollmentOptOut', 'DeferredOpenPullRequests', 'EnrollmentAvailable', 'Available')) { return 'Not Used' }
     return 'Unavailable'
 }
@@ -353,6 +421,10 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                         $resultBytes = [IO.File]::ReadAllText($installationResultPath)
                         if (-not [string]::IsNullOrWhiteSpace($resultBytes)) {
                             $installationResult = $resultBytes | ConvertFrom-Json
+                            $resultNames = @($installationResult.repositories | ForEach-Object { [string]$_.repository })
+                            if ($resultNames.Count -ne $repositories.Count -or @($resultNames | Sort-Object -Unique).Count -ne $resultNames.Count -or @($resultNames | Where-Object { $_ -cnotin $repositories }).Count) { throw 'The structured result does not cover exactly the selected installation repository set.' }
+                            $installationResult = Complete-RqgFleetAdministration -Result $installationResult -TemplatePath $ResolvedTemplateRoot -ApplySettings ([bool]$EnableApply)
+                            if (@($installationResult.repositories | Where-Object status -eq 'AdministrationFailed').Count -and -not $installationFailed) { $installationFailureCount++; $installationFailed = $true }
                             foreach ($repositoryResult in @($installationResult.repositories)) {
                                 $privateDetail = [string]$repositoryResult.detail
                                 foreach ($secretValue in @($installationJwt, $token, $authorizationHeader, $basicCredential)) {
@@ -365,6 +437,8 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
                                     visibility = [string]$repositoryMetadata[[string]$repositoryResult.repository].visibility
                                     runner = Get-RqgRunnerDisplay $repositoryResult
                                     status = [string]$repositoryResult.status
+                                    contentStatus = [string]$repositoryResult.contentStatus
+                                    administrationStatus = [string]$repositoryResult.administrationStatus
                                     comment = ConvertTo-RqgEmailComment -Status ([string]$repositoryResult.status) -Detail $privateDetail
                                     detail = $privateDetail
                                 })
@@ -437,6 +511,19 @@ function Invoke-RepositoryQualityGateAppFleetUpdate {
             $reportJson = ConvertTo-Json -InputObject @($privateReportRows | Sort-Object repository) -Depth 4
             [IO.File]::WriteAllText($resolvedReportPath, $reportJson, [Text.UTF8Encoding]::new($false))
         }
+        # Retain both phase outcomes in public evidence without exposing identities.
+        [pscustomobject]@{
+            schemaVersion = 1
+            phase = 'ContentAndAdministration'
+            repositories = @($privateReportRows | ForEach-Object {
+                [pscustomobject]@{
+                    repositorySha256 = Get-RqgRepositoryNameSha256 ([string]$_.repository)
+                    status = [string]$_.status
+                    contentStatus = if ($_.PSObject.Properties['contentStatus']) { [string]$_.contentStatus } else { 'Unverified' }
+                    administrationStatus = if ($_.PSObject.Properties['administrationStatus']) { [string]$_.administrationStatus } else { 'NotAttempted' }
+                }
+            })
+        } | ConvertTo-Json -Depth 6
         if ($installationFailureCount) {
             throw "$installationFailureCount GitHub App installation(s) failed after all accessible installations were processed. Review the masked per-repository results above."
         }
