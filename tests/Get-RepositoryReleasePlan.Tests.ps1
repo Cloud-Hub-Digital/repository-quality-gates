@@ -35,7 +35,22 @@ try {
     $fixture = Fixture; $issue = Get-Content (Join-Path $fixture.Path issues.json) -Raw | ConvertFrom-Json; $issue.targetVersion = '1.9.0'; $issue | ConvertTo-Json | Set-Content (Join-Path $fixture.Path issues.json); Assert (-not (Run $fixture).Ok) 'Wrong milestone must fail.'
     $fixture = Fixture; $profile = Get-Content (Join-Path $fixture.Path .repository-standards.json) -Raw | ConvertFrom-Json; $profile.issueGovernance.classifications = @('feature'); $profile | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $fixture.Path .repository-standards.json); Assert (-not (Run $fixture).Ok) 'Incomplete schema-3 issue governance must fail.'
     $fixture = Fixture; $prohibitedLocator = 'https://example.invalid/' + 'work_' + 'packages/1'; "abc123 $prohibitedLocator" | Set-Content (Join-Path $fixture.Path commits.txt); Assert (-not (Run $fixture).Ok) 'OpenProject locators in release commit evidence must fail.'
-    $fixture = Fixture; 'abc123 internal.cloudhub.digital' | Set-Content (Join-Path $fixture.Path commits.txt); Assert (-not (Run $fixture).Ok) 'Internal domains in release commit evidence must fail.'
+    $tokens = $null; $parseErrors = $null
+    $plannerAst = [Management.Automation.Language.Parser]::ParseFile($tool, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count) { throw 'Release planner source could not be parsed.' }
+    $publicTextGuard = $plannerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Assert-PublicReleaseText' }, $true)
+    if (-not $publicTextGuard) { throw 'Release text guard is missing.' }
+    $domainRules = @($publicTextGuard.FindAll({ param($node) $node -is [Management.Automation.Language.StringConstantExpressionAst] -and $node.Value.Contains('(?=$|[^A-Za-z0-9.-])') }, $true))
+    if ($domainRules.Count -ne 1) { throw 'Release domain deny rule is unresolved.' }
+    $domainGroup = [regex]::Match($domainRules[0].Value, '\(\?:([^()]+)\)\(\?=\$\|')
+    if (-not $domainGroup.Success) { throw 'Release domain deny catalogue is unresolved.' }
+    foreach ($deniedDomain in $domainGroup.Groups[1].Value -split '\|') {
+        $fixture = Fixture
+        $syntheticHost = 'probe.' + [regex]::Unescape($deniedDomain)
+        ('abc123 ' + $syntheticHost) | Set-Content (Join-Path $fixture.Path commits.txt)
+        $result = Run $fixture
+        Assert (-not $result.Ok -and $result.Error.Contains('prohibited internal domain')) 'Configured denied domains in release commit evidence must fail.'
+    }
     $fixture = Fixture; 'abc123 A:\private\record.md' | Set-Content (Join-Path $fixture.Path commits.txt); Assert (-not (Run $fixture).Ok) 'Absolute paths in release commit evidence must fail.'
     $fixture = Fixture; 'abc123 \\private-host\share\record.md' | Set-Content (Join-Path $fixture.Path commits.txt); Assert (-not (Run $fixture).Ok) 'UNC paths in release commit evidence must fail.'
     $outsideVersion = Join-Path $temp 'outside-version.txt'; '9.9.9' | Set-Content $outsideVersion -NoNewline

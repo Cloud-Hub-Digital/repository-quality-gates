@@ -15,6 +15,7 @@
 
 ### Security
 
+- Removed a literal internal-domain test fixture from publishable source; derive negative cases from the release validator's configured deny catalogue & verify rejection for every configured domain. (#4)
 - Bound administration to the exact checked merge, retained stronger independent review controls, & guarded deactivation provider ownership, PR destination, live protection cleanup & complete protection-state comparisons. (#5, #6)
 - Confined version-source reads against traversal and filesystem links, rejected prohibited internal release-note content, and verified the authoritative remote tag before Release publication or issue closure. (#4)
 
