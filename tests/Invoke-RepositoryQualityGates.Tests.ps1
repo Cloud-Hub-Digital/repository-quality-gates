@@ -104,6 +104,42 @@ function Commit-Fixture([string]$Path, [string]$Message = 'fixture') {
 try {
     New-Item -ItemType Directory -Path $testRoot | Out-Null
 
+    # Exercise the committed central payload, not only a newly deployed fixture.
+    # The diagnostic diff must remain visible when an all-Unchanged plan dirties Git.
+    $centralReconciliationFailures = [Collections.Generic.List[string]]::new()
+    foreach ($checkoutStyle in @('false', 'true')) {
+        $centralCheckout = New-Fixture ("central-reconciliation-$checkoutStyle")
+        & git -C $centralCheckout config core.autocrlf $checkoutStyle
+        & git -C $centralCheckout config core.hooksPath '.git/hooks'
+        foreach ($sourceFile in @(Get-ChildItem -LiteralPath $projectRoot -Recurse -Force -File)) {
+            $relative = [IO.Path]::GetRelativePath($projectRoot, $sourceFile.FullName).Replace('\', '/')
+            if ($relative -eq '.git' -or $relative.StartsWith('.git/') -or $relative.StartsWith('.tools/')) { continue }
+            $target = Join-Path $centralCheckout $relative
+            New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+            Copy-Item -LiteralPath $sourceFile.FullName -Destination $target
+        }
+        Commit-Fixture $centralCheckout 'committed central payload'
+        & git -C $centralCheckout checkout-index --force --all
+        if ($LASTEXITCODE) { throw 'Central fixture checkout failed.' }
+        $first = Invoke-AutomaticReconciliation $centralCheckout
+        if ($first.ExitCode) { throw "Central reconciliation failed. $($first.Output)" }
+        $firstChanges = @(git -C $centralCheckout status --porcelain)
+        if ($firstChanges.Count) {
+            Write-Host "Central first-run changes (core.autocrlf=$checkoutStyle): $($firstChanges -join '; ')"
+            Write-Host ((git -C $centralCheckout diff -- .repository-quality-gates.json .gitignore) -join "`n")
+            Commit-Fixture $centralCheckout 'reconciled central payload'
+        }
+        $second = Invoke-AutomaticReconciliation $centralCheckout
+        if ($second.ExitCode) { throw "Repeated central reconciliation failed. $($second.Output)" }
+        $secondChanges = @(git -C $centralCheckout status --porcelain)
+        if ($secondChanges.Count) {
+            $centralReconciliationFailures.Add("core.autocrlf=$checkoutStyle : $($secondChanges -join '; ')")
+            Write-Host "Central second-run changes (core.autocrlf=$checkoutStyle): $($secondChanges -join '; ')"
+            Write-Host ((git -C $centralCheckout diff -- .repository-quality-gates.json .gitignore) -join "`n")
+        }
+    }
+    Assert-True ($centralReconciliationFailures.Count -eq 0) ("Committed central reconciliation must be idempotent. " + ($centralReconciliationFailures -join ' | '))
+
     . (Join-Path $projectRoot 'scripts/RepositoryQualityGates.Detection.ps1')
     $casing = New-Fixture 'managed-index-casing'
     & git -C $casing config core.ignorecase false
@@ -226,6 +262,10 @@ try {
     Assert-True ($moduleDriftWorkflow.Contains("steps.commit_reconciliation.outputs.reconciled == 'true'")) 'Validation dispatch must require an explicit successful reconciliation output.'
     Assert-True ($moduleDriftWorkflow.Contains('-f validation_only=true')) 'A reconciliation child must receive its own module-drift validation.'
     Assert-True ($moduleDriftWorkflow.Contains("&& !inputs.validation_only")) 'Validation-only dispatch must never enter the committing reconciliation job.'
+    Assert-True ($moduleDriftWorkflow.Contains('Validation checkout was already dirty; release stopped.')) 'Validation must reject an initially dirty checkout.'
+    Assert-True ($moduleDriftWorkflow.Contains('Changed paths after reconciliation:')) 'A dirty reconciled checkout must report its changed paths.'
+    Assert-True ($moduleDriftWorkflow.Contains('Managed-state SHA-256 before:')) 'Reconciliation failure diagnostics must include state hashes without file contents.'
+    Assert-True ($moduleDriftWorkflow.Contains('Reconciliation changed the validated commit; release stopped.')) 'Diagnostics must preserve the fail-closed reconciliation gate.'
     Assert-True ($moduleDriftWorkflow.Contains('if ($changes.Count) { throw')) 'A validation-only run must reject non-idempotent reconciliation.'
     Assert-True ($moduleDriftWorkflow.Contains("'github-app-clone-probe'")) 'Automatic reconciliation must not dispatch the operator-selected clone probe.'
     Assert-True ($moduleDriftWorkflow.Contains('git diff --cached --name-only')) 'The reconciliation decision must use the staged Git index instead of runner-specific status output.'

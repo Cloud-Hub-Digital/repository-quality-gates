@@ -4,11 +4,14 @@
 
 ### Added
 
+- Added committed central-checkout reconciliation regressions for LF & CRLF checkout configurations, including second-run cleanliness and exact changed-path/diff diagnostics. (#7)
 - Added the reversible `rqgEnabled` lifecycle, ownership-safe removal plans, an App-bound checked removal path, independent-control preservation, & interrupted-transition recovery. (#5)
 - Added automatic post-content administration with exact-commit inspection, fresh settings readback, preserved provider-bound independent checks, & consolidated content/administration outcomes. (#6)
 - Added reusable, fail-closed schema-3 release governance for canonical version detection, issue and advisory evidence, required gates, stable and prerelease tags, immutable Releases, comprehensive notes, and post-verification issue closure. (#4)
 
 ### Changed
+
+- Added fail-closed reconciliation diagnostics for initial checkout cleanliness, changed paths, managed-state hashes, & runtime versions; no file contents or credentials are logged. (#7)
 
 - Replaced the unused `automaticEnrollment` local rule with `rqgEnabled`; absence or `true` enables deployment and updates, while `false` opts out or requests checked deactivation. The old property is rejected. (#5)
 - Kept routine previews read-only & applied supported repository settings only after managed content and baseline checks are verified. Failed content never reaches administration. (#6)
