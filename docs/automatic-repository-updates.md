@@ -183,7 +183,7 @@ Run the workflow only from an exact reviewed RQG revision. A missing digest matc
 
 ## Workflow Triggers
 
-The central `.github/workflows/managed-automatic-release.yml` workflow runs on every push to `main` and can also be started manually. Only a stable `MAJOR.MINOR.PATCH` version can be published. Every release therefore requires a deliberate version and changelog update in the source commit, while publication itself occurs automatically after the required quality workflows pass.
+The central `.github/workflows/managed-automatic-release.yml` workflow runs on every push to `main` and can also be started manually. Stable & prerelease semantic versions can be published under the schema-3 contract; only stable releases start fleet distribution. Every release therefore requires a deliberate version and changelog update in the source commit, while publication itself occurs automatically after the required quality workflows pass.
 
 The central `.github/workflows/update-managed-repositories.yml` workflow runs:
 

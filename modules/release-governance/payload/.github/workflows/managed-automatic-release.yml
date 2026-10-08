@@ -139,7 +139,7 @@ jobs:
           foreach ($issue in @($plan.deliveredIssues | Where-Object { $_.type -eq 'issue' -and $null -ne $_.number })) { gh issue close ([string]$issue.number) --reason completed; if ($LASTEXITCODE) { throw "Issue closure failed: #$($issue.number)" } }
 
       - name: Start Central Fleet Update
-        if: ${{ vars.RQG_FLEET_AUTOMATION_PAUSED != 'true' && hashFiles('.github/workflows/update-managed-repositories.yml') != '' && (steps.plan.outputs.action == 'CreateTagAndRelease' || steps.plan.outputs.action == 'CreateRelease') }}
+        if: ${{ steps.plan.outputs.prerelease == 'false' && vars.RQG_FLEET_AUTOMATION_PAUSED != 'true' && hashFiles('.github/workflows/update-managed-repositories.yml') != '' && (steps.plan.outputs.action == 'CreateTagAndRelease' || steps.plan.outputs.action == 'CreateRelease') }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

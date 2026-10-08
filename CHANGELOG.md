@@ -35,7 +35,7 @@
 - Kept the separate administration audit read-only & retained manual diagnosis/recovery, while automatic fleet apply reconciles settings after verified content using the same short-lived installation token. (#6)
 - Deferred unsupported private-repository native protection under `RQG-PRIVATE-PLAN-001`; a later reviewed apply can activate the ruleset when the repository becomes public or the plan supports it. (#6)
 - Refused to provision GitHub Pages automatically, even when an approved exception enables it, because its source, build, & ownership configuration require separate approval. (#6)
-- Require a verified non-draft immutable GitHub Release before delivered-issue closure & fleet dispatch. (#4)
+- Require a verified non-draft immutable GitHub Release before delivered-issue closure; distribute only stable releases to the fleet. (#4)
 
 ## 3.1.4 - 2026-10-03
 
