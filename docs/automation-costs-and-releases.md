@@ -31,7 +31,7 @@ Release publishing for general downstream products should be a separate, opt-in 
 3. Build in headless mode. Keep desktop UI tests in a separate isolated workflow so applications do not interrupt local work.
 4. Produce deterministic packages, checksums, and a software bill of materials where supported.
 5. Upload final packages directly to the GitHub Release. Use temporary Actions artifacts only when jobs must exchange files, and give them the shortest useful retention period.
-6. Grant the release job `contents: write` only; keep all other jobs at `contents: read`.
+6. Grant the publisher only the permissions required for release creation, verified delivered-issue closure & optional fleet dispatch; keep quality jobs at `contents: read`.
 7. Use GitHub Environments with a required approval before the publishing job when the repository and plan support that control.
 8. Prevent concurrent publication of the same version and reject an existing tag or release instead of overwriting it.
 9. Keep the private project records, Git tag, GitHub Release, and packaged artifact on the same canonical version without exposing the private system in GitHub.
@@ -73,6 +73,10 @@ Runner labels and GitHub-visible runner names must contain no machine name or in
 
 ## Current Template Status
 
-The reusable downstream template deploys build and test gates for detected codebases, but it does not create downstream releases, tags, versions, or deployment artifacts. Release automation for downstream products still requires a separate module because package formats, signing requirements, version sources, target platforms, and release approval steps vary by project.
+The reusable downstream template deploys build & test gates for detected codebases. The `release-governance` module publishes tags & GitHub Releases only when a repository explicitly adopts the schema-3 contract with its canonical version sources, dated changelog, classified issue milestones & required gates. Schema-2 repositories remain inactive for release publication. Product-specific packaging, signing & deployment still require their own governed contracts.
 
-The central Repository Quality Gates repository is the documented exception. Its stable output is the repository itself, so `.github/workflows/automatic-release.yml` can create an annotated version tag and immutable GitHub Release after all central checks pass. It then explicitly dispatches downstream template distribution because GitHub does not recursively start most workflows from events created with `GITHUB_TOKEN`.
+The central Repository Quality Gates repository adopts that same release contract. Its stable output is the repository itself, so `.github/workflows/managed-automatic-release.yml` can create an annotated version tag and immutable GitHub Release after all central checks pass. It then explicitly dispatches downstream template distribution because GitHub does not recursively start most workflows from events created with `GITHUB_TOKEN`.
+
+## Central Release Governance
+
+The central repository adopts the same schema-3 release contract as managed downstream products. Its managed workflow is the sole automatic publisher on `main`; the legacy `automatic-release.yml` path is a manual compatibility entry point that calls the managed workflow. Canonical version sources, a dated changelog, classified issue milestones, exact required gates, remote tag verification, comprehensive notes, & an immutable non-draft Release must pass before delivered-issue closure or one final fleet report.

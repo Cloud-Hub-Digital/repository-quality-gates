@@ -73,7 +73,7 @@ Downstream fleet updates already use short-lived pull requests and can operate u
 
 ## Automatic Stable Releases
 
-The central `automatic-release.yml` workflow is repository-specific. The distinct universal `release-governance` module supplies `managed-automatic-release.yml` to downstream repositories using their committed release contract. The central stable release requires matching canonical version, managed state & changelog plus successful required workflows on the exact commit. It verifies remote `main`, creates the annotated immutable tag & GitHub Release, then dispatches fleet deployment. Existing matching releases are a clean no-op; conflicting tags block publication.
+The central repository & schema-3 downstream repositories use the universal `release-governance` module and their own committed release contract. The central stable release requires matching canonical version, managed state & changelog plus successful required workflows on the exact commit. It verifies remote `main`, creates the annotated immutable tag & GitHub Release, then dispatches fleet deployment. Existing matching releases are a clean no-op; conflicting tags block publication.
 
 The repository must continue allowing workflow-level `contents: write` permission because the default token remains read-only. The active `v*` ruleset must permit new tags while continuing to block tag updates, deletion, and force pushes. Immutable Releases must remain enabled. Do not add an environment approval to this workflow unless the automatic publication policy is intentionally changed back to a manual gate.
 
@@ -106,3 +106,7 @@ The 3.2.0 candidate adds the managed `Repository Standards - Default Branch` rul
 - [Managing GitHub Actions Settings For A Repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository)
 - [About Secret Scanning](https://docs.github.com/en/code-security/concepts/secret-security/secret-scanning)
 - [About Push Protection](https://docs.github.com/en/code-security/concepts/secret-security/push-protection)
+
+## Central Release Governance
+
+The central repository adopts the same schema-3 release contract as managed downstream products. Its managed workflow is the sole automatic publisher on `main`; the legacy `automatic-release.yml` path is a manual compatibility entry point that calls the managed workflow. Canonical version sources, a dated changelog, classified issue milestones, exact required gates, remote tag verification, comprehensive notes, & an immutable non-draft Release must pass before delivered-issue closure or one final fleet report.

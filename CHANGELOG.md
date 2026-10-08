@@ -2,21 +2,29 @@
 
 ## Unreleased
 
+## 3.2.0 - 2026-10-08
+
 ### Added
 
 - Added committed central-checkout reconciliation regressions for LF & CRLF checkout configurations, including second-run cleanliness and exact changed-path/diff diagnostics. (#7)
 - Added the reversible `rqgEnabled` lifecycle, ownership-safe removal plans, an App-bound checked removal path, independent-control preservation, & interrupted-transition recovery. (#5)
 - Added automatic post-content administration with exact-commit inspection, fresh settings readback, preserved provider-bound independent checks, & consolidated content/administration outcomes. (#6)
 - Added reusable, fail-closed schema-3 release governance for canonical version detection, issue and advisory evidence, required gates, stable and prerelease tags, immutable Releases, comprehensive notes, and post-verification issue closure. (#4)
+- Added a canonical no-bypass default-branch ruleset policy, read-only fleet audit, & explicit apply-and-verify reconciliation engine. (#6)
+- Added local bug-report, feature-request, question, & issue-picker configuration files to the universal documentation module. (#6)
+- Added fail-closed validation for repository-local feature exceptions, including their identifier, feature, intended state, owner, reason, approval status, & review condition. (#6)
 
 ### Changed
 
 - Preserve equivalent managed-state bytes & checkout newlines during reconciliation, preventing false Windows Git dirtiness & empty fixture commits. (#7)
-
 - Added fail-closed reconciliation diagnostics for initial checkout cleanliness, changed paths, managed-state hashes, & runtime versions; no file contents or credentials are logged. (#7)
-
 - Replaced the unused `automaticEnrollment` local rule with `rqgEnabled`; absence or `true` enables deployment and updates, while `false` opts out or requests checked deactivation. The old property is rejected. (#5)
 - Kept routine previews read-only & applied supported repository settings only after managed content and baseline checks are verified. Failed content never reaches administration. (#6)
+- Enforced the approved GitHub repository-feature contract: Issues enabled, with Discussions, Wikis, & Pages disabled unless a complete approved local exception changes one of those three optional features. (#6)
+- Migrated the legacy `github-discussions` support route to mandatory `github-issues` during the ordinary reviewed RQG update. (#6)
+- Extended the GitHub administration engine to report ruleset, merge-setting, feature-setting, repository-profile, & local issue-form drift in one structured result. (#6)
+- Kept squash-only merging as the fleet default while preserving the approved DCC LabStation LS8 milestone merge-commit exception. (#6)
+- Adopted schema-3 issue & release governance for the central repository; keep one automatic publisher & a manual compatibility entry point. (#4)
 
 ### Security
 
@@ -24,27 +32,10 @@
 - Included governed-release planner regression checks in the protected deployment suite so its negative publication cases are exercised by the standard build profile. (#4)
 - Bound administration to the exact checked merge, retained stronger independent review controls, & guarded deactivation provider ownership, PR destination, live protection cleanup & complete protection-state comparisons. (#5, #6)
 - Confined version-source reads against traversal and filesystem links, rejected prohibited internal release-note content, and verified the authoritative remote tag before Release publication or issue closure. (#4)
-
-## 3.2.0 - Unreleased
-
-### Added
-
-- Added a canonical no-bypass default-branch ruleset policy, read-only fleet audit, & explicit apply-and-verify reconciliation engine.
-- Added local bug-report, feature-request, question, & issue-picker configuration files to the universal documentation module.
-- Added fail-closed validation for repository-local feature exceptions, including their identifier, feature, intended state, owner, reason, approval status, & review condition.
-
-### Changed
-
-- Enforced the approved GitHub repository-feature contract: Issues enabled, with Discussions, Wikis, & Pages disabled unless a complete approved local exception changes one of those three optional features.
-- Migrated the legacy `github-discussions` support route to mandatory `github-issues` during the ordinary reviewed RQG update.
-- Extended the GitHub administration engine to report ruleset, merge-setting, feature-setting, repository-profile, & local issue-form drift in one structured result.
-- Kept squash-only merging as the fleet default while preserving the approved DCC LabStation LS8 milestone merge-commit exception.
-
-### Security
-
-- Kept the separate administration audit read-only & retained manual diagnosis/recovery, while automatic fleet apply reconciles settings after verified content using the same short-lived installation token.
-- Deferred unsupported private-repository native protection under `RQG-PRIVATE-PLAN-001`; a later reviewed apply can activate the ruleset when the repository becomes public or the plan supports it.
-- Refused to provision GitHub Pages automatically, even when an approved exception enables it, because its source, build, & ownership configuration require separate approval.
+- Kept the separate administration audit read-only & retained manual diagnosis/recovery, while automatic fleet apply reconciles settings after verified content using the same short-lived installation token. (#6)
+- Deferred unsupported private-repository native protection under `RQG-PRIVATE-PLAN-001`; a later reviewed apply can activate the ruleset when the repository becomes public or the plan supports it. (#6)
+- Refused to provision GitHub Pages automatically, even when an approved exception enables it, because its source, build, & ownership configuration require separate approval. (#6)
+- Require a verified non-draft immutable GitHub Release before delivered-issue closure & fleet dispatch. (#4)
 
 ## 3.1.4 - 2026-10-03
 

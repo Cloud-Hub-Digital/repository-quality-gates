@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "profile": "downstream",
   "account": "Cloud-Hub-Digital",
   "centralRepository": "https://github.com/Cloud-Hub-Digital/.github",
@@ -12,5 +12,92 @@
     "overrideReason": null
   },
   "supportRoute": "github-issues",
-  "conductRoute": "confidential-email"
+  "conductRoute": "confidential-email",
+  "issueGovernance": {
+    "recordRequired": true,
+    "classifications": [
+      "bug",
+      "feature",
+      "security",
+      "documentation",
+      "dependency",
+      "maintenance",
+      "compatibility",
+      "question",
+      "other"
+    ],
+    "confidentialSecurityRecord": "github-security-advisory",
+    "targetVersionMilestone": "required-for-accepted-delivery",
+    "openProjectCorrelation": "private-one-way",
+    "permittedOpenProjectShorthand": [
+      "[<WORK_PACKAGE_DISPLAY_ID>]",
+      "OP#<WORK_PACKAGE_DISPLAY_ID>"
+    ]
+  },
+  "releaseGovernance": {
+    "changelogPath": "CHANGELOG.md",
+    "unreleasedHeading": "Unreleased",
+    "categories": [
+      "Added",
+      "Changed",
+      "Deprecated",
+      "Removed",
+      "Fixed",
+      "Security"
+    ],
+    "issueReferenceRequired": true,
+    "versionSources": [
+      {
+        "path": "scripts/Invoke-RepositoryQualityGates.ps1",
+        "kind": "powershell-variable",
+        "variable": "productVersion"
+      },
+      {
+        "path": ".rqg/template/scripts/Invoke-RepositoryQualityGates.ps1",
+        "kind": "powershell-variable",
+        "variable": "productVersion"
+      },
+      {
+        "path": ".repository-quality-gates.json",
+        "kind": "json-property",
+        "property": "templateVersion"
+      }
+    ],
+    "workflowPath": ".github/workflows/managed-automatic-release.yml",
+    "trigger": "pushed-new-canonical-version",
+    "tagFormat": "v{version}",
+    "releaseNameFormat": "{version}",
+    "notesPolicy": "comprehensive-since-previous-release",
+    "issueClosurePolicy": "verified-delivered-issues-only",
+    "requiredGates": [
+      {
+        "name": "Documentation Quality",
+        "path": ".github/workflows/quality-documentation.yml"
+      },
+      {
+        "name": "Fleet Update Quality",
+        "path": ".github/workflows/quality-fleet-update.yml"
+      },
+      {
+        "name": "Licence Quality",
+        "path": ".github/workflows/quality-licensing.yml"
+      },
+      {
+        "name": "Quality Gate Module Drift",
+        "path": ".github/workflows/quality-module-drift.yml"
+      },
+      {
+        "name": "Secret Scanning",
+        "path": ".github/workflows/secret-scanning.yml"
+      },
+      {
+        "name": "Python Quality",
+        "path": ".github/workflows/quality-python.yml"
+      },
+      {
+        "name": "PowerShell Quality",
+        "path": ".github/workflows/quality-powershell.yml"
+      }
+    ]
+  }
 }

@@ -300,8 +300,8 @@ try {
     Assert-True ($fleetWorkflow.Contains('PUBLISHED_RELEASE_TAG: ${{ github.event.release.tag_name }}')) 'Release-event fleet runs should use the exact published release tag.'
     Assert-True ($fleetWorkflow.Contains('gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,isDraft,isPrerelease')) 'The fleet workflow should verify its selected tag against the explicit central repository before checkout.'
     $automaticReleaseWorkflow = [IO.File]::ReadAllText((Join-Path $projectRoot '.github\workflows\automatic-release.yml'))
-    Assert-True ($automaticReleaseWorkflow.Contains("- '**/*.md'")) 'Markdown-only pushes should not start an automatic stable release.'
-    Assert-True ($automaticReleaseWorkflow.Contains("- 'docs/**'")) 'Documentation-folder-only pushes should not start an automatic stable release.'
+    Assert-True ($automaticReleaseWorkflow.Contains("uses: ./.github/workflows/managed-automatic-release.yml")) 'The compatibility entry point must delegate to the governed publisher.'
+    Assert-True (-not ($automaticReleaseWorkflow -match '(?m)^  push:')) 'The compatibility entry point must not duplicate the automatic publisher.'
     $fleetScript = [IO.File]::ReadAllText((Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'))
     $appFleetScript = [IO.File]::ReadAllText((Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateAppFleetUpdate.ps1'))
     Assert-True ($appFleetScript.Contains("OutputFormat = 'Json'")) 'Cross-owner fleet runs should retain complete structured per-repository diagnostics.'

@@ -58,5 +58,55 @@ try {
     $outsideDirectory = Join-Path $temp 'outside-version-directory'; New-Item -ItemType Directory -Path $outsideDirectory | Out-Null; '9.9.9' | Set-Content (Join-Path $outsideDirectory VERSION) -NoNewline
     $fixture = Fixture; $link = Join-Path $fixture.Path linked; New-Item -ItemType Junction -Path $link -Target $outsideDirectory | Out-Null; $profile = Get-Content (Join-Path $fixture.Path .repository-standards.json) -Raw | ConvertFrom-Json; $profile.releaseGovernance.versionSources = @('linked/VERSION'); $profile | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $fixture.Path .repository-standards.json); $linked = $false; try { & $versionTool -RepositoryRoot $fixture.Path | Out-Null } catch { $linked = $true }; Assert $linked 'A version source that traverses a junction must fail.'
     $fixture = Fixture; Assert (-not (Run $fixture @{ TagCommitSha = $sha; ReleaseExists = $true; ExistingReleaseTag = 'v2.0.0'; ExistingReleaseName = 'Product 2.0.0'; ExistingReleaseIsPrerelease = $false; ExistingReleaseNotes = 'wrong' }).Ok) 'Contradictory Release must fail.'
+    # Exercise the real central contract without network access or publishing.
+    $central = Join-Path $temp 'central-contract'; New-Item -ItemType Directory -Path $central | Out-Null
+    $profile = Get-Content -LiteralPath (Join-Path $root '.repository-standards.json') -Raw | ConvertFrom-Json
+    foreach ($relative in @('.repository-standards.json','CHANGELOG.md',$profile.releaseGovernance.workflowPath) + @($profile.releaseGovernance.versionSources.path)) {
+        $destination = Join-Path $central $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $root $relative) -Destination $destination
+    }
+    @($profile.releaseGovernance.requiredGates | ForEach-Object { [ordered]@{ name=$_.name; path=$_.path; status='completed'; conclusion='success' } }) | ConvertTo-Json | Set-Content (Join-Path $central checks.json)
+    @(4,5,6,7 | ForEach-Object { [ordered]@{ reference="#$_"; number=$_; type='issue'; classification=if ($_ -eq 7) { 'bug' } else { 'feature' }; targetVersion='3.2.0'; delivered=$true } }) | ConvertTo-Json | Set-Content (Join-Path $central issues.json)
+    'abc123 Adopt governed release contract' | Set-Content (Join-Path $central commits.txt)
+    $centralFixture = [pscustomobject]@{ Path=$central; Version='3.2.0' }
+    $centralPlan = Run $centralFixture @{ PreviousVersion='3.1.4' }
+    Assert ($centralPlan.Ok -and $centralPlan.Plan.action -eq 'CreateTagAndRelease') ('Central release contract should be ready. ' + $centralPlan.Error)
+    Assert ($centralPlan.Plan.releaseName -ceq '3.2.0' -and $centralPlan.Plan.tag -ceq 'v3.2.0') 'Central release identity must match the canonical version.'
+    Assert ((@($centralPlan.Plan.deliveredIssues.number | Sort-Object) -join ',') -ceq '4,5,6,7') 'Central release must cover exactly its delivered issues.'
+    Assert ((Run $centralFixture @{ PreviousVersion='3.2.0' }).Plan.action -eq 'NoRelease') 'An unchanged central version must not publish again.'
+    $centralChecks = @(Get-Content (Join-Path $central checks.json) -Raw | ConvertFrom-Json); $centralChecks[0].conclusion='failure'; $centralChecks | ConvertTo-Json | Set-Content (Join-Path $central checks.json)
+    Assert (-not (Run $centralFixture @{ PreviousVersion='3.1.4' }).Ok) 'A failed exact central gate must block release.'
+
+    # Execute the actual post-publication workflow step with a fake CLI.
+    $workflow = Get-Content -LiteralPath (Join-Path $root '.github/workflows/managed-automatic-release.yml') -Raw
+    $verification = [regex]::Match($workflow, '(?s)- name: Verify Release & Close Delivered Issues.*?run: \|\r?\n(?<body>.*?)(?=\r?\n      - name:)')
+    Assert $verification.Success 'Release verification step must be present.'
+    $body = (($verification.Groups['body'].Value -split '\r?\n' | ForEach-Object { $_ -replace '^          ', '' }) -join "`n").Replace('${{ github.sha }}', $sha)
+    $verificationStep = [scriptblock]::Create($body)
+    $baselineReleaseEvidence = @{ tagName='v3.2.0'; name='3.2.0'; isPrerelease=$false; body='verified notes'; isDraft=$false; isImmutable=$true }
+    $testPlan = @{ tag='v3.2.0'; version='3.2.0'; prerelease=$false; releaseNotes='verified notes'; deliveredIssues=@(@{type='issue';number=12},@{type='advisory';number=$null}) }
+    $testPlan | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $temp release-plan.json)
+    function gh {
+        $global:LASTEXITCODE=0
+        if ($args[0] -eq 'api' -and $args[1] -match '/git/ref/') { return (@{object=@{type='tag';sha=$other}} | ConvertTo-Json -Depth 4) }
+        if ($args[0] -eq 'api' -and $args[1] -match '/git/tags/') { $global:LASTEXITCODE=$script:tagExit; return (@{object=@{type='commit';sha=$script:tagSha}} | ConvertTo-Json -Depth 4) }
+        if ($args[0] -eq 'release') { return ($script:releaseEvidence | ConvertTo-Json) }
+        if ($args[0] -eq 'issue') { $script:closed += [int]$args[2]; return }
+        throw 'Unexpected CLI call in release verification fixture.'
+    }
+    Push-Location $temp
+    try {
+        foreach ($case in @('immutable','draft','mutable','wrong-tag','tag-api-failure')) {
+            $script:closed=@(); $script:tagSha=$sha; $script:tagExit=0; $script:releaseEvidence=$baselineReleaseEvidence.Clone()
+            if ($case -eq 'draft') { $script:releaseEvidence.isDraft=$true }
+            if ($case -eq 'mutable') { $script:releaseEvidence.isImmutable=$false }
+            if ($case -eq 'wrong-tag') { $script:tagSha=$other }
+            if ($case -eq 'tag-api-failure') { $script:tagExit=1 }
+            $accepted=$true; try { & $verificationStep } catch { $accepted=$false }
+            if ($case -eq 'immutable') { Assert ($accepted -and ($script:closed -join ',') -ceq '12') 'A verified immutable Release should close delivered issues only.' }
+            else { Assert (-not $accepted -and $script:closed.Count -eq 0) "Unsafe Release evidence must prevent issue closure: $case" }
+        }
+    } finally { Pop-Location; Remove-Item Function:gh }
     Write-Host "$passed assertions passed."
 } finally { if (Test-Path $temp) { Remove-Item $temp -Recurse -Force } }

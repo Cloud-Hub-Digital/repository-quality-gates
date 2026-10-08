@@ -90,7 +90,7 @@ jobs:
           $arguments = @{ RepositoryRoot='.'; CommitSha='${{ github.sha }}'; RemoteMainSha=(Get-Content remote-main.txt -Raw).Trim(); CheckRunsPath='./checks.json'; IssueRecordsPath='./issues.json'; PreviousVersion=(Get-Content previous-version.txt -Raw).Trim(); CommitRangePath='./commits.txt' }
           $version = ./scripts/Get-RepositoryReleaseVersion.ps1; $tag = "v$version"; git fetch --tags --force
           $tagSha = git rev-parse --verify --quiet "refs/tags/$tag^{commit}" 2>$null; if ($LASTEXITCODE -eq 0) { $arguments.TagCommitSha = ($tagSha | Select-Object -First 1).Trim() }
-          $raw = gh release view $tag --json tagName,name,isPrerelease,body 2>$null; if ($LASTEXITCODE -eq 0) { $release = $raw | ConvertFrom-Json; $arguments.ReleaseExists=$true; $arguments.ExistingReleaseTag=$release.tagName; $arguments.ExistingReleaseName=$release.name; $arguments.ExistingReleaseIsPrerelease=[bool]$release.isPrerelease; $arguments.ExistingReleaseNotes=[string]$release.body }
+          $raw = gh release view $tag --json tagName,name,isPrerelease,body,isDraft,isImmutable 2>$null; if ($LASTEXITCODE -eq 0) { $release = $raw | ConvertFrom-Json; if ($release.isDraft -or -not $release.isImmutable) { throw 'Existing Release is draft or mutable; publication stopped.' }; $arguments.ReleaseExists=$true; $arguments.ExistingReleaseTag=$release.tagName; $arguments.ExistingReleaseName=$release.name; $arguments.ExistingReleaseIsPrerelease=[bool]$release.isPrerelease; $arguments.ExistingReleaseNotes=[string]$release.body }
           $plan = ./scripts/Get-RepositoryReleasePlan.ps1 @arguments
           $plan | ConvertTo-Json -Depth 8 | Set-Content release-plan.json
           $plan.releaseNotes | Set-Content release-notes.md -NoNewline
@@ -133,8 +133,9 @@ jobs:
           $ref = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$($plan.tag)" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or [string]$ref.object.type -ne 'tag') { throw 'Remote release verification failed; no issue was closed.' }
           $remoteTag = gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$($ref.object.sha)" | ConvertFrom-Json
-          $release = gh release view $plan.tag --json tagName,name,isPrerelease,body | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or [string]$remoteTag.object.type -ne 'commit' -or [string]$remoteTag.object.sha -ne '${{ github.sha }}' -or $release.tagName -ne $plan.tag -or $release.name -ne $plan.version -or [bool]$release.isPrerelease -ne [bool]$plan.prerelease -or [string]$release.body -cne [string]$plan.releaseNotes) { throw 'Remote release verification failed; no issue was closed.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Remote tag verification failed; no issue was closed.' }
+          $release = gh release view $plan.tag --json tagName,name,isPrerelease,body,isDraft,isImmutable | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $release.isDraft -or -not $release.isImmutable -or [string]$remoteTag.object.type -ne 'commit' -or [string]$remoteTag.object.sha -ne '${{ github.sha }}' -or $release.tagName -ne $plan.tag -or $release.name -ne $plan.version -or [bool]$release.isPrerelease -ne [bool]$plan.prerelease -or [string]$release.body -cne [string]$plan.releaseNotes) { throw 'Remote release verification failed; no issue was closed.' }
           foreach ($issue in @($plan.deliveredIssues | Where-Object { $_.type -eq 'issue' -and $null -ne $_.number })) { gh issue close ([string]$issue.number) --reason completed; if ($LASTEXITCODE) { throw "Issue closure failed: #$($issue.number)" } }
 
       - name: Start Central Fleet Update

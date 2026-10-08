@@ -45,7 +45,7 @@
     {
       "path": ".github/workflows/managed-automatic-release.yml",
       "module": "release-governance",
-      "sha256": "cf5a96259a92cd77187235374b6240d022d1f907989325c9eb502fff02db5a3b"
+      "sha256": "54b9848e3eba584b48bb7cdde045e8dd0661bc47feffb84a599741b6d321391a"
     },
     {
       "path": ".github/workflows/quality-documentation.yml",
@@ -200,7 +200,7 @@
     {
       "path": ".rqg/template/modules/release-governance/payload/.github/workflows/managed-automatic-release.yml",
       "module": "module-drift",
-      "sha256": "cf5a96259a92cd77187235374b6240d022d1f907989325c9eb502fff02db5a3b"
+      "sha256": "54b9848e3eba584b48bb7cdde045e8dd0661bc47feffb84a599741b6d321391a"
     },
     {
       "path": ".rqg/template/modules/release-governance/payload/scripts/Get-RepositoryReleasePlan.ps1",

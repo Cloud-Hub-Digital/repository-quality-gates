@@ -2,7 +2,7 @@
 
 Repository Quality Gates can enrol unmanaged repositories and update its managed template across every account or organization where its GitHub App is installed, without storing a personal access token or publishing an owner inventory. The central workflow runs when a stable release is published, once each day, or when started manually. Every unmanaged repository visible to any installation is eligible unless its repository-owned rules file explicitly opts out. A downstream repository is changed only when it has no open pull requests. Each enrolment or update uses its own pull request so the downstream repository's required checks remain the merge gate, then GitHub merges the pull request automatically when those requirements pass.
 
-The central `.github/workflows/automatic-release.yml` workflow creates that stable release from `main`. It waits for Documentation Quality, Fleet Update Quality, Licence Quality, Quality Gate Module Drift, Secret Scanning, and PowerShell Quality on the exact commit. It then confirms the commit is still current, verifies one stable semantic version across the deployment engine, managed state, and changelog, creates an annotated `v<VERSION>` tag, publishes the immutable GitHub Release, and explicitly dispatches the fleet workflow described below. The explicit dispatch is required because GitHub suppresses most new workflow events created by the repository's own `GITHUB_TOKEN`.
+The central `.github/workflows/managed-automatic-release.yml` workflow creates that stable release from `main`. It waits for Documentation Quality, Fleet Update Quality, Licence Quality, Quality Gate Module Drift, Secret Scanning, and PowerShell Quality on the exact commit. It then confirms the commit is still current, verifies one stable semantic version across the deployment engine, managed state, and changelog, creates an annotated `v<VERSION>` tag, publishes the immutable GitHub Release, and explicitly dispatches the fleet workflow described below. The explicit dispatch is required because GitHub suppresses most new workflow events created by the repository's own `GITHUB_TOKEN`.
 
 When Module Drift creates a reconciliation commit, it explicitly dispatches its own `validation_only` mode alongside the other validators. That mode checks the dispatched revision with read-only repository permissions, runs reconciliation locally, and fails if any tracked or untracked change remains. It cannot commit, push, or dispatch another run. A failure to dispatch this required validation stops the originating run. The fleet updater and operator-selected clone probe are excluded from this validation dispatch.
 
@@ -183,7 +183,7 @@ Run the workflow only from an exact reviewed RQG revision. A missing digest matc
 
 ## Workflow Triggers
 
-The central `.github/workflows/automatic-release.yml` workflow runs on every push to `main` and can also be started manually. Only a stable `MAJOR.MINOR.PATCH` version can be published. Every release therefore requires a deliberate version and changelog update in the source commit, while publication itself occurs automatically after the required quality workflows pass.
+The central `.github/workflows/managed-automatic-release.yml` workflow runs on every push to `main` and can also be started manually. Only a stable `MAJOR.MINOR.PATCH` version can be published. Every release therefore requires a deliberate version and changelog update in the source commit, while publication itself occurs automatically after the required quality workflows pass.
 
 The central `.github/workflows/update-managed-repositories.yml` workflow runs:
 
@@ -240,3 +240,7 @@ This workflow updates Repository Quality Gates itself. Package updates for npm, 
 ### Preview & Apply Reports
 
 The email renderer retains separate Fleet Preview & Fleet Rollout wording for regression coverage, but operational previews remain silent. Available means an update was detected, not installed. The automatic release-triggered full-fleet apply sends one Fleet Rollout report. Controlled waves remain silent, and a final manual convergence apply sends a report only when `send_email=true`; each row records its own verified result. A successful workflow is not a claim that every repository was updated.
+
+## Central Release Governance
+
+The central repository adopts the same schema-3 release contract as managed downstream products. Its managed workflow is the sole automatic publisher on `main`; the legacy `automatic-release.yml` path is a manual compatibility entry point that calls the managed workflow. Canonical version sources, a dated changelog, classified issue milestones, exact required gates, remote tag verification, comprehensive notes, & an immutable non-draft Release must pass before delivered-issue closure or one final fleet report.

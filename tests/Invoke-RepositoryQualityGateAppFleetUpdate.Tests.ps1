@@ -5,7 +5,7 @@ Set-StrictMode -Version Latest
 $root = Split-Path -Parent $PSScriptRoot
 $appFleetTool = Join-Path $root 'scripts\Invoke-RepositoryQualityGateAppFleetUpdate.ps1'
 $fleetWorkflow = Join-Path $root '.github\workflows\update-managed-repositories.yml'
-$automaticReleaseWorkflow = Join-Path $root '.github\workflows\automatic-release.yml'
+$automaticReleaseWorkflow = Join-Path $root '.github\workflows\managed-automatic-release.yml'
 $cloneProbeWorkflow = Join-Path $root '.github\workflows\github-app-clone-probe.yml'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('rqg-app-fleet-tests-' + [guid]::NewGuid().ToString('N'))
 $passed = 0
