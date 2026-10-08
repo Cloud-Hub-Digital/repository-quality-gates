@@ -121,6 +121,27 @@ try {
         Commit-Fixture $centralCheckout 'committed central payload'
         & git -C $centralCheckout checkout-index --force --all
         if ($LASTEXITCODE) { throw 'Central fixture checkout failed.' }
+        $centralStandards = Invoke-RepositoryStandards $centralCheckout
+        Assert-True ($centralStandards.ExitCode -eq 0) "The actual central schema-3 checkout must pass Repository Standards. $($centralStandards.Output)"
+        $centralLicence = & pwsh -NoProfile -File (Join-Path $centralCheckout 'scripts/Test-RepositoryLicence.ps1') -Repository $centralCheckout -GitHubSpdxId MIT -RepositoryVisibility Public 2>&1
+        Assert-True ($LASTEXITCODE -eq 0) "The actual central schema-3 checkout must pass licence validation. $($centralLicence -join "`n")"
+        $profilePath = Join-Path $centralCheckout '.repository-standards.json'
+        $originalProfile = [IO.File]::ReadAllBytes($profilePath)
+        try {
+            $profile = Get-Content -LiteralPath $profilePath -Raw | ConvertFrom-Json
+            $profile.issueGovernance.recordRequired = $false
+            $profile | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $profilePath
+            Assert-True ((Invoke-RepositoryStandards $centralCheckout).ExitCode -ne 0) 'Schema-3 acceptance must not allow incomplete issue governance.'
+            $profile.issueGovernance.recordRequired = $true
+            $profile.schemaVersion = 2
+            $profile | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $profilePath
+            Assert-True ((Invoke-RepositoryStandards $centralCheckout).ExitCode -ne 0) 'Schema-2 profiles must not silently accept schema-3 properties.'
+            $profile.schemaVersion = 4
+            $profile | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $profilePath
+            Assert-True ((Invoke-RepositoryStandards $centralCheckout).ExitCode -ne 0) 'Unsupported future standards schemas must fail closed.'
+            $futureLicence = & pwsh -NoProfile -File (Join-Path $centralCheckout 'scripts/Test-RepositoryLicence.ps1') -Repository $centralCheckout -GitHubSpdxId MIT -RepositoryVisibility Public 2>&1
+            Assert-True ($LASTEXITCODE -ne 0) 'Unsupported future licence schemas must fail closed.'
+        } finally { [IO.File]::WriteAllBytes($profilePath, $originalProfile) }
         $first = Invoke-AutomaticReconciliation $centralCheckout
         if ($first.ExitCode) { throw "Central reconciliation failed. $($first.Output)" }
         $firstChanges = @(git -C $centralCheckout status --porcelain)

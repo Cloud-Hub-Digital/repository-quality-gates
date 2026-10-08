@@ -34,7 +34,7 @@ if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { throw 'The requi
 try { $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json }
 catch { throw 'The .repository-standards.json file is invalid JSON.' }
 
-if ($config.schemaVersion -ne 2) { Add-Failure $failures 'The repository-standards schema must be version 2.' }
+if ($config.schemaVersion -notin @(2, 3)) { Add-Failure $failures 'The repository-standards schema must be version 2 or 3.' }
 if (-not $config.PSObject.Properties['licence'] -or $null -eq $config.licence -or $config.licence -isnot [pscustomobject]) {
     Add-Failure $failures 'The approved project licence decision is missing.'
     $licence = [pscustomobject]@{}

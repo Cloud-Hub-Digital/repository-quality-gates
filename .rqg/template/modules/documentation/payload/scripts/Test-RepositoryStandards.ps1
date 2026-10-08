@@ -58,10 +58,22 @@ if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { throw 'The requi
 try { $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json }
 catch { throw 'The .repository-standards.json file is invalid JSON.' }
 
+if ($config.schemaVersion -notin @(2, 3)) { throw 'The repository-standards schema must be version 2 or 3.' }
+$allowedProperties = @('schemaVersion', 'profile', 'account', 'centralRepository', 'licence', 'supportRoute', 'conductRoute', 'featureExceptions')
+if ($config.schemaVersion -eq 3) { $allowedProperties += @('issueGovernance', 'releaseGovernance') }
 foreach ($property in @($config.PSObject.Properties.Name)) {
-    if ($property -notin @('schemaVersion', 'profile', 'account', 'centralRepository', 'licence', 'supportRoute', 'conductRoute', 'featureExceptions')) { throw "Unsupported repository-standards property: $property" }
+    if ($property -notin $allowedProperties) { throw "Unsupported repository-standards property: $property" }
 }
-if ($config.schemaVersion -ne 2) { throw 'The repository-standards schema must be version 2.' }
+if ($config.schemaVersion -eq 3) {
+    # Reuse the canonical managed contract validator in its read-only NoRelease path.
+    $versionTool = Join-Path $root 'scripts/Get-RepositoryReleaseVersion.ps1'
+    $plannerTool = Join-Path $root 'scripts/Get-RepositoryReleasePlan.ps1'
+    if (-not (Test-Path -LiteralPath $versionTool -PathType Leaf) -or -not (Test-Path -LiteralPath $plannerTool -PathType Leaf)) { throw 'Schema-3 release validators are missing.' }
+    $version = & $versionTool -RepositoryRoot $root
+    $placeholderSha = '0000000000000000000000000000000000000000'
+    $plan = & $plannerTool -RepositoryRoot $root -CommitSha $placeholderSha -RemoteMainSha $placeholderSha -PreviousVersion $version -CheckRunsPath (Join-Path $root 'checks.json') -IssueRecordsPath (Join-Path $root 'issues.json')
+    if ($plan.action -cne 'NoRelease') { throw 'The schema-3 release contract could not be validated without publication.' }
+}
 $profile = [string]$config.profile
 if ($profile -notin @('account-default', 'downstream')) { throw 'The repository-standards profile must be account-default or downstream.' }
 $account = [string]$config.account

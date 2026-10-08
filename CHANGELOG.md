@@ -26,6 +26,10 @@
 - Kept squash-only merging as the fleet default while preserving the approved DCC LabStation LS8 milestone merge-commit exception. (#6)
 - Adopted schema-3 issue & release governance for the central repository; keep one automatic publisher & a manual compatibility entry point. (#4)
 
+### Fixed
+
+- Accept the governed schema-3 profile in Repository Standards & licence checks while retaining schema-2 compatibility & fail-closed unknown-schema rejection; validate the real central checkout in protected regressions. (#4)
+
 ### Security
 
 - Removed a literal internal-domain test fixture from publishable source; derive negative cases from the release validator's configured deny catalogue & verify rejection for every configured domain. (#4)
