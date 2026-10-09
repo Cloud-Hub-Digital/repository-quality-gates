@@ -200,7 +200,7 @@
     {
       "path": ".rqg/template/modules/release-governance/payload/.github/workflows/managed-automatic-release.yml",
       "module": "module-drift",
-      "sha256": "fb08b35e5236ee7df0beff5046b1581bf8ecd8dff232943a8b6a077b5142e21a"
+      "sha256": "799528e3a445a382686c5c264311c8a1e0056f448c2505155cac61dba9db5e01"
     },
     {
       "path": ".rqg/template/modules/release-governance/payload/scripts/Get-RepositoryReleasePlan.ps1",
