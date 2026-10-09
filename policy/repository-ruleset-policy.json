@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 2,
+  "rulesetName": "Repository Standards - Default Branch",
+  "target": "branch",
+  "enforcement": "active",
+  "default": {
+    "requiredApprovingReviewCount": 0,
+    "requireLastPushApproval": true,
+    "requireConversationResolution": true,
+    "requireCurrentStatusChecks": true,
+    "allowSquashMerge": true,
+    "allowMergeCommit": false,
+    "allowRebaseMerge": false,
+    "deleteBranchOnMerge": true,
+    "blockDeletion": true,
+    "blockForcePush": true,
+    "bypassActors": []
+  },
+  "privatePlanException": {
+    "id": "RQG-PRIVATE-PLAN-001",
+    "action": "defer-until-supported-or-public"
+  },
+  "repositoryFeatures": {
+    "issues": true,
+    "discussions": false,
+    "wiki": false,
+    "pages": false,
+    "requiredIssueTemplates": [
+      ".github/ISSUE_TEMPLATE/bug_report.yml",
+      ".github/ISSUE_TEMPLATE/feature_request.yml",
+      ".github/ISSUE_TEMPLATE/question.yml",
+      ".github/ISSUE_TEMPLATE/config.yml"
+    ],
+    "exceptionSource": ".repository-standards.json"
+  },
+  "repositoryExceptions": [
+    {
+      "id": "RS-ADR-021-DCC",
+      "repository": "terryrogers/DCC_LabStation_LS8",
+      "allowMergeCommit": true
+    }
+  ]
+}

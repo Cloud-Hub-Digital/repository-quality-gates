@@ -70,6 +70,20 @@ function Update-WorkflowRunnerRouting([string]$RepositoryRoot) {
     }
 }
 
+function Update-RepositorySupportRoute([string]$RepositoryRoot) {
+    $profilePath = Join-Path $RepositoryRoot '.repository-standards.json'
+    if (-not (Test-Path -LiteralPath $profilePath -PathType Leaf)) { return }
+    try { $profile = Get-Content -LiteralPath $profilePath -Raw | ConvertFrom-Json }
+    catch { throw 'The repository standards profile is invalid JSON and its support route cannot be migrated.' }
+    if (-not $profile.PSObject.Properties['supportRoute']) { throw 'The repository standards profile does not define a supportRoute.' }
+    $currentRoute = [string]$profile.supportRoute
+    if ($currentRoute -eq 'github-issues') { return }
+    if ($currentRoute -ne 'github-discussions') { throw "The repository supportRoute '$currentRoute' cannot be migrated automatically." }
+    $profile.supportRoute = 'github-issues'
+    $profileJson = ($profile | ConvertTo-Json -Depth 12).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"
+    [IO.File]::WriteAllText($profilePath, $profileJson, [Text.UTF8Encoding]::new($false))
+}
+
 $inputPath = [IO.Path]::GetFullPath($RepositoryPath)
 $rootOutput = @(& git -C $inputPath rev-parse --show-toplevel 2>&1)
 if ($LASTEXITCODE -ne 0) { throw 'The target is not inside a Git repository.' }
@@ -93,6 +107,16 @@ $result = [ordered]@{
     targetVersion = $TargetVersion
     selectedModules = @()
     changedPaths = @()
+}
+
+$lifecycleLibrary = Join-Path ([IO.Path]::GetFullPath($TemplateRoot)) 'scripts/RepositoryQualityGates.Lifecycle.ps1'
+. $lifecycleLibrary
+$localRules = if (Test-Path -LiteralPath $rulesPath -PathType Leaf) { Get-Content -LiteralPath $rulesPath -Raw | ConvertFrom-Json } else { $null }
+if (-not (Get-RqgLifecycleEnabled $localRules)) {
+    $deactivation = Invoke-RqgDeactivation -RepositoryRoot $repositoryRoot -TemplateRoot ([IO.Path]::GetFullPath($TemplateRoot)) -Apply:$Apply
+    $result.status = $deactivation.status; $result.changedPaths = @($deactivation.changedPaths)
+    Write-Result $result
+    return
 }
 
 $isManaged = Test-Path -LiteralPath $statePath -PathType Leaf
@@ -207,6 +231,7 @@ if ($migrateRepositoryRules) {
 # GitHub-hosted selectors stay the public and fork-pull-request fallback while
 # trusted private events use the repository's configured runner labels.
 Update-WorkflowRunnerRouting -RepositoryRoot $repositoryRoot
+Update-RepositorySupportRoute -RepositoryRoot $repositoryRoot
 
 $powerShellHost = Get-Command pwsh -ErrorAction SilentlyContinue
 if (-not $powerShellHost) { throw 'PowerShell 7 (pwsh) is required to update Repository Quality Gates.' }

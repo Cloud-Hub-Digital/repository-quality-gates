@@ -32,11 +32,27 @@ jobs:
       - name: Verify Reconciliation Is Idempotent
         shell: pwsh
         run: |
+          Write-Host "Reconciliation runtime: PowerShell $($PSVersionTable.PSVersion); culture $([Globalization.CultureInfo]::CurrentCulture.Name)"
+          git --version
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect Git runtime.' }
+          $beforeChanges = @(git status --porcelain)
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect initial checkout state.' }
+          if ($beforeChanges.Count) {
+            Write-Host ($beforeChanges -join "`n")
+            throw 'Validation checkout was already dirty; release stopped.'
+          }
+          $beforeStateHash = (Get-FileHash -LiteralPath .repository-quality-gates.json -Algorithm SHA256).Hash
           ./scripts/Invoke-AutomaticQualityGateReconciliation.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Reconciled commit validation failed.' }
           $changes = @(git status --porcelain)
           if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect reconciled commit state.' }
-          if ($changes.Count) { throw 'Reconciliation changed the validated commit; release stopped.' }
+          if ($changes.Count) {
+            Write-Host 'Changed paths after reconciliation:'
+            Write-Host ($changes -join "`n")
+            $afterStateHash = (Get-FileHash -LiteralPath .repository-quality-gates.json -Algorithm SHA256).Hash
+            Write-Host "Managed-state SHA-256 before: $beforeStateHash; after: $afterStateHash"
+            throw 'Reconciliation changed the validated commit; release stopped.'
+          }
 
   report:
     name: Report Required Quality Gates

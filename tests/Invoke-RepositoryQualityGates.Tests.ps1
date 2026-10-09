@@ -55,8 +55,14 @@ function Add-RepositoryStandardCore([string]$Path, [string]$Profile, [string]$Ac
 '@ | Set-Content -LiteralPath (Join-Path $Path 'AGENTS.md') -Encoding utf8
     "* @$Account" | Set-Content -LiteralPath (Join-Path $Path '.github\CODEOWNERS') -Encoding utf8
     "version: 2`nupdates:`n  - package-ecosystem: github-actions`n    directory: '/'`n    schedule:`n      interval: weekly" | Set-Content -LiteralPath (Join-Path $Path '.github\dependabot.yml') -Encoding utf8
-    $config = [ordered]@{ schemaVersion = 2; profile = $Profile; account = $Account; centralRepository = "https://github.com/$Account/.github"; licence = [ordered]@{ class = 'open-source'; identifier = 'MIT'; rightsHolder = 'Example Owner'; decisionStatus = 'approved'; templateVersion = $null; overrideReason = $null }; supportRoute = 'github-discussions'; conductRoute = 'confidential-email' }
+    $config = [ordered]@{ schemaVersion = 2; profile = $Profile; account = $Account; centralRepository = "https://github.com/$Account/.github"; licence = [ordered]@{ class = 'open-source'; identifier = 'MIT'; rightsHolder = 'Example Owner'; decisionStatus = 'approved'; templateVersion = $null; overrideReason = $null }; supportRoute = 'github-issues'; conductRoute = 'confidential-email' }
     ($config | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath (Join-Path $Path '.repository-standards.json') -Encoding utf8
+    if ($Profile -eq 'downstream') {
+        foreach ($issuePath in @('.github/ISSUE_TEMPLATE/bug_report.yml','.github/ISSUE_TEMPLATE/feature_request.yml','.github/ISSUE_TEMPLATE/question.yml','.github/ISSUE_TEMPLATE/config.yml')) {
+            $fullPath = Join-Path $Path $issuePath
+            "# repository-standard: schema=1; standard=Repository Standards; version=1.2.0; source=Repository Quality Gates; scope=local-required; override=local-file`nname: Test" | Set-Content -LiteralPath $fullPath -Encoding utf8
+        }
+    }
 }
 
 function Invoke-DriftCheck([string]$Repository, [string[]]$Arguments = @()) {
@@ -97,6 +103,82 @@ function Commit-Fixture([string]$Path, [string]$Message = 'fixture') {
 
 try {
     New-Item -ItemType Directory -Path $testRoot | Out-Null
+
+    # Exercise the committed central payload, not only a newly deployed fixture.
+    # The diagnostic diff must remain visible when an all-Unchanged plan dirties Git.
+    $centralReconciliationFailures = [Collections.Generic.List[string]]::new()
+    foreach ($checkoutStyle in @('false', 'true')) {
+        $centralCheckout = New-Fixture ("central-reconciliation-$checkoutStyle")
+        & git -C $centralCheckout config core.autocrlf $checkoutStyle
+        & git -C $centralCheckout config core.hooksPath '.git/hooks'
+        foreach ($sourceFile in @(Get-ChildItem -LiteralPath $projectRoot -Recurse -Force -File)) {
+            $relative = [IO.Path]::GetRelativePath($projectRoot, $sourceFile.FullName).Replace('\', '/')
+            if ($relative -eq '.git' -or $relative.StartsWith('.git/') -or $relative.StartsWith('.tools/')) { continue }
+            $target = Join-Path $centralCheckout $relative
+            New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+            Copy-Item -LiteralPath $sourceFile.FullName -Destination $target
+        }
+        Commit-Fixture $centralCheckout 'committed central payload'
+        & git -C $centralCheckout checkout-index --force --all
+        if ($LASTEXITCODE) { throw 'Central fixture checkout failed.' }
+        $centralStandards = Invoke-RepositoryStandards $centralCheckout
+        Assert-True ($centralStandards.ExitCode -eq 0) "The actual central schema-3 checkout must pass Repository Standards. $($centralStandards.Output)"
+        $centralLicence = & pwsh -NoProfile -File (Join-Path $centralCheckout 'scripts/Test-RepositoryLicence.ps1') -Repository $centralCheckout -GitHubSpdxId MIT -RepositoryVisibility Public 2>&1
+        Assert-True ($LASTEXITCODE -eq 0) "The actual central schema-3 checkout must pass licence validation. $($centralLicence -join "`n")"
+        $profilePath = Join-Path $centralCheckout '.repository-standards.json'
+        $originalProfile = [IO.File]::ReadAllBytes($profilePath)
+        try {
+            $profile = Get-Content -LiteralPath $profilePath -Raw | ConvertFrom-Json
+            $profile.issueGovernance.recordRequired = $false
+            $profile | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $profilePath
+            Assert-True ((Invoke-RepositoryStandards $centralCheckout).ExitCode -ne 0) 'Schema-3 acceptance must not allow incomplete issue governance.'
+            $profile.issueGovernance.recordRequired = $true
+            $profile.schemaVersion = 2
+            $profile | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $profilePath
+            Assert-True ((Invoke-RepositoryStandards $centralCheckout).ExitCode -ne 0) 'Schema-2 profiles must not silently accept schema-3 properties.'
+            $profile.schemaVersion = 4
+            $profile | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $profilePath
+            Assert-True ((Invoke-RepositoryStandards $centralCheckout).ExitCode -ne 0) 'Unsupported future standards schemas must fail closed.'
+            $futureLicence = & pwsh -NoProfile -File (Join-Path $centralCheckout 'scripts/Test-RepositoryLicence.ps1') -Repository $centralCheckout -GitHubSpdxId MIT -RepositoryVisibility Public 2>&1
+            Assert-True ($LASTEXITCODE -ne 0) 'Unsupported future licence schemas must fail closed.'
+        } finally { [IO.File]::WriteAllBytes($profilePath, $originalProfile) }
+        $first = Invoke-AutomaticReconciliation $centralCheckout
+        if ($first.ExitCode) { throw "Central reconciliation failed. $($first.Output)" }
+        $firstChanges = @(git -C $centralCheckout status --porcelain)
+        if ($firstChanges.Count) {
+            Write-Host "Central first-run changes (core.autocrlf=$checkoutStyle): $($firstChanges -join '; ')"
+            Write-Host ((git -C $centralCheckout diff -- .repository-quality-gates.json .gitignore) -join "`n")
+            & git -C $centralCheckout add --all
+            if ($LASTEXITCODE) { throw 'Unable to stage central reconciliation fixture.' }
+            $stagedChanges = @(git -C $centralCheckout diff --cached --name-only)
+            if ($LASTEXITCODE) { throw 'Unable to inspect staged reconciliation fixture.' }
+            if ($stagedChanges.Count) { Commit-Fixture $centralCheckout 'reconciled central payload' }
+        }
+        $centralStatePath = Join-Path $centralCheckout '.repository-quality-gates.json'
+        $stateText = [IO.File]::ReadAllText($centralStatePath).Replace("`r`n", "`n")
+        if ($checkoutStyle -eq 'true') { $stateText = $stateText.Replace("`n", "`r`n") }
+        [IO.File]::WriteAllText($centralStatePath, $stateText, [Text.UTF8Encoding]::new($false))
+        [IO.File]::SetLastWriteTimeUtc($centralStatePath, [datetime]::new(2001, 1, 1, 0, 0, 0, [DateTimeKind]::Utc))
+        & git -C $centralCheckout add -- .repository-quality-gates.json
+        if ($LASTEXITCODE) { throw 'Unable to refresh central fixture index.' }
+        $newlineBaselineChanges = @(git -C $centralCheckout diff --cached --name-only)
+        if ($LASTEXITCODE) { throw 'Unable to inspect newline fixture baseline.' }
+        if ($newlineBaselineChanges.Count) { Commit-Fixture $centralCheckout 'committed newline baseline' }
+        Assert-True (@(git -C $centralCheckout status --porcelain).Count -eq 0) 'The equivalent newline fixture must start clean.'
+        $beforeStateBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($centralStatePath))
+        $beforeStateTimestamp = [IO.File]::GetLastWriteTimeUtc($centralStatePath)
+        $second = Invoke-AutomaticReconciliation $centralCheckout
+        if ($second.ExitCode) { throw "Repeated central reconciliation failed. $($second.Output)" }
+        Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($centralStatePath)) -ceq $beforeStateBytes) 'Equivalent reconciliation must preserve LF or CRLF state bytes.'
+        Assert-True ([IO.File]::GetLastWriteTimeUtc($centralStatePath) -eq $beforeStateTimestamp) 'Equivalent reconciliation must not rewrite the state file.'
+        $secondChanges = @(git -C $centralCheckout status --porcelain)
+        if ($secondChanges.Count) {
+            $centralReconciliationFailures.Add("core.autocrlf=$checkoutStyle : $($secondChanges -join '; ')")
+            Write-Host "Central second-run changes (core.autocrlf=$checkoutStyle): $($secondChanges -join '; ')"
+            Write-Host ((git -C $centralCheckout diff -- .repository-quality-gates.json .gitignore) -join "`n")
+        }
+    }
+    Assert-True ($centralReconciliationFailures.Count -eq 0) ("Committed central reconciliation must be idempotent. " + ($centralReconciliationFailures -join ' | '))
 
     . (Join-Path $projectRoot 'scripts/RepositoryQualityGates.Detection.ps1')
     $casing = New-Fixture 'managed-index-casing'
@@ -152,6 +234,7 @@ try {
     $previewJson = $preview.Output | ConvertFrom-Json
     Assert-True ($previewJson.selectedModules -contains 'secret-scanning') 'Universal secret scanning should be selected.'
     Assert-True ($previewJson.selectedModules -contains 'licensing') 'Universal RQG licensing attribution should be selected.'
+    Assert-True ($previewJson.selectedModules -contains 'release-governance') 'Universal governed release automation should be selected.'
     Assert-True ($previewJson.selectedModules -contains 'node') 'Node should be detected.'
     Assert-True ($previewJson.selectedModules -contains 'powershell') 'PowerShell should be detected.'
     Assert-True ($previewJson.selectedModules -contains 'python') 'Script-only Python should be detected.'
@@ -205,13 +288,25 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-php.yml')) 'The PHP workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-shell.yml')) 'The shell workflow should be deployed.'
     Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\quality-module-drift.yml')) 'The automatic module-drift workflow should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed '.github\workflows\managed-automatic-release.yml')) 'The governed automatic-release workflow should be deployed universally.'
+    Assert-True (Test-Path -LiteralPath (Join-Path $mixed 'scripts\Get-RepositoryReleasePlan.ps1')) 'The governed release planner should be deployed universally.'
+    $governedReleaseWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\managed-automatic-release.yml'))
+    Assert-True ($governedReleaseWorkflow.Contains('security-advisories')) 'The governed release workflow should verify confidential GitHub advisory authority.'
+    Assert-True ($governedReleaseWorkflow.Contains('Main changed after validation; release stopped.')) 'The governed release workflow should recheck main immediately before creating an immutable tag.'
+    Assert-True ($governedReleaseWorkflow.Contains('git/ref/tags/${{ steps.plan.outputs.tag }}')) 'The governed release workflow should verify the authoritative remote tag immediately after pushing it.'
+    Assert-True ($governedReleaseWorkflow.Contains('git/ref/tags/$($plan.tag)')) 'The governed release workflow should verify the authoritative remote tag again before closing issues.'
+    Assert-True ($governedReleaseWorkflow.Contains("Where-Object { `$_.type -eq 'issue'")) 'The governed release workflow should never close advisory records.'
     $moduleDriftWorkflow = [IO.File]::ReadAllText((Join-Path $mixed '.github\workflows\quality-module-drift.yml'))
     Assert-True ($moduleDriftWorkflow.Contains("if: github.ref_type == 'branch'")) 'Automatic reconciliation should be restricted to branch references and must not mutate tag checkouts.'
     Assert-True ($moduleDriftWorkflow.Contains("'quality-module-drift', 'update-managed-repositories'")) 'Generic dispatch must exclude module-drift and the central fleet; module-drift uses its separate validation-only dispatch.'
     Assert-True ($moduleDriftWorkflow.Contains("steps.commit_reconciliation.outputs.reconciled == 'true'")) 'Validation dispatch must require an explicit successful reconciliation output.'
     Assert-True ($moduleDriftWorkflow.Contains('-f validation_only=true')) 'A reconciliation child must receive its own module-drift validation.'
     Assert-True ($moduleDriftWorkflow.Contains("&& !inputs.validation_only")) 'Validation-only dispatch must never enter the committing reconciliation job.'
-    Assert-True ($moduleDriftWorkflow.Contains('if ($changes.Count) { throw')) 'A validation-only run must reject non-idempotent reconciliation.'
+    Assert-True ($moduleDriftWorkflow.Contains('Validation checkout was already dirty; release stopped.')) 'Validation must reject an initially dirty checkout.'
+    Assert-True ($moduleDriftWorkflow.Contains('Changed paths after reconciliation:')) 'A dirty reconciled checkout must report its changed paths.'
+    Assert-True ($moduleDriftWorkflow.Contains('Managed-state SHA-256 before:')) 'Reconciliation failure diagnostics must include state hashes without file contents.'
+    Assert-True ($moduleDriftWorkflow.Contains('Reconciliation changed the validated commit; release stopped.')) 'Diagnostics must preserve the fail-closed reconciliation gate.'
+    Assert-True ($moduleDriftWorkflow -match '(?s)if \(\$changes\.Count\) \{[^}]*throw ''Reconciliation changed the validated commit; release stopped.''') 'A validation-only run must reject non-idempotent reconciliation.'
     Assert-True ($moduleDriftWorkflow.Contains("'github-app-clone-probe'")) 'Automatic reconciliation must not dispatch the operator-selected clone probe.'
     Assert-True ($moduleDriftWorkflow.Contains('git diff --cached --name-only')) 'The reconciliation decision must use the staged Git index instead of runner-specific status output.'
     Assert-True (Test-Path -LiteralPath (Join-Path $projectRoot '.github\workflows\update-managed-repositories.yml')) 'The central template should provide a fleet-update workflow.'
@@ -226,8 +321,8 @@ try {
     Assert-True ($fleetWorkflow.Contains('PUBLISHED_RELEASE_TAG: ${{ github.event.release.tag_name }}')) 'Release-event fleet runs should use the exact published release tag.'
     Assert-True ($fleetWorkflow.Contains('gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,isDraft,isPrerelease')) 'The fleet workflow should verify its selected tag against the explicit central repository before checkout.'
     $automaticReleaseWorkflow = [IO.File]::ReadAllText((Join-Path $projectRoot '.github\workflows\automatic-release.yml'))
-    Assert-True ($automaticReleaseWorkflow.Contains("- '**/*.md'")) 'Markdown-only pushes should not start an automatic stable release.'
-    Assert-True ($automaticReleaseWorkflow.Contains("- 'docs/**'")) 'Documentation-folder-only pushes should not start an automatic stable release.'
+    Assert-True ($automaticReleaseWorkflow.Contains("uses: ./.github/workflows/managed-automatic-release.yml")) 'The compatibility entry point must delegate to the governed publisher.'
+    Assert-True (-not ($automaticReleaseWorkflow -match '(?m)^  push:')) 'The compatibility entry point must not duplicate the automatic publisher.'
     $fleetScript = [IO.File]::ReadAllText((Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateFleetUpdate.ps1'))
     $appFleetScript = [IO.File]::ReadAllText((Join-Path $projectRoot 'scripts\Invoke-RepositoryQualityGateAppFleetUpdate.ps1'))
     Assert-True ($appFleetScript.Contains("OutputFormat = 'Json'")) 'Cross-owner fleet runs should retain complete structured per-repository diagnostics.'
@@ -427,17 +522,23 @@ try {
     $licensingOwnedPreview = Invoke-Tool $licensingOwned @('-OutputFormat', 'Json')
     Assert-True ($licensingOwnedPreview.ExitCode -ne 0) 'Repository rules must not suppress universal RQG licensing attribution.'
 
+    $releaseOwned = New-Fixture 'release-governance-repository-owned'
+    '{"schemaVersion":1,"modules":{"repositoryOwned":["release-governance"]}}' | Set-Content -LiteralPath (Join-Path $releaseOwned '.repository-quality-gates.local.json')
+    Commit-Fixture $releaseOwned
+    $releaseOwnedPreview = Invoke-Tool $releaseOwned @('-OutputFormat', 'Json')
+    Assert-True ($releaseOwnedPreview.ExitCode -ne 0) 'Repository rules must not suppress universal governed release automation.'
+
     $invalidEnrollmentRule = New-Fixture 'invalid-enrollment-rule'
     $invalidEnrollmentRulesText = @'
 {
   "schemaVersion": 1,
-  "automaticEnrollment": "false"
+  "rqgEnabled": "false"
 }
 '@
     [IO.File]::WriteAllText((Join-Path $invalidEnrollmentRule '.repository-quality-gates.local.json'), $invalidEnrollmentRulesText.Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n", [Text.UTF8Encoding]::new($false))
     Commit-Fixture $invalidEnrollmentRule
     $invalidEnrollmentPreview = Invoke-Tool $invalidEnrollmentRule @('-OutputFormat', 'Json')
-    Assert-True ($invalidEnrollmentPreview.ExitCode -ne 0) 'The automaticEnrollment repository rule must be a Boolean.'
+    Assert-True ($invalidEnrollmentPreview.ExitCode -ne 0) 'The rqgEnabled repository rule must be a Boolean.'
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidEnrollmentRule '.repository-quality-gates.json'))) 'An invalid automatic-enrolment rule must not create managed state.'
 
     $validCorrelationRule = New-Fixture 'valid-correlation-rule'
@@ -472,7 +573,7 @@ try {
 
     $centralStandards = New-Fixture 'central-repository-standards'
     Add-RepositoryStandardCore $centralStandards 'account-default' 'example-owner'
-    $centralSupported = @('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SUPPORT.md', 'SECURITY.md', '.github/PULL_REQUEST_TEMPLATE.md', '.github/ISSUE_TEMPLATE/bug_report.yml', '.github/ISSUE_TEMPLATE/feature_request.yml', '.github/ISSUE_TEMPLATE/config.yml')
+    $centralSupported = @('CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SUPPORT.md', 'SECURITY.md', '.github/PULL_REQUEST_TEMPLATE.md', '.github/ISSUE_TEMPLATE/bug_report.yml', '.github/ISSUE_TEMPLATE/feature_request.yml', '.github/ISSUE_TEMPLATE/question.yml', '.github/ISSUE_TEMPLATE/config.yml')
     foreach ($path in $centralSupported) {
         $fullPath = Join-Path $centralStandards $path
         New-Item -ItemType Directory -Path (Split-Path -Parent $fullPath) -Force | Out-Null
@@ -490,9 +591,15 @@ try {
     $downstreamStandardsResult = Invoke-RepositoryStandards $downstreamStandards
     Assert-True ($downstreamStandardsResult.ExitCode -eq 0) "A downstream repository should inherit absent supported defaults. $($downstreamStandardsResult.Output)"
     $downstreamJson = $downstreamStandardsResult.Output | ConvertFrom-Json
-    Assert-True (@($downstreamJson.inherited).Count -eq 8) 'A downstream repository with no overrides should report all eight supported files as inherited.'
+    Assert-True (@($downstreamJson.inherited).Count -eq 5) 'A downstream repository should report only the five non-issue supported files as inherited.'
     $standardsConfigPath = Join-Path $downstreamStandards '.repository-standards.json'
     $originalStandardsConfig = [IO.File]::ReadAllText($standardsConfigPath)
+    $legacySupportConfig = $originalStandardsConfig | ConvertFrom-Json
+    $legacySupportConfig.supportRoute = 'github-discussions'
+    $legacySupportConfig | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $standardsConfigPath -Encoding utf8
+    $legacySupportResult = Invoke-RepositoryStandards $downstreamStandards
+    Assert-True ($legacySupportResult.ExitCode -ne 0) 'A disabled Discussions support route must fail the repository-standard gate.'
+    [IO.File]::WriteAllText($standardsConfigPath, $originalStandardsConfig, [Text.UTF8Encoding]::new($false))
     $overrideConfig = $originalStandardsConfig | ConvertFrom-Json
     $overrideConfig.licence.identifier = 'GPL-3.0-only'
     $overrideConfig.licence.overrideReason = 'Approved local decision retaining compatible copyleft terms.'
@@ -606,14 +713,20 @@ try {
     $directHelperPattern = '& \(Join-Path \$script:RepositoryRoot ''scripts\\(?:Configure-SecretScanning|Install-Gitleaks|Test-Secrets)\.ps1''\)'
     Assert-True (-not ($deployerText -match $directHelperPattern)) 'Managed helper scripts should not be invoked directly from a network-backed checkout.'
 
+    $lifecycleOutput = & pwsh -NoProfile -File (Join-Path $projectRoot 'tests/RepositoryQualityGates.Lifecycle.Tests.ps1') 2>&1
+    Assert-True ($LASTEXITCODE -eq 0) "The lifecycle regression suite must pass. $($lifecycleOutput -join [Environment]::NewLine)"
+    $administrationOutput = & pwsh -NoProfile -File (Join-Path $projectRoot 'tests/Invoke-RepositoryRulesetEngine.Tests.ps1') 2>&1
+    Assert-True ($LASTEXITCODE -eq 0) "The administration regression suite must pass. $($administrationOutput -join [Environment]::NewLine)"
+    $releasePlannerOutput = & pwsh -NoProfile -File (Join-Path $projectRoot 'tests/Get-RepositoryReleasePlan.Tests.ps1') 2>&1
+    Assert-True ($LASTEXITCODE -eq 0) "The governed release planner regression suite must pass. $($releasePlannerOutput -join [Environment]::NewLine)"
     $versionOutput = & pwsh -NoProfile -File $scriptPath -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The version interface should succeed without a repository path.'
-    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 3.1.4')) 'The version interface should report the canonical version.'
+    Assert-True (($versionOutput -join "`n").Contains('Repository Quality Gates 3.2.0')) 'The version interface should report the canonical version.'
     Assert-True (($versionOutput -join "`n").Contains('https://github.com/Cloud-Hub-Digital/repository-quality-gates')) 'The version interface should report the authoritative organization-owned repository.'
     $embeddedVersionOutput = & pwsh -NoProfile -File (Join-Path $projectRoot '.rqg\template\scripts\Invoke-RepositoryQualityGates.ps1') -Version 2>&1
     Assert-True ($LASTEXITCODE -eq 0) 'The embedded deployment engine version interface should succeed.'
-    Assert-True (($embeddedVersionOutput -join "`n").Contains('Repository Quality Gates 3.1.4')) 'The embedded deployment engine should match the canonical release version.'
-    Assert-True ((Get-Content -LiteralPath (Join-Path $projectRoot '.repository-quality-gates.json') -Raw | ConvertFrom-Json).templateVersion -eq '3.1.4') 'The central managed state should match the canonical release version.'
+    Assert-True (($embeddedVersionOutput -join "`n").Contains('Repository Quality Gates 3.2.0')) 'The embedded deployment engine should match the canonical release version.'
+    Assert-True ((Get-Content -LiteralPath (Join-Path $projectRoot '.repository-quality-gates.json') -Raw | ConvertFrom-Json).templateVersion -eq '3.2.0') 'The central managed state should match the canonical release version.'
 
     $sourceModuleRoot = Join-Path $projectRoot 'modules'
     $embeddedModuleRoot = Join-Path $projectRoot '.rqg\template\modules'

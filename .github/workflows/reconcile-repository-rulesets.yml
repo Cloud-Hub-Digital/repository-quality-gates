@@ -1,0 +1,45 @@
+name: Reconcile Repository Rulesets
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Audit only, or apply & verify the approved ruleset policy.
+        required: true
+        default: audit
+        type: choice
+        options: [audit, apply]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-ruleset-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Audit Or Reconcile Repository Rulesets
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Ruleset Engine
+        shell: pwsh
+        env:
+          RQG_APP_ID: ${{ vars.RQG_APP_ID }}
+          RQG_APP_PRIVATE_KEY: ${{ secrets.RQG_APP_PRIVATE_KEY }}
+          RQG_RULESET_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'audit' }}
+        run: |
+          if ($env:RQG_RULESET_MODE -notin @('audit', 'apply')) { throw 'Invalid ruleset reconciliation mode.' }
+          $resultPath = Join-Path $env:RUNNER_TEMP 'ruleset-reconciliation.json'
+          ./scripts/Invoke-RepositoryRulesetAppFleet.ps1 -Apply:($env:RQG_RULESET_MODE -eq 'apply') -ResultPath $resultPath
+          $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+          if ($env:RQG_RULESET_MODE -eq 'audit' -and $result.nonCompliant -gt 0) {
+            Write-Warning "$($result.nonCompliant) public or supported repositories require ruleset reconciliation. Run this workflow explicitly in apply mode after review."
+          }

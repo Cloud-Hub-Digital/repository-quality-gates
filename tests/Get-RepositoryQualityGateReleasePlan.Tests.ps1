@@ -54,7 +54,7 @@ function Invoke-Plan([string]$Fixture, [hashtable]$Extra = @{}) {
 
 try {
     $workflowText = Get-Content -LiteralPath (Join-Path $root '.github\workflows\automatic-release.yml') -Raw
-    Assert-True ($workflowText.Contains('ConvertTo-Json -InputObject @()')) 'A stale release run should write a valid empty workflow-result document.'
+    Assert-True ($workflowText.Contains('uses: ./.github/workflows/managed-automatic-release.yml')) 'The central entry point must use the governed publisher.'
 
     $fixture = Write-Fixture -IncludeChangelog
     $result = Invoke-Plan $fixture

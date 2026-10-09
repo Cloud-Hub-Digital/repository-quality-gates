@@ -30,6 +30,15 @@ $arguments = @{
     OutputFormat = $OutputFormat
 }
 $rulesPath = Join-Path $repositoryRoot '.repository-quality-gates.local.json'
+if (Test-Path -LiteralPath $rulesPath -PathType Leaf) {
+    $rules = Get-Content -LiteralPath $rulesPath -Raw | ConvertFrom-Json
+    . (Join-Path $repositoryRoot '.rqg/template/scripts/RepositoryQualityGates.Lifecycle.ps1')
+    if (-not (Get-RqgLifecycleEnabled $rules)) {
+        $result = [pscustomobject]@{ status = 'DeactivationRequired'; detail = 'The trusted fleet controller must validate and publish managed removal.' }
+        if ($OutputFormat -eq 'Json') { $result | ConvertTo-Json } else { $result }
+        return
+    }
+}
 if (-not (Test-Path -LiteralPath $rulesPath -PathType Leaf) -and $state.PSObject.Properties['preservedModules']) {
     $preservedModules = @($state.preservedModules | ForEach-Object { [string]$_ } | Where-Object { $_ })
     if ($preservedModules.Count) { $arguments.PreserveExistingModule = $preservedModules }

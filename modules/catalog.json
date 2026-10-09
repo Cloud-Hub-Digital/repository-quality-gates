@@ -25,6 +25,13 @@
       "overlapPatterns": ["quality gate module drift", "Test-QualityGateModuleDrift"]
     },
     {
+      "id": "release-governance",
+      "description": "Fail-closed canonical-version detection, evidence validation, immutable tagging, and GitHub Release publication.",
+      "always": true,
+      "source": "modules/release-governance/payload",
+      "overlapPatterns": ["automatic release", "release governance", "Get-RepositoryReleasePlan"]
+    },
+    {
       "id": "powershell",
       "description": "PowerShell parser validation.",
       "source": "modules/powershell/payload",

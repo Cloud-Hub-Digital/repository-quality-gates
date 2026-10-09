@@ -58,7 +58,7 @@ try {
             }
             if ($endpoint -match '^repos/owner/(?<name>[^/?]+)/contents/\.repository-quality-gates\.local\.json') {
                 if ($Matches.name -eq 'optout') {
-                    [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{"schemaVersion":1,"automaticEnrollment":false}'))
+                    [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{"schemaVersion":1,"rqgEnabled":false}'))
                     $global:LASTEXITCODE = 0
                     return
                 }
@@ -92,7 +92,7 @@ try {
         $empty = @($previewJson.repositories | Where-Object repository -eq 'owner/empty')[0]
         Assert-True ($enrol.status -eq 'EnrollmentAvailable') 'An unmanaged repository without an opt-out rule should become an enrolment candidate.'
         Assert-True ([bool]$enrol.enrolment) 'The enrolment candidate should be explicitly identified in structured output.'
-        Assert-True ($optout.status -eq 'EnrollmentOptOut') 'An unmanaged repository with automaticEnrollment set to false should remain unenrolled.'
+        Assert-True ($optout.status -eq 'Disabled') 'An unmanaged repository with rqgEnabled set to false should remain unenrolled.'
         Assert-True (-not [bool]$optout.enrolment) 'An opted-out repository should not be marked for enrolment.'
         Assert-True ($busy.status -eq 'DeferredOpenPullRequests') 'An automatically eligible repository with an open pull request should be deferred.'
         Assert-True (@($busy.blockingPullRequests).Count -eq 1) 'The deferred enrolment should report its blocking pull request.'
@@ -305,6 +305,8 @@ try {
         if ($null -eq $oldToken) { Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue } else { $env:GH_TOKEN = $oldToken }
     }
 
+    $removalTests = & pwsh -NoProfile -File (Join-Path $root 'tests/RepositoryQualityGates.Deactivation.Tests.ps1') 2>&1
+    Assert-True ($LASTEXITCODE -eq 0) "Checked deactivation tests must pass. $($removalTests -join [Environment]::NewLine)"
     Write-Host "$passed assertions passed."
 }
 finally {

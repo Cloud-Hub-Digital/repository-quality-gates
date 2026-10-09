@@ -24,7 +24,7 @@ function New-Fixture([string]$Name, [hashtable]$Licence, [string]$LicenceText) {
         account = 'example-owner'
         centralRepository = 'https://github.com/example-owner/.github'
         licence = $Licence
-        supportRoute = 'github-discussions'
+        supportRoute = 'github-issues'
         conductRoute = 'confidential-email'
     }
     [IO.File]::WriteAllText((Join-Path $path '.repository-standards.json'), ($config | ConvertTo-Json -Depth 5) + "`n", [Text.UTF8Encoding]::new($false))

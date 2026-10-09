@@ -24,12 +24,13 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$productVersion = '3.1.4'
+$productVersion = '3.2.0'
 $productRepository = 'https://github.com/Cloud-Hub-Digital/repository-quality-gates'
 $toolRoot = Split-Path -Parent $PSScriptRoot
 $detectionLibraryPath = Join-Path $toolRoot 'modules\module-drift\payload\scripts\RepositoryQualityGates.Detection.ps1'
 if (-not (Test-Path -LiteralPath $detectionLibraryPath -PathType Leaf)) { throw 'The shared module-detection library is missing.' }
 . $detectionLibraryPath
+. (Join-Path $PSScriptRoot 'RepositoryQualityGates.Lifecycle.ps1')
 
 if ($Version) {
     $copyrightName = 'Terry' + ' Rogers'
@@ -149,16 +150,14 @@ function Get-OpenProjectWorkPackageDisplayId([string]$Reference) {
 }
 
 function Read-RepositoryRules([string]$Path, $Catalog) {
-    $empty = [pscustomobject]@{ includeModules = @(); repositoryOwnedModules = @(); repositoryOwnedPaths = @(); additionalSecretConfigs = @(); pullRequestReferences = @() }
+    $empty = [pscustomobject]@{ includeModules = @(); repositoryOwnedModules = @(); repositoryOwnedPaths = @(); additionalSecretConfigs = @(); pullRequestReferences = @(); rqgEnabled = $true }
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $empty }
     try { $rules = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
     catch { throw 'The .repository-quality-gates.local.json file is invalid.' }
     foreach ($property in @($rules.PSObject.Properties.Name)) {
-        if ($property -notin @('schemaVersion', 'automaticEnrollment', 'modules', 'paths', 'secretScanning', 'pullRequest')) { throw "Unsupported repository-rules property: $property" }
+        if ($property -notin @('schemaVersion', 'rqgEnabled', 'modules', 'paths', 'secretScanning', 'pullRequest')) { throw "Unsupported repository-rules property: $property" }
     }
-    if ($rules.PSObject.Properties['automaticEnrollment'] -and $rules.automaticEnrollment -isnot [bool]) {
-        throw 'The repository-rules automaticEnrollment property must be true or false.'
-    }
+    $enabled = Get-RqgLifecycleEnabled $rules
     if ($rules.schemaVersion -ne 1) { throw 'The repository-rules schema is unsupported.' }
     $moduleRules = if ($rules.PSObject.Properties['modules']) { $rules.modules } else { $null }
     $pathRules = if ($rules.PSObject.Properties['paths']) { $rules.paths } else { $null }
@@ -197,7 +196,8 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
     foreach ($moduleId in @($include + $repositoryOwned | Sort-Object -Unique)) {
         if ($moduleId -notin $catalogIds) { throw "Repository rules reference an unknown module: $moduleId" }
     }
-    $universalRepositoryOwned = @($repositoryOwned | Where-Object { $_ -in @('licensing', 'secret-scanning', 'module-drift', 'documentation') })
+    $universalIds = @($Catalog.modules | Where-Object { $_.PSObject.Properties['always'] -and $_.always -eq $true } | ForEach-Object { [string]$_.id })
+    $universalRepositoryOwned = @($repositoryOwned | Where-Object { $_ -in $universalIds })
     if ($universalRepositoryOwned.Count) {
         throw "Universal modules cannot be repository-owned: $($universalRepositoryOwned -join ', ')"
     }
@@ -220,6 +220,7 @@ function Read-RepositoryRules([string]$Path, $Catalog) {
         if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { throw "A repository secret configuration is missing: $relative" }
     }
     return [pscustomobject]@{
+        rqgEnabled = $enabled
         includeModules = @($include)
         repositoryOwnedModules = @($repositoryOwned)
         repositoryOwnedPaths = @($repositoryOwnedPaths)
@@ -247,6 +248,12 @@ $catalog = Get-Content -LiteralPath $catalogFullPath -Raw | ConvertFrom-Json
 if ($catalog.schemaVersion -ne 1) { throw 'The module catalog schema is unsupported.' }
 $repositoryRulesPath = Join-Path $script:RepositoryRoot '.repository-quality-gates.local.json'
 $repositoryRules = Read-RepositoryRules $repositoryRulesPath $catalog
+if (-not $repositoryRules.rqgEnabled) {
+    if ($Commit -or $Push) { throw 'Deactivation publication requires the checked lifecycle PR controller; direct commit or push is unsupported.' }
+    $deactivation = Invoke-RqgDeactivation -RepositoryRoot $script:RepositoryRoot -TemplateRoot $templateRoot -Apply:$Apply
+    if ($OutputFormat -eq 'Json') { $deactivation | ConvertTo-Json -Depth 8 } else { $deactivation }
+    return
+}
 $repositoryOwnedPaths = @(@($PreserveExistingPath) + @($repositoryRules.repositoryOwnedPaths) | ForEach-Object {
     if ([IO.Path]::IsPathRooted([string]$_)) { throw "A repository-owned path must be relative: $_" }
     $normalized = ([string]$_ -replace '\\', '/').TrimStart('/')
@@ -349,6 +356,7 @@ if ($selectedIds -contains 'module-drift') {
     $embeddedRoot = '.rqg/template'
     $embeddedFiles = @{
         "$embeddedRoot/scripts/Invoke-RepositoryQualityGates.ps1" = $PSCommandPath
+        "$embeddedRoot/scripts/RepositoryQualityGates.Lifecycle.ps1" = Join-Path $PSScriptRoot 'RepositoryQualityGates.Lifecycle.ps1'
         "$embeddedRoot/modules/catalog.json" = $catalogFullPath
     }
     foreach ($catalogModule in @($catalog.modules)) {
@@ -585,17 +593,25 @@ $newState = [ordered]@{
     preservedModules = $preservedIds
     files = @($stateFiles)
     gitIgnoreLines = @($ignoreLines)
+    ownedGitIgnoreLines = @(@($(if ($state.PSObject.Properties['ownedGitIgnoreLines']) { $state.ownedGitIgnoreLines })) + @($missingIgnore) | Sort-Object -Unique)
 }
 $stateJson = ($newState | ConvertTo-Json -Depth 6).Replace("`r`n", "`n").TrimEnd("`r", "`n") + "`n"
-$stateAttributes = if (Test-Path -LiteralPath $statePath -PathType Leaf) { [IO.File]::GetAttributes($statePath) } else { $null }
-try {
-    if ($null -ne $stateAttributes -and ($stateAttributes -band [IO.FileAttributes]::Hidden)) {
-        [IO.File]::SetAttributes($statePath, ($stateAttributes -band (-bnot [IO.FileAttributes]::Hidden)))
-    }
-    [IO.File]::WriteAllText($statePath, $stateJson, [Text.UTF8Encoding]::new($false))
-} finally {
-    if ($null -ne $stateAttributes -and (Test-Path -LiteralPath $statePath -PathType Leaf)) {
-        [IO.File]::SetAttributes($statePath, $stateAttributes)
+# Preserve an equivalent checkout's bytes, newline convention and attributes.
+# Rewriting CRLF to LF can leave Git status dirty even when git add finds no diff.
+$existingStateJson = if (Test-Path -LiteralPath $statePath -PathType Leaf) {
+    [IO.File]::ReadAllText($statePath).Replace("`r`n", "`n").Replace("`r", "`n")
+} else { $null }
+if (-not [string]::Equals($existingStateJson, $stateJson, [StringComparison]::Ordinal)) {
+    $stateAttributes = if (Test-Path -LiteralPath $statePath -PathType Leaf) { [IO.File]::GetAttributes($statePath) } else { $null }
+    try {
+        if ($null -ne $stateAttributes -and ($stateAttributes -band [IO.FileAttributes]::Hidden)) {
+            [IO.File]::SetAttributes($statePath, ($stateAttributes -band (-bnot [IO.FileAttributes]::Hidden)))
+        }
+        [IO.File]::WriteAllText($statePath, $stateJson, [Text.UTF8Encoding]::new($false))
+    } finally {
+        if ($null -ne $stateAttributes -and (Test-Path -LiteralPath $statePath -PathType Leaf)) {
+            [IO.File]::SetAttributes($statePath, $stateAttributes)
+        }
     }
 }
 

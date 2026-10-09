@@ -19,7 +19,7 @@ For operator instructions, see [Deployment Guide](deployment-guide.md). For the 
 | `shell` | `.sh` or `.bash` | Bash syntax validation on tracked shell scripts |
 | `platformio` | `platformio.ini` | Pinned PlatformIO firmware build |
 | `go` | `go.mod` or `go.work` | Formatting, `go vet`, tests, and package builds |
-| `documentation` | Markdown files | Trailing-whitespace hygiene check |
+| `documentation` | Every Git repository | Repository-standard validation, local issue forms, & Markdown hygiene when Markdown exists |
 
 The table is a summary. `modules/catalog.json` is authoritative for detection and overlap markers, while each module payload is authoritative for its deployed workflow.
 
@@ -94,6 +94,8 @@ A repository-owned path is narrower than a repository-owned module. It preserves
 The updater can perform a one-time migration of legacy secret-scanning state. It adopts only historical files whose SHA-256 hashes exactly match known published RQG payloads. A customized root `.gitleaks.toml` is preserved only when it still extends the central `security/gitleaks-portable.toml`; any unknown or modified legacy file fails closed for manual review.
 
 The `licensing` module writes `LICENSES/Repository-Quality-Gates-MIT.txt`. It attributes only the RQG files copied into the repository and does not select, replace, or modify the downstream project's own licence. It also deploys `scripts/Test-RepositoryLicence.ps1`, a pinned active SPDX identifier snapshot, and the `Licence Quality` workflow. The validator requires `.repository-standards.json` schema 2 and checks repository visibility, class, identifier, rights holder, approved decision state, root licence, and exact-revision GitHub detector result. Public repositories default to MIT. Private repositories default to the exact TR Proprietary License 1.0 decision. A repository-local licence may override that visibility default only when its approved decision records a substantive `overrideReason` and the selected licence passes all class-specific checks. Missing visibility, an undocumented deviation, or contradictory information fails closed.
+
+The universal `documentation` module deploys `scripts/Test-RepositoryStandards.ps1` plus the local bug-report, feature-request, question, & issue-picker configuration files. The validator requires the `github-issues` support route & checks the complete feature-exception contract. During an ordinary managed update, `Update-RepositoryQualityGates.ps1` migrates only the known legacy `github-discussions` route; an unknown support route fails closed for review. These content changes do not modify GitHub repository settings, which are handled separately by the ruleset & feature engine.
 
 If an existing `.gitignore` pattern matches a required managed file, the preview reports an exact negation such as `!/scripts/Test-Secrets.ps1`. Apply merges only those exact exceptions and then verifies every managed file is visible to Git. Deployment stops if a parent-directory rule still prevents a required file from being tracked.
 

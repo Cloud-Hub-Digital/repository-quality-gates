@@ -2,7 +2,7 @@
 
 This guide applies Repository Quality Gates to a new or existing local Git repository using the prepared PowerShell deployment script.
 
-For GitHub-hosted repositories, version `1.4.0` supports unattended initial enrolment across every account or organization where the RQG GitHub App is installed. Every unmanaged repository visible to any installation is eligible by default. To exclude one, commit `.repository-quality-gates.local.json` with `automaticEnrollment` set to `false`. The central daily workflow detects eligible repository contents, selects applicable modules, installs the RQG attribution notice, and enrols them through checked temporary pull requests. See [Automatic Repository Updates](automatic-repository-updates.md).
+For GitHub-hosted repositories, version `1.4.0` supports unattended initial enrolment across every account or organization where the RQG GitHub App is installed. Every unmanaged repository visible to any installation is eligible by default. To exclude one, commit `.repository-quality-gates.local.json` with `rqgEnabled` set to `false`. The central daily workflow detects eligible repository contents, selects applicable modules, installs the RQG attribution notice, and enrols them through checked temporary pull requests. See [Automatic Repository Updates](automatic-repository-updates.md).
 
 ## Prerequisites
 
@@ -102,6 +102,12 @@ If an existing workflow already provides a reviewed implementation, record that 
 Replace the example with an applicable non-universal module ID and list only specific existing files under `paths.repositoryOwned`. Commit the file to that downstream repository. The command succeeds only when a repository-owned module is detected or included and an existing workflow contains matching catalog evidence. A repository-owned path must be a contained regular file and cannot be `.git`, `.repository-quality-gates.json`, or `.repository-quality-gates.local.json`. The universal `licensing`, `secret-scanning`, `module-drift`, and repository-standards/documentation modules must remain centrally managed and cannot appear in `modules.repositoryOwned`. The deployment tool still accepts `-PreserveExistingModule` and `-PreserveExistingPath` for one-off and compatibility use, but automatic updates use the committed repository-owned file.
 
 During the first update from older managed state, the updater can adopt historical RQG secret-scanning files only when their SHA-256 hashes exactly match a verified published release. If the root `.gitleaks.toml` was deliberately extended for that repository and still extends `security/gitleaks-portable.toml`, the updater records it under `paths.repositoryOwned` and restores central management for the remaining secret-scanning files. Unknown or modified files stop the migration for review.
+
+### Repository Features & Issue Intake
+
+Every deployment includes local bug-report, feature-request, question, & issue-picker configuration files. The repository profile must use `supportRoute: github-issues`. An update automatically migrates only the known legacy `github-discussions` value; any other support route stops for review.
+
+Issues must remain enabled. Discussions, Wikis, & Pages remain disabled unless `.repository-standards.json` contains a complete approved `featureExceptions` entry for the specific feature. Repository-content deployment does not change those live GitHub settings. Audit or reconcile them separately with the [Repository Ruleset & Feature Engine](repository-ruleset-engine.md), after reviewing the content update.
 
 ### Intentional Duplicate Workflows
 

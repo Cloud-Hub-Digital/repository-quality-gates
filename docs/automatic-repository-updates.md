@@ -2,7 +2,7 @@
 
 Repository Quality Gates can enrol unmanaged repositories and update its managed template across every account or organization where its GitHub App is installed, without storing a personal access token or publishing an owner inventory. The central workflow runs when a stable release is published, once each day, or when started manually. Every unmanaged repository visible to any installation is eligible unless its repository-owned rules file explicitly opts out. A downstream repository is changed only when it has no open pull requests. Each enrolment or update uses its own pull request so the downstream repository's required checks remain the merge gate, then GitHub merges the pull request automatically when those requirements pass.
 
-The central `.github/workflows/automatic-release.yml` workflow creates that stable release from `main`. It waits for Documentation Quality, Fleet Update Quality, Licence Quality, Quality Gate Module Drift, Secret Scanning, and PowerShell Quality on the exact commit. It then confirms the commit is still current, verifies one stable semantic version across the deployment engine, managed state, and changelog, creates an annotated `v<VERSION>` tag, publishes the immutable GitHub Release, and explicitly dispatches the fleet workflow described below. The explicit dispatch is required because GitHub suppresses most new workflow events created by the repository's own `GITHUB_TOKEN`.
+The central `.github/workflows/managed-automatic-release.yml` workflow creates that stable release from `main`. It waits for Documentation Quality, Fleet Update Quality, Licence Quality, Quality Gate Module Drift, Secret Scanning, and PowerShell Quality on the exact commit. It then confirms the commit is still current, verifies one stable semantic version across the deployment engine, managed state, and changelog, creates an annotated `v<VERSION>` tag, publishes the immutable GitHub Release, and explicitly dispatches the fleet workflow described below. The explicit dispatch is required because GitHub suppresses most new workflow events created by the repository's own `GITHUB_TOKEN`.
 
 When Module Drift creates a reconciliation commit, it explicitly dispatches its own `validation_only` mode alongside the other validators. That mode checks the dispatched revision with read-only repository permissions, runs reconciliation locally, and fails if any tracked or untracked change remains. It cannot commit, push, or dispatch another run. A failure to dispatch this required validation stops the originating run. The fleet updater and operator-selected clone probe are excluded from this validation dispatch.
 
@@ -26,7 +26,7 @@ Set the repository variable `RQG_FLEET_AUTOMATION_PAUSED=true` during remediatio
 6. Revokes that installation token after its repositories have been processed, then repeats the process for the next installation. If one installation fails, the wrapper records that failure, continues through every remaining installation, and fails the completed run with an aggregate installation count.
 7. Skips the central template repository.
 8. Treats a repository containing `.repository-quality-gates.json` as managed.
-9. Treats an unmanaged repository as eligible for initial enrolment unless `.repository-quality-gates.local.json` sets `automaticEnrollment` to `false`.
+9. Treats an unmanaged repository as eligible for initial enrolment unless `.repository-quality-gates.local.json` sets `rqgEnabled` to `false`.
 10. Skips managed repositories already on the target version and refuses to downgrade a newer version.
 11. Removes an RQG-marked pull request and branch that have remained open for 24 hours only when the exact temporary-branch pattern, expected base branch, same-repository head, and RQG provenance marker all match, then checks eligibility again.
 12. Defers an eligible repository when any pull request is open and reports every blocking pull request.
@@ -55,7 +55,7 @@ To exclude one repository before its first enrolment, commit this repository-own
 ```json
 {
   "schemaVersion": 1,
-  "automaticEnrollment": false
+  "rqgEnabled": false
 }
 ```
 
@@ -68,7 +68,7 @@ A downstream repository may contain `.repository-quality-gates.local.json`. The 
 ```json
 {
   "schemaVersion": 1,
-  "automaticEnrollment": true,
+  "rqgEnabled": true,
   "modules": {
     "include": [],
     "repositoryOwned": []
@@ -87,14 +87,30 @@ A downstream repository may contain `.repository-quality-gates.local.json`. The 
 
 | Setting | Purpose |
 |---|---|
-| `automaticEnrollment` | Optional Boolean. Set to `false` to keep an unmanaged repository outside automatic enrolment; absence defaults to `true` |
+| `rqgEnabled` | Optional Boolean. Absence or `true` enables initial deployment & updates. `false` prevents enrolment or requests checked removal of an existing installation |
 | `modules.include` | Install a named RQG module even when normal file detection does not select it |
 | `modules.repositoryOwned` | Keep a repository's existing verified implementation of a detected or explicitly included module instead of deploying the RQG payload |
 | `paths.repositoryOwned` | Preserve specific existing repository-relative files outside RQG managed state; every listed path must already be a regular file and cannot be the managed-state or local-rules file |
 | `secretScanning.additionalConfigFiles` | Run additional committed repository-specific Gitleaks TOML policies as separate scan layers |
 | `pullRequest.references` | Add validated OpenProject work-package shorthand to automated RQG pull requests using either `OP#PROJECT-123` or `[PROJECT-123]` |
 
-The file is declarative. It cannot run commands, change GitHub permissions, disable the universal secret-scanning, module-drift, or repository-standards/documentation modules, or override managed files. Module IDs must exist in the released catalogue. A repository-owned module must still have matching workflow evidence, and each additional secret policy must be a contained repository-relative TOML file that does not traverse a symbolic link or junction. Pull-request references must be valid work-package display IDs in one of the two approved shorthand forms, must be unique, and must all belong to one OpenProject project.
+The file is declarative. It cannot run commands, change GitHub permissions, selectively suppress universal modules while RQG remains enabled, or override managed files. The local-rules schema is published as `policy/repository-local-rules.schema.json`. `automaticEnrollment` is rejected; replace it explicitly with `rqgEnabled`. Module IDs must exist in the released catalogue. A repository-owned module must still have matching workflow evidence, & each additional secret policy must be a contained repository-relative TOML file that does not traverse a filesystem link. Pull-request references must use valid, unique work-package shorthand from one project.
+
+### Disable & Re-Enable RQG
+
+Commit `rqgEnabled: false` in the local rules file. An unmanaged repository remains untouched. For a managed repository, a preview inventories unchanged RQG-owned files from the trusted payload catalogue. Product files, standards decisions, repository-owned paths & modules, the local rules file, & independently owned ignore lines remain intact. Modified files, unsafe paths, ambiguous check ownership, failed baseline checks, or independent protections requiring a removed workflow block removal.
+
+The trusted controller requires both `Apply` & `AutoMerge` for deactivation. It verifies the exact passing base, prepares only the removal plan, scans staged content with the trusted central scanner, & publishes an App-bound `RQG Deactivation` check for the exact head. All independent PR checks must also pass. Immediately before the pinned merge, only the managed ruleset's proven RQG check requirements transition to this App-bound removal check. Approval requirements, provider-bound independent checks, other rulesets, classic protections, & merge protections remain enforced. A merge is successful only after the exact merged tree, disabled marker, absent managed state, protection cleanup & branch absence are verified.
+
+State is removed last locally. A caught failure restores unchanged protection state & removes its failed temporary PR. An interrupted native transition uses a receipt from the authoritative App check; a transaction younger than two hours remains deferred to avoid interfering with a live controller. After that bound, a retry restores the old owned requirements & closes only a proven abandoned removal PR before preparing a fresh attempt. A completed removal with pending protection cleanup is retried without reinstalling files. An unverifiable receipt or independent protection change fails closed.
+
+Previously installed ignore lines without ownership evidence are retained. New deployments record only ignore lines actually inserted by RQG under `ownedGitIgnoreLines`, so removal can preserve pre-existing exclusions. Missing owned files are treated as already absent; modified files are never adopted as removable. Set `rqgEnabled: true` or remove the flag to re-enable normal checked deployment of the current applicable baseline.
+
+### Automatic Administration
+
+During an apply run, administration follows only `Current` or `UpdatedSuccessfully` content outcomes. The controller checks out the exact destination commit, compares managed content against the trusted release, verifies baseline check evidence, then applies supported feature, ruleset & merge settings against that pinned commit. Each mutation is followed by fresh readback; a changed destination, missing permissions, incomplete required content, or failed verification produces `AdministrationFailed` while retaining `contentStatus`.
+
+`AdministrationDeferred` records the approved private hosting-plan limitation. It does not claim native branch protection was enabled. Repository-local feature exceptions remain effective, independent check/provider bindings are retained, & stronger approval requirements are never silently weakened. Preview & failed content outcomes perform no administration. The single consolidated email & sanitized evidence retain separate content & administration outcomes; routine manual administration dispatch is for diagnosis or recovery.
 
 GitHub artifacts continue to use GitHub-native issue, discussion, pull-request, and commit references. The optional OpenProject shorthand is non-locating: an OpenProject hostname, URL, path, API endpoint, instruction, numeric API ID, or bare project identifier remains prohibited.
 
@@ -112,16 +128,30 @@ Use these repository permissions:
 | Contents | Read And Write | Read managed state and push the update branch |
 | Pull Requests | Read And Write | Find or create the update pull request |
 | Workflows | Read And Write | Add and update the GitHub Actions workflow files deployed by RQG |
-| Checks | Read | Wait for and inspect every downstream pull-request quality check before merging |
+| Checks | Read And Write | Inspect downstream checks & publish the exact App-bound checked-deactivation certificate |
+| Administration | Read And Write | Reconcile supported settings after verified content & preserve independent controls during checked removal |
 | Metadata | Read | Required GitHub App repository metadata |
 
-The app does not need issue, administration, secrets, Actions write, deployment, package, or organization permissions. Checks read access verifies private-repository quality results. Actions read access is limited to workflow-run and job metadata used to name the actual downstream runners in the private rollout report; it does not grant access to Actions secrets or permit workflow administration.
+The combined fleet workflow needs the listed permissions for content, checked deactivation & post-content administration. It does not need Issues, secrets, Actions write, deployment, package, or organization permissions. Actions read access is limited to workflow-run & job metadata used to name actual downstream runners; it does not grant Actions secret access or workflow administration. Missing permission fails closed; verify both existing App installations before enabling these candidate features.
+
+The separate ruleset & feature workflow retains read-only daily audits & explicit manual diagnosis or recovery. Authorized fleet apply performs settings reconciliation automatically after verified content with the same scoped installation token. The workflow's own `GITHUB_TOKEN` remains read-only; each applied setting requires fresh readback.
+
+## Ruleset & Feature Reconciliation
+
+RQG 3.2.0 separates content rollout from administration reconciliation:
+
+- the normal update workflow creates reviewable pull requests containing the four local issue files, managed-state hashes, validator updates, & the `github-issues` support-route migration;
+- the daily `Reconcile Repository Rulesets` workflow audits live rules, merge methods, branch cleanup, Issues, Discussions, Wikis, Pages, local forms, & approved exceptions without changing them;
+- fleet apply automatically reconciles supported settings after verified content; the separate administration workflow retains read-only scheduled audits & explicit manual diagnosis or recovery;
+- Pages exceptions are audited but never automatically provisioned.
+
+Run a content preview before authorizing fleet apply. Applied fleet runs verify managed content & its exact checked revision before settings reconciliation, then read back both layers.
 
 Install the App only on repositories that Repository Quality Gates may manage. The combined installations form the outer fleet allow-list. Within that scope, an existing managed-state file authorizes updates and an unmanaged repository is automatically eligible unless its committed repository rules opt out. The workflow discovers installations at runtime, so no owner names or repository inventory need to be stored in source, variables, or secrets.
 
 If the App is installed for **All Repositories**, every newly created repository becomes eligible automatically. Commit the opt-out file before the next fleet run when a repository must remain unmanaged. If the App is installed for **Only Select Repositories**, adding a repository to the App installation makes it eligible unless it already contains the opt-out file.
 
-For each selected public downstream repository, configure active default-branch rules so every applicable RQG quality, build, and test check must pass before the branch can be updated. This is a one-time repository-administration setting; the narrowly scoped updater App does not receive Administration permission to weaken or create those rules. The updater reads the effective active branch rules through its Metadata permission immediately before publishing an update branch and again immediately before merge. A missing expected required check stops the repository before publication or merge with `RequiredChecksNotEnforced`.
+For each selected public downstream repository, active default-branch rules must require every applicable RQG quality, build & test check before an update can merge. The App requires approved Administration write permission for post-content settings reconciliation & checked deactivation; that permission never authorizes bypassing failed checks or independently owned protections. The updater reads effective rules before publication & merge. Missing required checks stop content updates with `RequiredChecksNotEnforced`; initial unresolved protection must be prepared through a separately reviewed administration operation rather than silently bypassed.
 
 Use `scripts/Get-RepositoryQualityGateRequiredCheckPlan.ps1` to produce a read-only JSON plan before changing repository rules. The planner accepts the dynamically discovered repository list, reads each repository's managed module set and active default-branch rules, and reports the exact expected, present, and missing checks. `ConfigureGitHubRules` identifies a public repository that needs an administration change. The planner never creates or changes a rule.
 
@@ -153,7 +183,7 @@ Run the workflow only from an exact reviewed RQG revision. A missing digest matc
 
 ## Workflow Triggers
 
-The central `.github/workflows/automatic-release.yml` workflow runs on every push to `main` and can also be started manually. Only a stable `MAJOR.MINOR.PATCH` version can be published. Every release therefore requires a deliberate version and changelog update in the source commit, while publication itself occurs automatically after the required quality workflows pass.
+The central `.github/workflows/managed-automatic-release.yml` workflow runs on every push to `main` and can also be started manually. Stable & prerelease semantic versions can be published under the schema-3 contract; only stable releases start fleet distribution. Every release therefore requires a deliberate version and changelog update in the source commit, while publication itself occurs automatically after the required quality workflows pass.
 
 The central `.github/workflows/update-managed-repositories.yml` workflow runs:
 
@@ -193,7 +223,7 @@ The local command changes files but does not commit, push, create a pull request
 - Historical RQG files are adopted only when their content matches an exact verified release hash.
 - `.repository-quality-gates.local.json` and every policy it names remain repository-owned and unmanaged.
 - A repository on a newer template version is never downgraded.
-- Unmanaged repositories are enrolled when the fleet workflow enables automatic enrolment, unless their committed repository rules set `automaticEnrollment` to `false`.
+- Unmanaged repositories are enrolled when the fleet workflow enables automatic enrolment, unless their committed repository rules set `rqgEnabled` to `false`.
 - Repositories with any open pull request are deferred without a branch, commit, push, or RQG pull request change.
 - Successful RQG pull requests delete their temporary branch immediately after merge.
 - Failed post-push preparation removes the RQG pull request and temporary branch in the same run.
@@ -210,3 +240,7 @@ This workflow updates Repository Quality Gates itself. Package updates for npm, 
 ### Preview & Apply Reports
 
 The email renderer retains separate Fleet Preview & Fleet Rollout wording for regression coverage, but operational previews remain silent. Available means an update was detected, not installed. The automatic release-triggered full-fleet apply sends one Fleet Rollout report. Controlled waves remain silent, and a final manual convergence apply sends a report only when `send_email=true`; each row records its own verified result. A successful workflow is not a claim that every repository was updated.
+
+## Central Release Governance
+
+The central repository adopts the same schema-3 release contract as managed downstream products. Its managed workflow is the sole automatic publisher on `main`; the legacy `automatic-release.yml` path is a manual compatibility entry point that calls the managed workflow. Canonical version sources, a dated changelog, classified issue milestones, exact required gates, remote tag verification, comprehensive notes, & an immutable non-draft Release must pass before delivered-issue closure or one final fleet report.

@@ -1,0 +1,38 @@
+# repository-standard: schema=1; standard=Repository Standards; version=1.2.0; source=Repository Quality Gates; scope=local-required; override=local-file
+name: Bug Report
+description: Report a reproducible defect.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include secrets, personal data, private paths, internal systems, or vulnerability details. Use SECURITY.md for security reports."
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, & what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction Steps
+      description: Provide the smallest public-safe sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include relevant public-safe versions, platform, & configuration.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched for an existing issue.
+          required: true
+        - label: I removed secrets, personal data, private paths, internal systems, & vulnerability details.
+          required: true

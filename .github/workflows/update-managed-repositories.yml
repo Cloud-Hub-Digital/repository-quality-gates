@@ -223,6 +223,13 @@ jobs:
           run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
           status_counts = sorted(Counter(row["status"] for row in normalized).items())
           status_descriptions = {
+              "Disabled": "A committed repository decision disables RQG; no managed installation remains.",
+              "DeactivationAvailable": "Checked removal is available; this preview did not apply it.",
+              "DeactivationPullRequest": "Removal was validated; the checked pull request awaits controlled merge.",
+              "DeactivatedSuccessfully": "Owned RQG content was removed after validated checks; independent protections remain.",
+              "DeactivationFailed": "Checked removal or protection recovery failed; review the specific cause.",
+              "AdministrationDeferred": "Content is verified; native protection is deferred under the approved hosting-plan exception.",
+              "AdministrationFailed": "Content outcome is retained, but settings application or readback failed.",
               "UpdatedSuccessfully": "All required pull-request checks passed and the update was merged.",
               "RequiresLicenceDecision": "The repository licence decision is missing, unresolved, or inconsistent.",
               "FailedChecks": "One or more required pull-request checks failed.",
@@ -255,6 +262,13 @@ jobs:
               "Skipped": "The repository was intentionally excluded from this rollout.",
           }
           status_labels = {
+              "Disabled": "Disabled",
+              "DeactivationAvailable": "Deactivation Available",
+              "DeactivationPullRequest": "Deactivation PR Awaiting Merge",
+              "DeactivatedSuccessfully": "Deactivated Successfully",
+              "DeactivationFailed": "Deactivation Failed",
+              "AdministrationDeferred": "Administration Deferred",
+              "AdministrationFailed": "Administration Failed",
               "UpdatedSuccessfully": "Updated Successfully",
               "RequiresLicenceDecision": "Requires Licence Decision",
               "FailedChecks": "Failed Checks",

@@ -1,0 +1,2 @@
+# repository-standard: schema=1; standard=Repository Standards; version=1.2.0; source=Repository Quality Gates; scope=local-required; override=local-file
+blank_issues_enabled: false

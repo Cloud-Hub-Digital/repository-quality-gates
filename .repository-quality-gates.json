@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
-  "templateVersion": "3.1.4",
+  "templateVersion": "3.2.0",
   "modules": [
     "documentation",
     "licensing",
     "module-drift",
     "powershell",
     "python",
+    "release-governance",
     "secret-scanning"
   ],
   "preservedModules": [],
@@ -22,6 +23,31 @@
       "sha256": "7ebb4a10bb9c3b9d4b7e6b61381c77b0013788726fa5289f74f48fa6e2b43a9e"
     },
     {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "module": "documentation",
+      "sha256": "73ad9f8a45ea2c0cf629e995aa80f6217771836d27946424edaede3144ac6f7e"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "module": "documentation",
+      "sha256": "3735a6e483da75fff1ec8e76cc8785e43774f5c17cb5731d5c4bb26665cd63a6"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
+      "module": "documentation",
+      "sha256": "bc19850e354351ae7662c2972ac5a1515bd4524d5aa7e3cb8f9c01178a521585"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/question.yml",
+      "module": "documentation",
+      "sha256": "fefc92b5d8d57ab0bac5361b3831bbe4754ba0bc5238ebaf69c84cdebf316ac2"
+    },
+    {
+      "path": ".github/workflows/managed-automatic-release.yml",
+      "module": "release-governance",
+      "sha256": "fb08b35e5236ee7df0beff5046b1581bf8ecd8dff232943a8b6a077b5142e21a"
+    },
+    {
       "path": ".github/workflows/quality-documentation.yml",
       "module": "documentation",
       "sha256": "8a84383d06832229439f9d5ed54086229e6176953c020c6eaa1ef0488c00d204"
@@ -34,7 +60,7 @@
     {
       "path": ".github/workflows/quality-module-drift.yml",
       "module": "module-drift",
-      "sha256": "6a9983c5a99319984e725c5222e6681e5b2bc8507b523ed674b6161618978ff3"
+      "sha256": "63b77b8ccf7374a3292ebedb7c9cbac214dde66f0d029ff23f4a5eb679b2cae7"
     },
     {
       "path": ".github/workflows/quality-powershell.yml",
@@ -64,7 +90,27 @@
     {
       "path": ".rqg/template/modules/catalog.json",
       "module": "module-drift",
-      "sha256": "5d144e3fe4e1290ea6923854384c2e4ad22e0cd64671a428a770b37995f967fe"
+      "sha256": "e1e9d6ac7cd522a52f0402cc12e274e02138ab4d8a902fb02117b475feff9f85"
+    },
+    {
+      "path": ".rqg/template/modules/documentation/payload/.github/ISSUE_TEMPLATE/bug_report.yml",
+      "module": "module-drift",
+      "sha256": "73ad9f8a45ea2c0cf629e995aa80f6217771836d27946424edaede3144ac6f7e"
+    },
+    {
+      "path": ".rqg/template/modules/documentation/payload/.github/ISSUE_TEMPLATE/config.yml",
+      "module": "module-drift",
+      "sha256": "3735a6e483da75fff1ec8e76cc8785e43774f5c17cb5731d5c4bb26665cd63a6"
+    },
+    {
+      "path": ".rqg/template/modules/documentation/payload/.github/ISSUE_TEMPLATE/feature_request.yml",
+      "module": "module-drift",
+      "sha256": "bc19850e354351ae7662c2972ac5a1515bd4524d5aa7e3cb8f9c01178a521585"
+    },
+    {
+      "path": ".rqg/template/modules/documentation/payload/.github/ISSUE_TEMPLATE/question.yml",
+      "module": "module-drift",
+      "sha256": "fefc92b5d8d57ab0bac5361b3831bbe4754ba0bc5238ebaf69c84cdebf316ac2"
     },
     {
       "path": ".rqg/template/modules/documentation/payload/.github/workflows/quality-documentation.yml",
@@ -74,7 +120,7 @@
     {
       "path": ".rqg/template/modules/documentation/payload/scripts/Test-RepositoryStandards.ps1",
       "module": "module-drift",
-      "sha256": "a053b22b19ecf2edf000e7f4cd310311bf0033204d812fcdaec45056e87387f1"
+      "sha256": "14e9c46c0344360ae70c05e588637b51a6d23f63ed34c342dab1fb453341c8a6"
     },
     {
       "path": ".rqg/template/modules/dotnet/payload/.github/workflows/quality-dotnet.yml",
@@ -104,17 +150,17 @@
     {
       "path": ".rqg/template/modules/licensing/payload/scripts/Test-RepositoryLicence.ps1",
       "module": "module-drift",
-      "sha256": "12ff98c86fa0f891edc80e0c23917779a3b2d2061130156a2a88eac6650b4020"
+      "sha256": "e4966811cf3a8bfee1b1ba8cfed7275b86fb768930367a70b642f7af5b24125e"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/.github/workflows/quality-module-drift.yml",
       "module": "module-drift",
-      "sha256": "6a9983c5a99319984e725c5222e6681e5b2bc8507b523ed674b6161618978ff3"
+      "sha256": "63b77b8ccf7374a3292ebedb7c9cbac214dde66f0d029ff23f4a5eb679b2cae7"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/scripts/Invoke-AutomaticQualityGateReconciliation.ps1",
       "module": "module-drift",
-      "sha256": "7fe35e6f4adf137fe7fe08aa373e9d2eb2a890b2cc75d92a724a9be8c18333ea"
+      "sha256": "4b5984374c51cd5b5d7d8581c2ee48dc145c584cee3b2292a8c18c8bbc22557a"
     },
     {
       "path": ".rqg/template/modules/module-drift/payload/scripts/RepositoryQualityGates.Detection.ps1",
@@ -152,6 +198,21 @@
       "sha256": "5b6a904664644c415d2cb9f82c553bb7b59485fa7a2f5ee6afb3085e410522da"
     },
     {
+      "path": ".rqg/template/modules/release-governance/payload/.github/workflows/managed-automatic-release.yml",
+      "module": "module-drift",
+      "sha256": "fb08b35e5236ee7df0beff5046b1581bf8ecd8dff232943a8b6a077b5142e21a"
+    },
+    {
+      "path": ".rqg/template/modules/release-governance/payload/scripts/Get-RepositoryReleasePlan.ps1",
+      "module": "module-drift",
+      "sha256": "21f6c1e83ecb68d543b40055199dedf848e909e5e50bc12a3fea222432de9e66"
+    },
+    {
+      "path": ".rqg/template/modules/release-governance/payload/scripts/Get-RepositoryReleaseVersion.ps1",
+      "module": "module-drift",
+      "sha256": "1ca21b0a2cdc5210a61d7db1d22254d7fb3ff8cced3b874bec0e0828ecb9b967"
+    },
+    {
       "path": ".rqg/template/modules/shell/payload/.github/workflows/quality-shell.yml",
       "module": "module-drift",
       "sha256": "f044847abde688a648c4c49516894d4c44e0a2ff59b2ed6ab8c936b24e056ca8"
@@ -159,7 +220,12 @@
     {
       "path": ".rqg/template/scripts/Invoke-RepositoryQualityGates.ps1",
       "module": "module-drift",
-      "sha256": "07f47090c8b6884f5f2db1f983df22b71784bfafca914418bdda2262aa54d40a"
+      "sha256": "7b2fec460c6378c5320755e9b471e60fb7ba0ad6a6041550946c249d9d6cf91e"
+    },
+    {
+      "path": ".rqg/template/scripts/RepositoryQualityGates.Lifecycle.ps1",
+      "module": "module-drift",
+      "sha256": "107d6b982ac7592d02669d19fd2d4b086b4c37734092cd21ed08c8921d7e25d8"
     },
     {
       "path": ".rqg/template/template/.githooks/pre-commit",
@@ -237,6 +303,16 @@
       "sha256": "41641fa7ee936cb6e6e8fefcb322798364f6a7bbd791cc839453e098b9b4a6e2"
     },
     {
+      "path": "scripts/Get-RepositoryReleasePlan.ps1",
+      "module": "release-governance",
+      "sha256": "21f6c1e83ecb68d543b40055199dedf848e909e5e50bc12a3fea222432de9e66"
+    },
+    {
+      "path": "scripts/Get-RepositoryReleaseVersion.ps1",
+      "module": "release-governance",
+      "sha256": "1ca21b0a2cdc5210a61d7db1d22254d7fb3ff8cced3b874bec0e0828ecb9b967"
+    },
+    {
       "path": "scripts/gitleaks-lock.json",
       "module": "secret-scanning",
       "sha256": "57f5407c9d150918315d4ea30df027021bcf2602fb5d31088916fbf0afa52c97"
@@ -254,7 +330,7 @@
     {
       "path": "scripts/Invoke-AutomaticQualityGateReconciliation.ps1",
       "module": "module-drift",
-      "sha256": "7fe35e6f4adf137fe7fe08aa373e9d2eb2a890b2cc75d92a724a9be8c18333ea"
+      "sha256": "4b5984374c51cd5b5d7d8581c2ee48dc145c584cee3b2292a8c18c8bbc22557a"
     },
     {
       "path": "scripts/RepositoryQualityGates.Detection.ps1",
@@ -264,7 +340,7 @@
     {
       "path": "scripts/rqg-module-catalog.json",
       "module": "module-drift",
-      "sha256": "5d144e3fe4e1290ea6923854384c2e4ad22e0cd64671a428a770b37995f967fe"
+      "sha256": "e1e9d6ac7cd522a52f0402cc12e274e02138ab4d8a902fb02117b475feff9f85"
     },
     {
       "path": "scripts/Test-DetectionPolicy.ps1",
@@ -284,12 +360,12 @@
     {
       "path": "scripts/Test-RepositoryLicence.ps1",
       "module": "licensing",
-      "sha256": "12ff98c86fa0f891edc80e0c23917779a3b2d2061130156a2a88eac6650b4020"
+      "sha256": "e4966811cf3a8bfee1b1ba8cfed7275b86fb768930367a70b642f7af5b24125e"
     },
     {
       "path": "scripts/Test-RepositoryStandards.ps1",
       "module": "documentation",
-      "sha256": "a053b22b19ecf2edf000e7f4cd310311bf0033204d812fcdaec45056e87387f1"
+      "sha256": "14e9c46c0344360ae70c05e588637b51a6d23f63ed34c342dab1fb453341c8a6"
     },
     {
       "path": "scripts/Test-Secrets.ps1",
@@ -304,5 +380,6 @@
   ],
   "gitIgnoreLines": [
     "/.tools/"
-  ]
+  ],
+  "ownedGitIgnoreLines": []
 }

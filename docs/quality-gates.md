@@ -37,11 +37,13 @@ The automatic-reconciliation job deliberately retains its checkout credential an
 
 ## Module Selection And Checks
 
-### Repository Standards & Review Instructions
+### Repository Standards, Review Instructions, & Issue Intake
 
 **Selection rule:** Always selected for every Git repository through the documentation module.
 
 **Deployed controls:** `scripts/Test-RepositoryStandards.ps1` requires a tracked, sanitized root `AGENTS.md` for code review. The first line must contain the exact Repository Standards provenance for schema `1`, standard `Repository Standards`, version `1.1.0`, scope `local-required`, and source `local`. The file must contain exactly one `## Code Review Rules` section, exactly one `## Repository-Specific Review Rules` section, at least one meaningful repository-specific bullet, and no unresolved `{{...}}` placeholder.
+
+The same gate requires `.repository-standards.json` schema 2 to use `supportRoute: github-issues`; requires local `bug_report.yml`, `feature_request.yml`, `question.yml`, & `config.yml` files with valid local-override provenance; & validates every optional `featureExceptions` entry. Issues cannot be disabled. Only Discussions, Wikis, or Pages can deviate from the disabled baseline, & each exception must record an identifier, Boolean intended state, owner, reason, approved status, & review condition.
 
 The public review file is repository-specific and remains distinct from private project lifecycle records. RQG validates and distributes the validator but does not infer or overwrite the repository-specific review rules. Render and review the local file from the approved Repository Standards template before enrolment or update. `PROJECT.md`, `GOALS.md`, `STATUS.md`, `DECISIONS.md`, and `HANDOFFS.md` remain prohibited publication content and must remain ignored; `AGENTS.md` must be tracked and must not be ignored.
 
@@ -291,11 +293,11 @@ Repository-specific workflows remain responsible for cross-compilation, platform
 
 ### Documentation
 
-**Selection rule:** At least one `.md` or `.markdown` file exists.
+**Selection rule:** Always selected for every Git repository. Repository-standard enforcement & issue intake are universal; Markdown hygiene becomes applicable when Markdown files exist.
 
 **Workflow:** `Documentation Quality` on `ubuntu-latest`, timeout 10 minutes.
 
-The workflow fails when Markdown files contain trailing spaces or tabs. It excludes `.git`, `node_modules`, and `vendor`. It does not currently run a full Markdown style linter, link checker, spelling checker, or rendered-document comparison.
+The module deploys the repository-standards validator & all four local issue-template files. Its workflow fails when repository-standard validation fails or Markdown files contain trailing spaces or tabs. Markdown hygiene excludes `.git`, `node_modules`, & `vendor`; it does not currently run a full Markdown style linter, link checker, spelling checker, or rendered-document comparison.
 
 ## Selection Examples
 
@@ -328,4 +330,6 @@ Preservation is accepted only when the module is applicable and matching workflo
 
 The template and module-drift workflow choose modules using repository contents. They do not infer framework-specific lint commands, test projects, databases, browsers, hardware targets, or deployment environments beyond the explicit rules above. Product-specific checks remain the responsibility of the target repository and should coexist with these baseline gates after overlap review.
 
-Build and release automation is assessed separately in [Automation Costs And Release Strategy](automation-costs-and-releases.md). No release publishing workflow is deployed by the current template.
+Build and release automation is assessed separately in [Automation Costs And Release Strategy](automation-costs-and-releases.md). RQG deploys a reusable release-governance workflow and planner to every managed repository. Schema-2 profiles remain inert; a repository adopts automatic publishing only through a reviewed schema-3 profile that declares its canonical version sources, changelog, exact required gates, and release contract.
+
+For an adopted schema-3 profile, every default-branch push evaluates canonical version state. An unchanged version produces no release. A new stable or prerelease version fails closed unless all declared version sources agree, the dated changelog section maps every delivered entry to a classified GitHub issue or confidential advisory assigned to that exact version, every required gate succeeds, and no tag or Release evidence conflicts. Because GitHub security advisories have no milestone field, a confidential advisory records its target with an exact `Target-Version: <canonical-version>` line in its private description. The workflow creates the exact `v<version>` tag, names the GitHub Release with the version alone, generates notes from the governed changelog and commit range, verifies the remote tag and Release, and only then closes the verified delivered public GitHub issues; it never closes advisories.

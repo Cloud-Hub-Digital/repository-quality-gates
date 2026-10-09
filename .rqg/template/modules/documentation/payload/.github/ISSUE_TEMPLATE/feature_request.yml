@@ -1,0 +1,33 @@
+# repository-standard: schema=1; standard=Repository Standards; version=1.2.0; source=Repository Quality Gates; scope=local-required; override=local-file
+name: Feature Request
+description: Suggest an improvement or new capability.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Or Opportunity
+      description: What user need should be addressed?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Intended Outcome
+      description: What observable result would make this successful?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe current workarounds or other approaches.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched for an existing request.
+          required: true
+        - label: This request contains no secrets, private systems, or private project-management information.
+          required: true

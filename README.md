@@ -4,9 +4,9 @@ Repository Quality Gates is a preview-first PowerShell deployment tool for addin
 
 Required-check enforcement is visibility-aware. Public repositories require native GitHub default-branch rules. Private repositories use those rules when available and may use only the reviewed, fail-closed `RQG-PRIVATE-PLAN-001` verified-merge exception when GitHub returns the recognized current-plan limitation. The read-only required-check planner reports the exact checks and control for every dynamically supplied repository before any administration change.
 
-The prepared template version written to managed state is `3.1.4`. The automatic release workflow publishes the matching immutable `v3.1.4` GitHub Release after the required checks pass for the release commit.
+The prepared template version written to managed state is `3.2.0`. The automatic release workflow publishes the matching immutable `v3.2.0` GitHub Release after the required checks pass for the release commit.
 
-Version `3.1.4` sends one consolidated named summary email for a released version. Preview, scheduled, and controlled intermediate-wave runs remain silent; an authorized manual report requires an explicit full-fleet apply request. It retains verified temporary branch cleanup, the approved two-class licence model, precise fleet statuses, private self-hosted runner routing, fixed-width email tables, line-separated runner names, concise failure comments, and a runner-sanitized one-day diagnostic artifact. See [Automatic Repository Updates](docs/automatic-repository-updates.md) for the security model and one-time setup.
+Version `3.2.0` adds a governed repository-feature contract: Issues must be enabled, Discussions, Wikis, & Pages must be disabled unless a complete repository-local exception is approved, and every repository must carry local bug-report, feature-request, question, & picker configuration files. The GitHub administration engine audits & can reconcile supported live settings, while ordinary RQG content updates deliver the required issue forms & migrate the legacy Discussions support route to Issues through reviewed repository changes. Issues cannot be disabled by exception; an exception may change only Discussions, Wikis, or Pages & must record its identifier, intended state, owner, reason, approved status, & review condition. See [Repository Ruleset & Feature Engine](docs/repository-ruleset-engine.md) for the complete policy, output, authorization, & exception model.
 
 The 2.x line begins a clean public Git history. The [Development History](docs/development-history.md) explains how the earlier public development milestones are represented without carrying forward the previous commit graph.
 
@@ -98,11 +98,16 @@ See [Module System](docs/module-system.md) for state tracking, file classificati
 | `tests/Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1` | Synthetic authentication suite for multi-installation discovery, token isolation, and cross-owner fleet dispatch |
 | `tests/Test-RepositoryLicence.Tests.ps1` | Synthetic visibility-based licence suite for public MIT, private TR Proprietary License 1.0, rights-holder, GitHub-presentation, and fail-closed behavior |
 | `tests/Get-RepositoryQualityGateReleasePlan.Tests.ps1` | Synthetic automatic-release suite for version, check, commit, tag, and release-state validation |
+| `tests/Invoke-RepositoryRulesetEngine.Tests.ps1` | Synthetic default-branch ruleset, private-plan deferral, & approved-exception validation |
+| `tests/Invoke-RepositoryRulesetAppFleet.Tests.ps1` | Static GitHub App token-boundary & Actions-orchestration validation for fleet ruleset reconciliation |
 | `scripts/Update-RepositoryQualityGates.ps1` | Preview or apply a newer template to one managed repository |
 | `scripts/Invoke-RepositoryQualityGateFleetUpdate.ps1` | Discover GitHub App repositories, open update pull requests, and enable required-check-gated auto-merge |
 | `scripts/Invoke-RepositoryQualityGateAppFleetUpdate.ps1` | Enumerate every GitHub App installation, issue an isolated token for each, mask discovered identities, and run the fleet updater |
 | `scripts/Get-RepositoryQualityGateReleasePlan.ps1` | Validate the central stable version and determine whether its immutable tag and release may be created or recovered |
+| `scripts/Invoke-RepositoryRulesetEngine.ps1` | Audit or explicitly reconcile the canonical default-branch ruleset & merge settings for supplied repositories |
+| `scripts/Invoke-RepositoryRulesetAppFleet.ps1` | Run ruleset audit or reconciliation across every accessible GitHub App installation with short-lived isolated tokens |
 | `docs/quality-gates.md` | Detailed gate and module-selection reference |
+| `docs/repository-ruleset-engine.md` | Ruleset & feature policy, audit/apply behavior, local exceptions, private-plan boundary, & Actions credential requirements |
 | `docs/deployment-guide.md` | End-to-end operator instructions |
 | `docs/module-system.md` | Architecture and managed-file lifecycle reference |
 | `docs/automation-costs-and-releases.md` | GitHub Actions cost boundary and recommended build/release automation controls |
@@ -119,6 +124,8 @@ The universal licensing module also validates the downstream project's own appro
 ## Recommended Repository Settings
 
 RQG's workflows provide repository-level checks, and the central repository now also uses GitHub's native secret scanning and push protection, dependency alerts and security updates, SHA-pinned Actions, read-only default workflow permissions, 30-day workflow retention, automatic deletion of merged branches, immutable releases, and active rulesets protecting `main` and release tags. Weekly grouped Dependabot updates keep GitHub Actions references current for review.
+
+Issues are enabled in every governed repository. RQG requires local bug-report, feature-request, question, & issue-picker configuration files, validates `supportRoute` as `github-issues`, & audits the live repository setting. Discussions, Wikis, & Pages are disabled unless the repository-local `.repository-standards.json` file contains one complete approved `featureExceptions` entry for the feature. Issue forms are delivered through a checked pull request; supported live settings follow verified content during authorized fleet apply. Separate scheduled administration audits remain read-only.
 
 Apply the controls in stages. RQG's current self-reconciliation workflow can commit a normalized managed state directly to its branch. A rule requiring every `main` change to arrive through a pull request would block that behavior until self-reconciliation is changed to use a temporary pull request or a narrowly scoped GitHub App bypass is approved.
 
@@ -167,6 +174,8 @@ pwsh -NoProfile -File ".\tests\Update-RepositoryQualityGates.Tests.ps1"
 pwsh -NoProfile -File ".\tests\Invoke-RepositoryQualityGateFleetUpdate.Tests.ps1"
 pwsh -NoProfile -File ".\tests\Invoke-RepositoryQualityGateAppFleetUpdate.Tests.ps1"
 pwsh -NoProfile -File ".\tests\Get-RepositoryQualityGateReleasePlan.Tests.ps1"
+pwsh -NoProfile -File ".\tests\Invoke-RepositoryRulesetEngine.Tests.ps1"
+pwsh -NoProfile -File ".\tests\Invoke-RepositoryRulesetAppFleet.Tests.ps1"
 ```
 
 The regression suite uses generated synthetic repositories only and includes automatic Python-to-PHP reconciliation. It does not use real credentials or private identifier values.
