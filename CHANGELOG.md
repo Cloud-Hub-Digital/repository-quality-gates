@@ -28,6 +28,8 @@
 
 ### Fixed
 
+- Recover unpublished governed releases across repair commits; distinguish missing Releases from failed API reads & prevent handled absence probes from failing successful planning. (#8)
+
 - Accept the governed schema-3 profile in Repository Standards & licence checks while retaining schema-2 compatibility & fail-closed unknown-schema rejection; validate the real central checkout in protected regressions. (#4)
 
 ### Security

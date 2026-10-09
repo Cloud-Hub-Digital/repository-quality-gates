@@ -80,3 +80,7 @@ The central Repository Quality Gates repository adopts that same release contrac
 ## Central Release Governance
 
 The central repository adopts the same schema-3 release contract as managed downstream products. Its managed workflow is the sole automatic publisher on `main`; the legacy `automatic-release.yml` path is a manual compatibility entry point that calls the managed workflow. Canonical version sources, a dated changelog, classified issue milestones, exact required gates, remote tag verification, comprehensive notes, & an immutable non-draft Release must pass before delivered-issue closure or one final fleet report.
+
+## Unpublished Release Recovery
+
+The governed publisher distinguishes an absent Release from a failed API request. It can recover a still-unpublished canonical version across repair commits by locating its original version boundary in first-parent history. Existing released versions remain no-ops on unchanged-version pushes; existing tags are never moved or reused for another commit. Every recovered release still requires successful exact-commit gates, validated issue evidence & immutable remote verification.
