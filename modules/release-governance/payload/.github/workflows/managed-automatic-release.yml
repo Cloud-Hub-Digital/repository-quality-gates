@@ -43,9 +43,15 @@ jobs:
           $profile = Get-Content ./.repository-standards.json -Raw | ConvertFrom-Json
           $sha = '${{ github.sha }}'
           (gh api "repos/$env:GITHUB_REPOSITORY/commits/main" --jq .sha).Trim() | Set-Content remote-main.txt
-          $parent = git rev-parse "$sha^" 2>$null | Select-Object -First 1
+          $currentVersion = ./scripts/Get-RepositoryReleaseVersion.ps1
+          git fetch --tags --force; if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch release tags.' }
+          $currentTag = @(git tag --list "v$currentVersion"); if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect release tags.' }
+          $history = @(git rev-list --first-parent $sha); if ($LASTEXITCODE -ne 0 -or -not $history.Count) { throw 'Unable to inspect release ancestry.' }
+          $ancestors = @($history | Select-Object -Skip 1)
+          $parent = ''
           $previous = ''
-          if ($parent) {
+          foreach ($ancestor in $ancestors) {
+            $parent = $ancestor
             $previousValues = @($profile.releaseGovernance.versionSources | ForEach-Object {
               $source = $_; $sourcePath = if ($source -is [string]) { [string]$source } else { [string]$source.path }; $sourceKind = if ($source -is [string]) { 'plain-text' } else { [string]$source.kind }
               $text = git show "${parent}:$sourcePath" 2>$null; if ($LASTEXITCODE -ne 0) { throw "Previous version source is missing: $sourcePath" }
@@ -57,6 +63,8 @@ jobs:
             $uniquePrevious = @($previousValues | Select-Object -Unique)
             if ($uniquePrevious.Count -ne 1) { throw 'Previous canonical version sources disagree.' }
             $previous = $uniquePrevious[0]
+            # Recover an unpublished version across repair commits; published versions stay no-ops.
+            if ($previous -ne $currentVersion -or $currentTag.Count) { break }
           }
           $previous | Set-Content previous-version.txt
           $deadline = [DateTimeOffset]::UtcNow.AddMinutes(20)
@@ -89,13 +97,22 @@ jobs:
         run: |
           $arguments = @{ RepositoryRoot='.'; CommitSha='${{ github.sha }}'; RemoteMainSha=(Get-Content remote-main.txt -Raw).Trim(); CheckRunsPath='./checks.json'; IssueRecordsPath='./issues.json'; PreviousVersion=(Get-Content previous-version.txt -Raw).Trim(); CommitRangePath='./commits.txt' }
           $version = ./scripts/Get-RepositoryReleaseVersion.ps1; $tag = "v$version"; git fetch --tags --force
-          $tagSha = git rev-parse --verify --quiet "refs/tags/$tag^{commit}" 2>$null; if ($LASTEXITCODE -eq 0) { $arguments.TagCommitSha = ($tagSha | Select-Object -First 1).Trim() }
-          $raw = gh release view $tag --json tagName,name,isPrerelease,body,isDraft,isImmutable 2>$null; if ($LASTEXITCODE -eq 0) { $release = $raw | ConvertFrom-Json; if ($release.isDraft -or -not $release.isImmutable) { throw 'Existing Release is draft or mutable; publication stopped.' }; $arguments.ReleaseExists=$true; $arguments.ExistingReleaseTag=$release.tagName; $arguments.ExistingReleaseName=$release.name; $arguments.ExistingReleaseIsPrerelease=[bool]$release.isPrerelease; $arguments.ExistingReleaseNotes=[string]$release.body }
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to fetch release tags.' }
+          $tags = @(git tag --list $tag); if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect release tags.' }
+          if ($tags.Count) { $tagSha = git rev-parse --verify "refs/tags/$tag^{commit}"; if ($LASTEXITCODE -ne 0) { throw 'Existing tag cannot be resolved.' }; $arguments.TagCommitSha = ($tagSha | Select-Object -First 1).Trim() }
+          # A successful collection read distinguishes absence from authentication or API failure.
+          $raw = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --paginate --slurp
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect existing Releases.' }
+          $releases = @($raw | ConvertFrom-Json | ForEach-Object { $_ })
+          $matching = @($releases | Where-Object tag_name -eq $tag)
+          if ($matching.Count -gt 1) { throw 'Existing Release identity is ambiguous.' }
+          if ($matching.Count) { $release = $matching[0]; if ($release.draft -or -not $release.immutable) { throw 'Existing Release is draft or mutable; publication stopped.' }; $arguments.ReleaseExists=$true; $arguments.ExistingReleaseTag=$release.tag_name; $arguments.ExistingReleaseName=$release.name; $arguments.ExistingReleaseIsPrerelease=[bool]$release.prerelease; $arguments.ExistingReleaseNotes=[string]$release.body }
           $plan = ./scripts/Get-RepositoryReleasePlan.ps1 @arguments
           $plan | ConvertTo-Json -Depth 8 | Set-Content release-plan.json
           $plan.releaseNotes | Set-Content release-notes.md -NoNewline
           foreach ($name in @('action','tag','version')) { "$name=$($plan.$name)" | Out-File $env:GITHUB_OUTPUT -Append }
           "prerelease=$($plan.prerelease.ToString().ToLowerInvariant())" | Out-File $env:GITHUB_OUTPUT -Append
+          $global:LASTEXITCODE = 0
 
       - name: Create Immutable Tag
         if: steps.plan.outputs.action == 'CreateTagAndRelease'

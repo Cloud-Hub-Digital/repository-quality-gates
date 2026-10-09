@@ -67,16 +67,67 @@ try {
         Copy-Item -LiteralPath (Join-Path $root $relative) -Destination $destination
     }
     @($profile.releaseGovernance.requiredGates | ForEach-Object { [ordered]@{ name=$_.name; path=$_.path; status='completed'; conclusion='success' } }) | ConvertTo-Json | Set-Content (Join-Path $central checks.json)
-    @(4,5,6,7 | ForEach-Object { [ordered]@{ reference="#$_"; number=$_; type='issue'; classification=if ($_ -eq 7) { 'bug' } else { 'feature' }; targetVersion='3.2.0'; delivered=$true } }) | ConvertTo-Json | Set-Content (Join-Path $central issues.json)
+    @(4,5,6,7,8 | ForEach-Object { [ordered]@{ reference="#$_"; number=$_; type='issue'; classification=if ($_ -in @(7,8)) { 'bug' } else { 'feature' }; targetVersion='3.2.0'; delivered=$true } }) | ConvertTo-Json | Set-Content (Join-Path $central issues.json)
     'abc123 Adopt governed release contract' | Set-Content (Join-Path $central commits.txt)
     $centralFixture = [pscustomobject]@{ Path=$central; Version='3.2.0' }
     $centralPlan = Run $centralFixture @{ PreviousVersion='3.1.4' }
     Assert ($centralPlan.Ok -and $centralPlan.Plan.action -eq 'CreateTagAndRelease') ('Central release contract should be ready. ' + $centralPlan.Error)
     Assert ($centralPlan.Plan.releaseName -ceq '3.2.0' -and $centralPlan.Plan.tag -ceq 'v3.2.0') 'Central release identity must match the canonical version.'
-    Assert ((@($centralPlan.Plan.deliveredIssues.number | Sort-Object) -join ',') -ceq '4,5,6,7') 'Central release must cover exactly its delivered issues.'
+    Assert ((@($centralPlan.Plan.deliveredIssues.number | Sort-Object) -join ',') -ceq '4,5,6,7,8') 'Central release must cover exactly its delivered issues.'
     Assert ((Run $centralFixture @{ PreviousVersion='3.2.0' }).Plan.action -eq 'NoRelease') 'An unchanged central version must not publish again.'
     $centralChecks = @(Get-Content (Join-Path $central checks.json) -Raw | ConvertFrom-Json); $centralChecks[0].conclusion='failure'; $centralChecks | ConvertTo-Json | Set-Content (Join-Path $central checks.json)
     Assert (-not (Run $centralFixture @{ PreviousVersion='3.1.4' }).Ok) 'A failed exact central gate must block release.'
+
+    # Execute real planning workflow code, including native exit handling and API failures.
+    $workflowText = Get-Content -LiteralPath (Join-Path $root '.github/workflows/managed-automatic-release.yml') -Raw
+    $planning = [regex]::Match($workflowText, '(?s)- name: Prepare Release Plan.*?run: \|\r?\n(?<body>.*?)(?=\r?\n      - name:)')
+    Assert $planning.Success 'Release planning step must be present.'
+    $planningBody = (($planning.Groups['body'].Value -split '\r?\n' | ForEach-Object { $_ -replace '^          ', '' }) -join "`n").Replace('${{ github.sha }}', $sha)
+    $planningStep = [scriptblock]::Create($planningBody)
+    New-Item -ItemType Directory -Path (Join-Path $central scripts) -Force | Out-Null
+    Copy-Item $tool (Join-Path $central 'scripts/Get-RepositoryReleasePlan.ps1')
+    Copy-Item $versionTool (Join-Path $central 'scripts/Get-RepositoryReleaseVersion.ps1')
+    @($profile.releaseGovernance.requiredGates | ForEach-Object { [ordered]@{ name=$_.name; path=$_.path; status='completed'; conclusion='success' } }) | ConvertTo-Json | Set-Content (Join-Path $central checks.json)
+    $sha | Set-Content (Join-Path $central remote-main.txt)
+    '3.1.4' | Set-Content (Join-Path $central previous-version.txt)
+    $savedOutput = $env:GITHUB_OUTPUT; $env:GITHUB_OUTPUT = Join-Path $central output.txt
+    function git { $global:LASTEXITCODE=0; if ($args[0] -eq 'fetch') { return }; if ($args[0] -eq 'tag') { return }; throw 'Unexpected Git planning call.' }
+    function gh { $global:LASTEXITCODE=$script:probeExit; return '[[]]' }
+    Push-Location $central
+    try {
+        $script:probeExit=0; $global:LASTEXITCODE=1; & $planningStep
+        $actualPlan = Get-Content release-plan.json -Raw | ConvertFrom-Json
+        Assert ($actualPlan.action -eq 'CreateTagAndRelease' -and $global:LASTEXITCODE -eq 0) 'Absent Release must plan publication with a successful native exit state.'
+        $script:probeExit=1; $accepted=$true; try { & $planningStep } catch { $accepted=$false }
+        Assert (-not $accepted) 'Release API errors must fail closed.'
+    } finally { Pop-Location; Remove-Item Function:gh; Remove-Item Function:git; $env:GITHUB_OUTPUT=$savedOutput }
+
+    # Exercise version-history recovery using the actual collection-step source.
+    $baseline = [regex]::Match($workflowText, '(?s)(?<body>          \$currentVersion = .*?)          \$previous \| Set-Content previous-version.txt')
+    Assert $baseline.Success 'Version-history baseline step must be present.'
+    $baselineBody = (($baseline.Groups['body'].Value -split '\r?\n' | ForEach-Object { $_ -replace '^          ', '' }) -join "`n")
+    $baselineStep = [scriptblock]::Create($baselineBody)
+    function git {
+        $global:LASTEXITCODE=0
+        switch ($args[0]) {
+            'fetch' { return }
+            'tag' { if ($script:published) { return 'v3.2.0' }; return }
+            'rev-list' { return @($sha,$other,'3333333333333333333333333333333333333333') }
+            'show' {
+                $parts = ([string]$args[1]).Split(':',2); $text=Get-Content -LiteralPath $parts[1] -Raw
+                if ($parts[0] -eq '3333333333333333333333333333333333333333') { $text=$text.Replace('3.2.0','3.1.4') }
+                return $text
+            }
+            default { throw 'Unexpected Git baseline call.' }
+        }
+    }
+    Push-Location $central
+    try {
+        $script:published=$false; . $baselineStep
+        Assert ($previous -eq '3.1.4' -and $parent -eq '3333333333333333333333333333333333333333') 'Unpublished repair commits must recover the original version boundary.'
+        $script:published=$true; . $baselineStep
+        Assert ($previous -eq '3.2.0' -and $parent -eq $other) 'Published unchanged versions must retain no-release behavior.'
+    } finally { Pop-Location; Remove-Item Function:git }
 
     # Execute the actual post-publication workflow step with a fake CLI.
     $workflow = Get-Content -LiteralPath (Join-Path $root '.github/workflows/managed-automatic-release.yml') -Raw
