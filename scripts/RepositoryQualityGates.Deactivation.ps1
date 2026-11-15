@@ -36,6 +36,20 @@ function Invoke-RqgDeactivationApi([string[]]$Arguments) {
     catch { throw 'Invalid GitHub deactivation response.' }
 }
 
+function Get-RqgDeactivationPagedCollection([string]$Endpoint,[string]$Property) {
+    # --slurp and --jq cannot be combined. Preserve every page and flatten
+    # the documented response collection after JSON parsing instead.
+    $pages = @(Invoke-RqgDeactivationApi @('--paginate','--slurp',$Endpoint))
+    foreach ($page in $pages) {
+        if ($Property) {
+            if ($null -eq $page -or -not $page.PSObject.Properties[$Property]) { throw 'A paginated GitHub response is missing its collection.' }
+            foreach ($item in @($page.$Property)) { $item }
+        } else {
+            foreach ($item in @($page)) { $item }
+        }
+    }
+}
+
 function Set-RqgDeactivationApi([string]$Method,[string]$Endpoint,[object]$Body) {
     $file = [IO.Path]::GetTempFileName()
     try {
@@ -60,7 +74,7 @@ function Repair-RqgDeactivationTransition([string]$RepositoryName,[string]$Branc
             if ($pulls.Count -ne 1) { throw 'The interrupted removal PR is unavailable; no protection was changed.' }
             $pr=Invoke-RqgDeactivationApi @("repos/$RepositoryName/pulls/$($pulls[0].number)")
             if ([DateTimeOffset]::Parse([string]$pr.created_at) -gt [DateTimeOffset]::UtcNow.AddHours(-2)) { throw 'A removal transaction may still be active; recovery is deferred for two hours.' }
-            $checks=@(Invoke-RqgDeactivationApi @('--paginate','--slurp',"repos/$RepositoryName/commits/$($pr.head.sha)/check-runs?filter=latest&per_page=100",'--jq','[.[] | .check_runs[]]'))
+            $checks=@(Get-RqgDeactivationPagedCollection "repos/$RepositoryName/commits/$($pr.head.sha)/check-runs?filter=latest&per_page=100" 'check_runs')
             $receiptCheck=@($checks | Where-Object { $_.name -ceq 'RQG Deactivation' -and [long]$_.app.id -eq $AppId -and $_.conclusion -ceq 'success' })
             if ($receiptCheck.Count -ne 1 -or $receiptCheck[0].output.summary -notmatch 'RQG-Deactivation-Receipt: (?<json>\{[^\r\n]+\})') { throw 'Authoritative deactivation recovery receipt is missing.' }
             $receipt=$Matches.json | ConvertFrom-Json
@@ -87,7 +101,7 @@ function Clear-RqgAbandonedRemovalPr([string]$RepositoryName,[string]$Branch,[lo
     foreach ($candidate in @(Get-OpenPullRequests $RepositoryName | Where-Object { -not $_.isCrossRepository -and $_.baseRefName -ceq $Branch -and $_.headRefName -match '^rqg/update-v' -and $_.body -match '<!-- repository-quality-gates-deactivation -->' })) {
         if ([DateTimeOffset]::Parse([string]$candidate.createdAt) -gt [DateTimeOffset]::UtcNow.AddHours(-2)) { continue }
         $pr=Invoke-RqgDeactivationApi @("repos/$RepositoryName/pulls/$($candidate.number)")
-        $checks=@(Invoke-RqgDeactivationApi @('--paginate','--slurp',"repos/$RepositoryName/commits/$($pr.head.sha)/check-runs?filter=latest&per_page=100",'--jq','[.[] | .check_runs[]]'))
+        $checks=@(Get-RqgDeactivationPagedCollection "repos/$RepositoryName/commits/$($pr.head.sha)/check-runs?filter=latest&per_page=100" 'check_runs')
         $proof=@($checks | Where-Object { $_.name -ceq 'RQG Deactivation' -and [long]$_.app.id -eq $AppId -and $_.conclusion -ceq 'success' })
         if ($proof.Count -ne 1 -or $pr.user.login -cne ($proof[0].app.slug + '[bot]')) { throw 'An abandoned removal PR lacks authoritative provenance; it was preserved.' }
         $null=Set-RqgDeactivationApi PATCH "repos/$RepositoryName/pulls/$($pr.number)" @{state='closed'}
@@ -96,7 +110,7 @@ function Clear-RqgAbandonedRemovalPr([string]$RepositoryName,[string]$Branch,[lo
 }
 
 function Assert-RqgDeactivationBaseline([string]$RepositoryName,[string]$Commit,[string[]]$ExpectedChecks) {
-    $checks = @(Invoke-RqgDeactivationApi @('--paginate','--slurp',"repos/$RepositoryName/commits/$Commit/check-runs?filter=latest&per_page=100",'--jq','[.[] | .check_runs[]]'))
+    $checks = @(Get-RqgDeactivationPagedCollection "repos/$RepositoryName/commits/$Commit/check-runs?filter=latest&per_page=100" 'check_runs')
     if (-not $checks.Count) { throw 'The deactivation baseline has no verified check evidence.' }
     $providers=@{}
     foreach ($name in $ExpectedChecks) {
@@ -106,7 +120,7 @@ function Assert-RqgDeactivationBaseline([string]$RepositoryName,[string]$Commit,
         $providers[$name]=[long]$matches[0].app.id
     }
     if (@($checks | Where-Object { $_.status -cne 'completed' -or $_.conclusion -notin @('success','neutral','skipped') }).Count) { throw 'A baseline check is failed or incomplete; deactivation cannot bypass it.' }
-    $statuses = @(Invoke-RqgDeactivationApi @('--paginate','--slurp',"repos/$RepositoryName/commits/$Commit/statuses?per_page=100",'--jq','[.[][]]'))
+    $statuses = @(Get-RqgDeactivationPagedCollection "repos/$RepositoryName/commits/$Commit/statuses?per_page=100" '')
     foreach ($group in @($statuses | Group-Object context)) {
         $latest = @($group.Group | Sort-Object created_at -Descending)[0]
         if ($latest.state -cne 'success') { throw 'A baseline commit status is failed or incomplete.' }

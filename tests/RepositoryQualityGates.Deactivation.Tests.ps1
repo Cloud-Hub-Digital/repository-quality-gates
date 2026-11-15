@@ -18,7 +18,8 @@ $script:detail=[pscustomobject]@{
 function Assert-RequiredQualityChecksEnforced($RepositoryName,$Branch,$ExpectedChecks,$Visibility,$Policy) { [pscustomobject]@{platformLimitationVerified=$script:privatePlan;mode=if($script:privatePlan){'rqg-verified-merge-exception'}else{'github-rules-required'};exceptionId=if($script:privatePlan){'RQG-PRIVATE-PLAN-001'}else{$null};requiredChecks=@('Secret Scan','Independent Product Test')} }
 function Invoke-RqgDeactivationApi([string[]]$Arguments) {
     $text=$Arguments -join ' '
-    if ($text -match '/check-runs\?') { return $script:checks }
+    if ('--slurp' -in $Arguments -and '--jq' -in $Arguments) { throw 'GitHub CLI rejects --slurp combined with --jq.' }
+    if ($text -match '/check-runs\?') { return [pscustomobject]@{check_runs=@($script:checks)} }
     if ($text -match '/statuses\?') { return $script:statuses }
     if ($text -match '/rulesets\?') { if ($script:otherRule) { return @([pscustomobject]@{id=42;name='Repository Standards - Default Branch'},[pscustomobject]@{id=43;name='Independent Controls'}) };return @([pscustomobject]@{id=42;name='Repository Standards - Default Branch'}) }
     if ($text -match '/rulesets/42$') { return $script:detail }

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Read every page of administration check and status evidence without combining incompatible GitHub CLI output flags; retain provider and failed-check guards. (#11)
+- Run required module reporting on pushes as well as pull requests so default-branch administration has successful reporting evidence. (#11)
+
 ## 3.2.0 - 2026-10-08
 
 ### Added
