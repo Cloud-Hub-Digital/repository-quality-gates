@@ -305,6 +305,8 @@ try {
         if ($null -eq $oldToken) { Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue } else { $env:GH_TOKEN = $oldToken }
     }
 
+    $paginationTests = & pwsh -NoProfile -File (Join-Path $root 'tests/RepositoryQualityGates.Pagination.Tests.ps1') 2>&1
+    Assert-True ($LASTEXITCODE -eq 0) "Paginated CLI compatibility tests must pass. $($paginationTests -join [Environment]::NewLine)"
     $removalTests = & pwsh -NoProfile -File (Join-Path $root 'tests/RepositoryQualityGates.Deactivation.Tests.ps1') 2>&1
     Assert-True ($LASTEXITCODE -eq 0) "Checked deactivation tests must pass. $($removalTests -join [Environment]::NewLine)"
     Write-Host "$passed assertions passed."
